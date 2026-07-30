@@ -35,6 +35,10 @@ dependencies = [
     "structlog>=24.1",        # structured JSON logging / observability
     "httpx>=0.27",            # data fetch in scripts/
     "pyyaml>=6.0",            # durable campaign.yaml
+    "sqlalchemy>=2.0",        # operational state (ADR-001)
+    "alembic>=1.13",          # migrations; never bypassed (AI_CONTRACT.md section 10)
+    "psycopg[binary]>=3.2",   # PostgreSQL driver
+    "boto3>=1.34",            # S3-compatible object storage: MinIO locally, S3 in production
 ]
 
 [project.optional-dependencies]
@@ -45,6 +49,7 @@ dev = [
     "mypy>=1.11",
     "ruff>=0.6",
     "types-pyyaml",
+    "boto3-stubs[s3]",       # mypy --strict needs S3 stubs
     "httpx>=0.27",           # also the FastAPI TestClient transport
 ]
 
