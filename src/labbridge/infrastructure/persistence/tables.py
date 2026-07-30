@@ -28,6 +28,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -62,6 +63,17 @@ _ADMISSIBLE_PAIR_SQL = (
 _ID = String(128)
 _HASH = String(64)
 
+#: Mirrors `domain.results.ObservationStatus` and `AttemptStatus`. Enumerated in SQL because the
+#: PO-02 partial index keys on the literal `status = 'succeeded'`: without a value-set constraint a
+#: writer inserting `'Succeeded'` or `'succeeded '` records a second success the index never sees.
+_KNOWN_OBSERVATION_STATUS = (
+    "status IN ('received','accepted','corrupted','invalidated','superseded')"
+)
+_KNOWN_ATTEMPT_STATUS = (
+    "status IN ('succeeded','timed_out','failed_retryable','failed_terminal',"
+    "'corrupted','cancelled','lease_lost','duplicate_suppressed')"
+)
+
 
 def _timestamps(*names: str) -> list[Column[datetime]]:
     """Timestamps are always timezone-aware: a naive column cannot be ordered across hosts."""
@@ -82,6 +94,10 @@ campaigns = Table(
     Column("declaration_hash", _HASH, nullable=False),
     *_timestamps("created_at", "updated_at"),
     CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="admissible_origin_mode"),
+    # Redundant on its own — campaign_id is already unique — but it is the target a child row's
+    # composite foreign key needs. That is what forces every observation and outcome to carry the
+    # *same* origin and mode as its campaign, rather than merely a separately-admissible pair.
+    UniqueConstraint("campaign_id", "data_origin", "execution_mode", name="uq_campaigns_identity"),
 )
 
 work_items = Table(
@@ -171,14 +187,14 @@ attempts = Table(
 observations = Table(
     "observations",
     metadata,
-    # Content-derived, so the same bytes under the same schema and provenance are the same row.
+    # Content-derived: the same bytes under the same schema and provenance root yield the same
+    # `observation_id`. That identity is deliberately *not* the primary key on its own. Two
+    # campaigns replaying one fixture location produce identical content, and a bare PK would
+    # either reject the second receipt — losing the bytes invariant 2 requires retaining — or
+    # silently attribute them to the first campaign's attempt. One row per (content, attempt)
+    # keeps both the content identity and the honest attribution.
     Column("observation_id", _ID, primary_key=True),
-    Column(
-        "campaign_id",
-        UUID(as_uuid=True),
-        ForeignKey("campaigns.campaign_id", ondelete="RESTRICT"),
-        nullable=False,
-    ),
+    Column("campaign_id", UUID(as_uuid=True), nullable=False),
     Column(
         "work_item_id",
         UUID(as_uuid=True),
@@ -189,7 +205,7 @@ observations = Table(
         "attempt_id",
         UUID(as_uuid=True),
         ForeignKey("attempts.attempt_id", ondelete="RESTRICT"),
-        nullable=False,
+        primary_key=True,
     ),
     Column("media_type", String(128), nullable=False),
     Column("object_uri", Text, nullable=False),
@@ -211,6 +227,17 @@ observations = Table(
         "status NOT IN ('corrupted','invalidated') OR status_reason IS NOT NULL",
         name="rejected_status_states_its_reason",
     ),
+    CheckConstraint(_KNOWN_OBSERVATION_STATUS, name="known_status"),
+    # The pair must equal the campaign's, not merely be admissible on its own. Without this a
+    # `synthetic + replay` observation inserts cleanly into an `observed + replay` campaign: both
+    # rows pass the CHECK individually, and the conflation ADR-010 exists to prevent happens
+    # between rows rather than within one.
+    ForeignKeyConstraint(
+        ["campaign_id", "data_origin", "execution_mode"],
+        ["campaigns.campaign_id", "campaigns.data_origin", "campaigns.execution_mode"],
+        name="fk_observations_campaign_identity",
+        ondelete="RESTRICT",
+    ),
 )
 
 attempt_outcomes = Table(
@@ -229,18 +256,29 @@ attempt_outcomes = Table(
         ForeignKey("work_items.work_item_id", ondelete="RESTRICT"),
         nullable=False,
     ),
+    Column("campaign_id", UUID(as_uuid=True), nullable=False),
     Column("status", String(32), nullable=False),
-    Column(
-        "observation_id",
-        _ID,
-        ForeignKey("observations.observation_id", ondelete="RESTRICT"),
-        nullable=True,
-    ),
+    Column("observation_id", _ID, nullable=True),
     Column("failure", JSONB, nullable=True),
     Column("cost", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    # Provenance is mandatory on the domain model and normative in docs/SPEC.md §3.6. Without these
+    # columns a writer drops origin and mode at the persistence boundary, and a report over
+    # outcomes has to re-derive them by joining `campaigns` — the "reconstruct downstream" that
+    # invariant 1 forbids. An outcome with no observation (timed_out, lease_lost) would otherwise
+    # leave `code_version` and the lineage root recoverable from no row at all.
+    Column("data_origin", String(16), nullable=False),
+    Column("execution_mode", String(16), nullable=False),
+    Column("provenance", JSONB, nullable=False),
     Column("started_at", DateTime(timezone=True), nullable=True),
     *_timestamps("finished_at"),
-    # Only an outcome that received bytes may reference an observation.
+    # Only an outcome that received bytes may reference an observation, and the observation it
+    # references must be the one *this attempt* received — hence the composite key.
+    ForeignKeyConstraint(
+        ["observation_id", "attempt_id"],
+        ["observations.observation_id", "observations.attempt_id"],
+        name="fk_attempt_outcomes_observation",
+        ondelete="RESTRICT",
+    ),
     CheckConstraint(
         "observation_id IS NULL OR status IN ('succeeded','corrupted')",
         name="observation_only_when_bytes_arrived",
@@ -248,6 +286,14 @@ attempt_outcomes = Table(
     CheckConstraint(
         "status NOT IN ('failed_retryable','failed_terminal') OR failure IS NOT NULL",
         name="failed_status_carries_a_failure",
+    ),
+    CheckConstraint(_KNOWN_ATTEMPT_STATUS, name="known_status"),
+    CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="admissible_origin_mode"),
+    ForeignKeyConstraint(
+        ["campaign_id", "data_origin", "execution_mode"],
+        ["campaigns.campaign_id", "campaigns.data_origin", "campaigns.execution_mode"],
+        name="fk_attempt_outcomes_campaign_identity",
+        ondelete="RESTRICT",
     ),
 )
 
@@ -264,10 +310,14 @@ derived_metrics = Table(
     "derived_metrics",
     metadata,
     Column("metric_id", _ID, primary_key=True),
+    Column("observation_id", _ID, nullable=False),
+    # Which *receipt* the metric was derived from. Two campaigns can receive identical content, and
+    # a metric computed from one is not evidence about the other: they carry different attempts,
+    # different costs, and can be invalidated independently.
     Column(
-        "observation_id",
-        _ID,
-        ForeignKey("observations.observation_id", ondelete="RESTRICT"),
+        "attempt_id",
+        UUID(as_uuid=True),
+        ForeignKey("attempts.attempt_id", ondelete="RESTRICT"),
         nullable=False,
     ),
     Column("name", String(128), nullable=False),
@@ -283,13 +333,22 @@ derived_metrics = Table(
     Column("provenance", JSONB, nullable=False),
     *_timestamps("created_at"),
     # §3.6: a source-provided fit and a LabBridge recomputation are distinct rows, never merged.
+    # `attempt_id` is part of the key for the same reason it is part of the foreign key: the same
+    # analysis over two receipts of identical content is two results, not a duplicate.
     UniqueConstraint(
         "observation_id",
+        "attempt_id",
         "name",
         "analysis_name",
         "analysis_version",
         "parameter_hash",
         name="uq_derived_metrics_analysis",
+    ),
+    ForeignKeyConstraint(
+        ["observation_id", "attempt_id"],
+        ["observations.observation_id", "observations.attempt_id"],
+        name="fk_derived_metrics_observation",
+        ondelete="RESTRICT",
     ),
     CheckConstraint(
         "quality_status = 'accepted' OR quality_reason IS NOT NULL",

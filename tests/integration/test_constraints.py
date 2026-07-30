@@ -35,6 +35,7 @@ NOW = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
 SHA = "c" * 64
 ORIGINS = ("observed", "synthetic")
 MODES = ("replay", "simulation", "live")
+TWO_RECEIPTS = 2
 
 
 @contextmanager
@@ -102,6 +103,28 @@ def _attempt(connection: Connection, work_item_id: uuid.UUID, ordinal: int) -> u
     return attempt_id
 
 
+def _outcome(
+    connection: Connection,
+    campaign_id: uuid.UUID,
+    work_item_id: uuid.UUID,
+    attempt_id: uuid.UUID,
+    status: str,
+    **overrides: Any,
+) -> None:
+    values: dict[str, Any] = {
+        "attempt_id": attempt_id,
+        "work_item_id": work_item_id,
+        "campaign_id": campaign_id,
+        "status": status,
+        "data_origin": "synthetic",
+        "execution_mode": "replay",
+        "provenance": {},
+        "finished_at": NOW,
+    }
+    values.update(overrides)
+    connection.execute(attempt_outcomes.insert().values(**values))
+
+
 @pytest.mark.parametrize(("origin", "mode"), list(itertools.product(ORIGINS, MODES)))
 def test_the_database_admits_exactly_the_pairs_the_domain_admits(
     connection: Connection, origin: str, mode: str
@@ -131,18 +154,10 @@ def test_only_one_succeeded_outcome_per_work_item(connection: Connection) -> Non
     first = _attempt(connection, work_item_id, 1)
     second = _attempt(connection, work_item_id, 2)
 
-    connection.execute(
-        attempt_outcomes.insert().values(
-            attempt_id=first, work_item_id=work_item_id, status="succeeded", finished_at=NOW
-        )
-    )
+    _outcome(connection, campaign_id, work_item_id, first, "succeeded")
 
     with expect_violation(connection, "one_success_per_work_item"):
-        connection.execute(
-            attempt_outcomes.insert().values(
-                attempt_id=second, work_item_id=work_item_id, status="succeeded", finished_at=NOW
-            )
-        )
+        _outcome(connection, campaign_id, work_item_id, second, "succeeded")
 
 
 def test_a_failed_attempt_may_be_retried_alongside_a_later_success(
@@ -154,20 +169,15 @@ def test_a_failed_attempt_may_be_retried_alongside_a_later_success(
     first = _attempt(connection, work_item_id, 1)
     second = _attempt(connection, work_item_id, 2)
 
-    connection.execute(
-        attempt_outcomes.insert().values(
-            attempt_id=first,
-            work_item_id=work_item_id,
-            status="failed_retryable",
-            failure={"failure_code": "timeout", "retryable": True},
-            finished_at=NOW,
-        )
+    _outcome(
+        connection,
+        campaign_id,
+        work_item_id,
+        first,
+        "failed_retryable",
+        failure={"failure_code": "timeout", "retryable": True},
     )
-    connection.execute(
-        attempt_outcomes.insert().values(
-            attempt_id=second, work_item_id=work_item_id, status="succeeded", finished_at=NOW
-        )
-    )
+    _outcome(connection, campaign_id, work_item_id, second, "succeeded")
 
 
 def test_an_outcome_with_no_bytes_cannot_reference_an_observation(
@@ -179,14 +189,13 @@ def test_an_outcome_with_no_bytes_cannot_reference_an_observation(
     observation_id = _observation(connection, campaign_id, work_item_id, attempt_id)
 
     with expect_violation(connection, "observation_only_when_bytes_arrived"):
-        connection.execute(
-            attempt_outcomes.insert().values(
-                attempt_id=attempt_id,
-                work_item_id=work_item_id,
-                status="timed_out",
-                observation_id=observation_id,
-                finished_at=NOW,
-            )
+        _outcome(
+            connection,
+            campaign_id,
+            work_item_id,
+            attempt_id,
+            "timed_out",
+            observation_id=observation_id,
         )
 
 
@@ -324,3 +333,99 @@ def test_one_attempt_ordinal_per_work_item(connection: Connection) -> None:
 
     with expect_violation(connection, "uq_attempts_work_item_ordinal"):
         _attempt(connection, work_item_id, 1)
+
+
+def test_the_same_content_received_by_two_attempts_is_two_rows(connection: Connection) -> None:
+    """`observation_id` is content-derived, so two campaigns replaying one fixture location produce
+    identical content. A single-column primary key rejected the second receipt — losing bytes
+    invariant 2 requires retaining — or attributed it to the first campaign's attempt."""
+    first_campaign = _campaign(connection)
+    second_campaign = _campaign(connection)
+    first_attempt = _attempt(connection, _work_item(connection, first_campaign), 1)
+    second_item = _work_item(connection, second_campaign)
+    second_attempt = _attempt(connection, second_item, 1)
+
+    shared = f"obs:{uuid.uuid4().hex}"
+    _observation(
+        connection,
+        first_campaign,
+        _work_item(connection, first_campaign),
+        first_attempt,
+        observation_id=shared,
+    )
+    _observation(connection, second_campaign, second_item, second_attempt, observation_id=shared)
+
+    rows = connection.execute(
+        observations.select().where(observations.c.observation_id == shared)
+    ).fetchall()
+    assert len(rows) == TWO_RECEIPTS
+
+
+def test_an_observation_may_not_contradict_its_campaigns_origin(connection: Connection) -> None:
+    """The conflation ADR-010 exists to prevent happens *between* rows: both pairs are admissible
+    on their own, so a per-row CHECK never sees it."""
+    campaign_id = _campaign(connection, data_origin="observed", execution_mode="replay")
+    work_item_id = _work_item(connection, campaign_id)
+    attempt_id = _attempt(connection, work_item_id, 1)
+
+    with expect_violation(connection, "fk_observations_campaign_identity"):
+        _observation(
+            connection,
+            campaign_id,
+            work_item_id,
+            attempt_id,
+            data_origin="synthetic",
+            execution_mode="replay",
+        )
+
+
+def test_an_outcome_may_not_contradict_its_campaigns_origin(connection: Connection) -> None:
+    campaign_id = _campaign(connection, data_origin="observed", execution_mode="replay")
+    work_item_id = _work_item(connection, campaign_id)
+    attempt_id = _attempt(connection, work_item_id, 1)
+
+    with expect_violation(connection, "fk_attempt_outcomes_campaign_identity"):
+        _outcome(
+            connection,
+            campaign_id,
+            work_item_id,
+            attempt_id,
+            "succeeded",
+            data_origin="synthetic",
+            execution_mode="replay",
+        )
+
+
+def test_an_outcome_carries_its_own_provenance(connection: Connection) -> None:
+    """An outcome with no observation — timed_out, lease_lost — would otherwise leave the lineage
+    root and code version recoverable from no row at all."""
+    campaign_id = _campaign(connection)
+    work_item_id = _work_item(connection, campaign_id)
+    attempt_id = _attempt(connection, work_item_id, 1)
+
+    _outcome(
+        connection,
+        campaign_id,
+        work_item_id,
+        attempt_id,
+        "timed_out",
+        provenance={"code_version": "1", "environment": {"data_origin": "synthetic"}},
+    )
+
+    stored = connection.execute(
+        attempt_outcomes.select().where(attempt_outcomes.c.attempt_id == attempt_id)
+    ).one()
+    assert stored.provenance["code_version"] == "1"
+    assert stored.data_origin == "synthetic"
+
+
+@pytest.mark.parametrize("bogus", ["Succeeded", "succeeded ", "SUCCEEDED"])
+def test_a_status_outside_the_known_set_is_refused(connection: Connection, bogus: str) -> None:
+    """The PO-02 index keys on the literal `status = 'succeeded'`, so a near-miss spelling would
+    record a second success the index never consults."""
+    campaign_id = _campaign(connection)
+    work_item_id = _work_item(connection, campaign_id)
+    attempt_id = _attempt(connection, work_item_id, 1)
+
+    with expect_violation(connection, "ck_attempt_outcomes_known_status"):
+        _outcome(connection, campaign_id, work_item_id, attempt_id, bogus)

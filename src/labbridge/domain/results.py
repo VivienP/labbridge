@@ -166,8 +166,19 @@ class AttemptOutcome(_Model):
             raise ValueError(
                 f"status `{self.status}` cannot carry an observation; only {allowed} receive bytes"
             )
+        if self.status == "corrupted" and self.observation_id is None:
+            # `corrupted` is a classification of bytes that arrived. Without the observation the
+            # classification has no subject, and the bytes ADR-005 requires retaining are gone.
+            raise ValueError(
+                "a corrupted outcome requires the observation whose bytes were classified "
+                "(ADR-005, PO-05)"
+            )
         if self.status == "succeeded" and self.failure is not None:
             raise ValueError("a succeeded outcome carries no failure record")
+        if self.status == "duplicate_suppressed" and self.failure is not None:
+            # A suppressed duplicate carrying a retryable failure would drive re-delivery of the
+            # thing that was suppressed.
+            raise ValueError("a duplicate_suppressed outcome carries no failure record")
         if self.status in ("failed_retryable", "failed_terminal") and self.failure is None:
             raise ValueError(f"status `{self.status}` requires a failure record")
         if (

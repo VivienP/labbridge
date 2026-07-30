@@ -42,6 +42,62 @@ MACHINES = [
 ]
 
 
+# Written out from docs/SPEC.md §7 rather than read from the module. A test that reads the same
+# table it validates is a tautology: widening ATTEMPT_TRANSITIONS would pass it. These literals are
+# the independent statement of the spec, so a table change has to be justified against them.
+SPEC_ATTEMPT_TRANSITIONS = {
+    "pending": {"leased", "cancelled"},
+    "leased": {"running", "lease_lost", "cancelled"},
+    "running": {
+        "succeeded",
+        "timed_out",
+        "failed_retryable",
+        "failed_terminal",
+        "corrupted",
+        "lease_lost",
+        "cancelled",
+    },
+    "succeeded": set(),
+    "timed_out": set(),
+    "failed_retryable": set(),
+    "failed_terminal": set(),
+    "corrupted": set(),
+    "lease_lost": set(),
+    "cancelled": set(),
+}
+SPEC_CAMPAIGN_TRANSITIONS = {
+    "draft": {"ready", "cancelled", "failed"},
+    "ready": {"active", "cancelled", "failed"},
+    "active": {"paused", "completed", "budget_exhausted", "cancelled", "failed"},
+    "paused": {"active", "completed", "budget_exhausted", "cancelled", "failed"},
+    "completed": set(),
+    "budget_exhausted": set(),
+    "cancelled": set(),
+    "failed": set(),
+}
+SPEC_WORK_ITEM_TRANSITIONS = {
+    "proposed": {"validated", "rejected"},
+    "validated": {"queued", "rejected"},
+    "queued": {"accepted", "quarantined", "rejected", "cancelled"},
+    "quarantined": {"queued", "rejected", "cancelled"},
+    "accepted": set(),
+    "rejected": set(),
+    "cancelled": set(),
+}
+
+
+@pytest.mark.parametrize(
+    ("implemented", "expected"),
+    [
+        (CAMPAIGN_TRANSITIONS, SPEC_CAMPAIGN_TRANSITIONS),
+        (WORK_ITEM_TRANSITIONS, SPEC_WORK_ITEM_TRANSITIONS),
+        (ATTEMPT_TRANSITIONS, SPEC_ATTEMPT_TRANSITIONS),
+    ],
+)
+def test_the_table_matches_the_specification(implemented: dict, expected: dict) -> None:  # type: ignore[type-arg]
+    assert {k: set(v) for k, v in implemented.items()} == expected
+
+
 @pytest.mark.parametrize(("name", "table", "check"), MACHINES)
 def test_every_state_pair_agrees_with_its_table(name: str, table: dict, check) -> None:  # type: ignore[type-arg,no-untyped-def]
     for source, target in itertools.product(table, table):
