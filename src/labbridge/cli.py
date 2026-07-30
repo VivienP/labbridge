@@ -28,6 +28,11 @@ from labbridge.infrastructure.her_ingestion.fetch import (
     FetchRequest,
     run_fetch,
 )
+from labbridge.infrastructure.her_ingestion.fixture import (
+    FIXTURE_MANIFEST_FILENAME,
+    FixtureSpec,
+    build_fixture,
+)
 from labbridge.infrastructure.her_ingestion.httpx_transport import HttpxTransport
 from labbridge.infrastructure.her_ingestion.inspect import build_inventory
 from labbridge.infrastructure.her_ingestion.provenance import (
@@ -39,6 +44,9 @@ from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
 
 EXPECTED_DOI: Final = PINNED_DOI
+#: Beside the landing root and git-ignored with it. The fixture is regenerable from its seed, so
+#: committing the archives would add bytes that the manifest already accounts for.
+DEFAULT_FIXTURE_ROOT: Final = Path("data/her/fixture")
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.splitlines()[0])
 console = Console()
@@ -111,6 +119,8 @@ def fetch_her(
         raise typer.Exit(code=1) from error
 
     _render(report, dry_run=dry_run)
+    if report.inventory.licence.redistribution != "unresolved":
+        console.print(f"[dim]attribution required: {request.data_use.attribution}[/dim]")
 
 
 def _render(report: FetchReport, *, dry_run: bool) -> None:
@@ -119,9 +129,11 @@ def _render(report: FetchReport, *, dry_run: bool) -> None:
         f"record [bold]{inventory.record_id}[/bold] version {inventory.record_version} — "
         f"{inventory.title}"
     )
+    open_gate = inventory.licence.redistribution == "unresolved"
     console.print(
         f"declared licence: {inventory.licence.raw_value or 'none'}  "
-        f"redistribution: [yellow]{inventory.licence.redistribution}[/yellow]"
+        f"redistribution: [{'yellow' if open_gate else 'green'}]"
+        f"{inventory.licence.redistribution}[/]"
     )
 
     table = Table(title="record files")
@@ -146,6 +158,30 @@ def _render(report: FetchReport, *, dry_run: bool) -> None:
     for fetched in report.fetched:
         console.print(f"landed {fetched.landing_path}  sha256:{fetched.computed_sha256[:16]}...")
     console.print(f"provenance written to {report.provenance_path}")
+
+
+@app.command("build-her-fixture")
+def build_her_fixture(
+    root: Annotated[
+        Path, typer.Option("--root", help="Directory to write the fixture archives into.")
+    ] = DEFAULT_FIXTURE_ROOT,
+    seed: Annotated[
+        int, typer.Option("--seed", help="Generator seed, recorded in the manifest.")
+    ] = (FixtureSpec().seed),
+) -> None:
+    """Generate the independently produced, schema-compatible HER fixture."""
+    manifest = build_fixture(root, spec=FixtureSpec(seed=seed), generator_version=__version__)
+    write_document(root / FIXTURE_MANIFEST_FILENAME, manifest)
+
+    table = Table(title="fixture archives")
+    table.add_column("archive")
+    table.add_column("members", justify="right")
+    table.add_column("sha256")
+    for archive in manifest.archives:
+        table.add_row(archive.filename, str(archive.member_count), f"{archive.sha256[:16]}...")
+    console.print(table)
+    console.print(f"[yellow]data_origin: {manifest.data_origin}[/yellow] — {manifest.note}")
+    console.print(f"manifest written to {root / FIXTURE_MANIFEST_FILENAME}")
 
 
 @app.command("inspect-her")

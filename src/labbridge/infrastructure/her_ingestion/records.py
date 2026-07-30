@@ -9,7 +9,7 @@ from a recorded fetch without re-downloading anything.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,9 +24,9 @@ INVENTORY_SCHEMA_VERSION: Final = "1"
 
 ChecksumAlgorithm = Literal["md5", "sha256"]
 
-#: Redistribution is an unresolved blocker until a recorded data-use decision closes the gate
-#: (docs/DATA_STRATEGY.md section 2.3). No parser may widen this type.
-RedistributionStatus = Literal["unresolved"]
+#: Redistribution is never set by parsing a record. Only a recorded data-use decision resolves it
+#: (docs/DATA_STRATEGY.md section 2.3, ADR-009); see `data_use.py`.
+RedistributionStatus = Literal["unresolved", "permitted_with_attribution"]
 
 
 class _Record(BaseModel):
@@ -37,13 +37,36 @@ class LicenceStatus(_Record):
     """What the record declares, kept separate from what LabBridge is permitted to redistribute.
 
     `raw_value` and `access_right` are whatever the record published, verbatim or None.
-    `redistribution` is fixed at `unresolved`: closing the gate requires a recorded data-use
-    decision and an ADR (docs/DATA_STRATEGY.md section 2.3), never a string match here.
+    `redistribution` defaults to `unresolved` and no parser may widen it: a licence string on a
+    record is evidence, not a decision. Only `data_use.resolve_redistribution` applying a recorded,
+    dated decision moves it (docs/DATA_STRATEGY.md section 2.3, ADR-009).
     """
 
     raw_value: str | None
     access_right: str | None = None
     redistribution: RedistributionStatus = "unresolved"
+
+
+class DataUseDecision(_Record):
+    """A recorded, dated decision about what may be redistributed from one source record.
+
+    Pinned to `doi` and `licence_id`. The decision is evidence about a specific declared licence, so
+    it applies only while the record still declares that licence: an upstream relicensing reopens
+    the gate rather than letting a decision outlive the evidence it rests on.
+    """
+
+    #: The architecture decision carrying the reasoning, e.g. `ADR-009`.
+    adr: str
+    doi: str
+    #: The licence identifier read from the record at `verified_on`.
+    licence_id: str
+    #: When the licence was read from `verified_from` — not when this file was last edited.
+    verified_on: date
+    #: The exact endpoint the licence was read from, so the check is repeatable.
+    verified_from: str
+    redistribution: RedistributionStatus
+    #: What every redistributed artifact must carry. Empty when the decision requires none.
+    attribution: str
 
 
 class RemoteFile(_Record):
@@ -96,8 +119,9 @@ class FetchedFile(_Record):
 class ProvenanceDocument(_Record):
     """`provenance.json`: the exact source and checksums for one fetch.
 
-    Written inside the git-ignored landing root. docs/DATA_STRATEGY.md section 8 permits committing
-    source inventory metadata only once redistribution is permitted, and that gate is open.
+    Written inside the git-ignored landing root. It carries the data-use decision that was in force
+    at fetch time, so a consumer reading only this document knows the licence, the date it was
+    verified, and the attribution it must reproduce.
     """
 
     schema_version: str = PROVENANCE_SCHEMA_VERSION
@@ -105,6 +129,8 @@ class ProvenanceDocument(_Record):
     record_id: str
     record_version: str
     source_licence: LicenceStatus
+    #: The decision applied to this fetch, or None when none matched and the gate stayed open.
+    data_use: DataUseDecision | None = None
     tool_version: str
     files: tuple[FetchedFile, ...]
     written_at: datetime

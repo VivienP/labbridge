@@ -13,12 +13,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
+from .data_use import HER_DATA_USE, resolve_redistribution
 from .errors import NoFilesRequestedError, UnsupportedRecordError
 from .landing import LandingZone, fetch_file
 from .provenance import INVENTORY_FILENAME, PROVENANCE_FILENAME, write_document
 from .records import (
     PINNED_DOI,
     ArchiveInventory,
+    DataUseDecision,
     FetchedFile,
     ProvenanceDocument,
     RemoteFile,
@@ -45,6 +47,8 @@ class FetchRequest:
     #: The DOI the record must declare. Defaults to the pinned record; injectable so the offline
     #: suite can exercise the mismatch path without putting the real DOI in a fixture.
     expected_doi: str = PINNED_DOI
+    #: The recorded decision governing what may be redistributed. Injectable for the same reason.
+    data_use: DataUseDecision = HER_DATA_USE
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,12 @@ def run_fetch(
             field="doi",
         )
 
+    # After the DOI check, never before it: a decision is pinned to one record.
+    applied = resolve_redistribution(
+        inventory.licence, doi=inventory.doi, decision=request.data_use
+    )
+    inventory = inventory.model_copy(update={"licence": applied})
+
     selected = select_files(
         inventory,
         filenames=request.filenames,
@@ -109,6 +119,7 @@ def run_fetch(
             record_id=inventory.record_id,
             record_version=inventory.record_version,
             source_licence=inventory.licence,
+            data_use=request.data_use if applied.redistribution != "unresolved" else None,
             tool_version=tool_version,
             files=fetched,
             written_at=retrieved_at,

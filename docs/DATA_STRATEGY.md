@@ -64,8 +64,6 @@ No predicted composition may be labelled as measured.
 
 ### 2.3 Gate 0 — source, licence, and schema verification
 
-The Zenodo record currently shows no clear licence value in its public rights field. Therefore redistribution rights are an unresolved blocker.
-
 Before committing any archive-derived row, transformed sample, plot, or fixture, the implementation MUST:
 
 1. confirm the applicable dataset licence or obtain explicit permission;
@@ -73,11 +71,15 @@ Before committing any archive-derived row, transformed sample, plot, or fixture,
 3. determine whether redistribution of raw, transformed, and small fixture subsets is permitted;
 4. record the decision in `docs/ARCHITECTURE_DECISIONS.md` or a dedicated data-use decision.
 
-Until this gate passes:
+**Status: satisfied by ADR-009.** The record declares `cc-by-4.0` with open access, read from the Zenodo REST API on 2026-07-30. Redistribution is permitted with attribution and an indication of changes.
+
+The requirement that no parser close this gate stands regardless of the outcome. A licence string on a record is evidence, not a decision: parsing MUST yield `unresolved`, and only a recorded, dated decision pinned to the DOI and to that licence identifier may widen it. A record that stops declaring the licence the decision was verified against reopens the gate automatically.
+
+Independently of the licence, and as a repository-hygiene policy rather than a restriction:
 
 - the full archive remains user-fetched and git-ignored;
 - offline tests use a schema-compatible synthetic fixture created independently of archive values;
-- documentation may describe published metadata but MUST NOT package archive-derived values.
+- every committed artifact derived from the archive carries the recorded attribution and indicates the changes made.
 
 ### 2.4 Fetch and landing protocol
 
@@ -338,12 +340,17 @@ Lineage tests MUST fail when a metric has a missing parent, unknown version, or 
 - local PostgreSQL and MinIO volumes;
 - secrets and deployment credentials.
 
-### Forbidden until licence verification
+### Permitted by ADR-009, subject to attribution
 
-- copied HER rows;
-- transformed archive-derived fixtures;
-- archive-derived plots packaged in the repository;
-- redistribution of any source file or subset.
+Redistribution of HER rows, transformed subsets, archive-derived fixtures, and archive-derived plots is permitted under CC BY 4.0 with attribution and an indication of changes. Anything committed under this allowance MUST carry that attribution on the artifact itself, not only in a commit message.
+
+The git-ignore policy above still applies to the bulk archive and extracted data: it keeps the DOI as the single source of truth and the repository small. It is not a licence restriction, and it does not forbid a small attributed excerpt where one is genuinely needed.
+
+### Forbidden regardless of licence
+
+- presenting a source-provided fit as independently reproduced without a validation artifact;
+- presenting GP-predicted values as measured;
+- redistributing any material the record does not itself license.
 
 ---
 

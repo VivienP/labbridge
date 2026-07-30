@@ -1,0 +1,264 @@
+"""Generate an independently produced, schema-compatible HER fixture.
+
+Gate 0 requires an offline fixture that can exercise the replay adapter. ADR-009 now permits copying
+archive rows, and this module still copies none: a fixture built from archive values would make the
+offline suite depend on a multi-hundred-megabyte download, and would make a schema regression
+indistinguishable from a data change.
+
+What is reproduced is **structure**, read from the recorded `dataset_inventory.json` and not from
+memory: the four table schemas, their headers and declared units, their delimiters, their three
+different line endings, the varying LSV row count, the filename grammar, and the relationships among
+libraries, grid areas, measured points, and fitted parameters.
+
+What is *not* reproduced is any archive value. Every number here comes from a seeded generator over
+ranges chosen for this fixture. The numeric shapes are arbitrary and carry no kinetic claim: the LSV
+curve is a monotone cathodic ramp chosen because it is easy to verify, not a kinetic model, and
+nothing here may be cited as evidence about the physical system (`AI_CONTRACT.md` §7).
+
+Two source conventions are preserved deliberately, because an adapter that gets them wrong is wrong:
+
+* the LSV current density is **negative** — HER is a reduction, and the archive records the signed
+  cathodic value;
+* the fitted limiting current density is **positive** — the source stores it as a magnitude, on the
+  opposite sign convention from the raw column it summarises.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import random
+import zipfile
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
+
+from pydantic import Field
+
+from .records import _Record
+
+FIXTURE_MANIFEST_FILENAME: Final = "fixture_manifest.json"
+FIXTURE_SCHEMA_VERSION: Final = "1"
+GENERATOR: Final = "labbridge.infrastructure.her_ingestion.fixture"
+
+#: Fixed so the archive bytes, and therefore the manifest checksums, are reproducible.
+_ZIP_TIMESTAMP: Final = (1980, 1, 1, 0, 0, 0)
+
+#: Ranges chosen for this fixture. They are deliberately not the archive's recorded extremes.
+_POTENTIAL_START: Final = 0.01
+_POTENTIAL_END: Final = -0.90
+_CURRENT_FLOOR: Final = -5.0
+_STDDEV_SCALE: Final = 0.05
+
+
+class FixtureArchive(_Record):
+    filename: str
+    sha256: str
+    member_count: int = Field(ge=0)
+
+
+class FixtureManifest(_Record):
+    """What produced this fixture, and the assertion that it is not observed data."""
+
+    schema_version: str = FIXTURE_SCHEMA_VERSION
+    generator: str = GENERATOR
+    generator_version: str
+    seed: int
+    #: Records produced from these bytes are synthetic. A fixture-backed run is not an observation,
+    #: however faithfully it reproduces the observed schema.
+    data_origin: str = "synthetic"
+    note: str = (
+        "Independently generated, schema-compatible fixture. Contains no value from the HER "
+        "archive. Not observed data and not a measurement."
+    )
+    archives: tuple[FixtureArchive, ...]
+
+
+@dataclass(frozen=True)
+class FixtureSpec:
+    """How much fixture to build.
+
+    The defaults are far smaller than the archive on purpose — the offline suite must stay fast —
+    while keeping every structural relationship the adapter has to navigate.
+    """
+
+    seed: int = 20260730
+    libraries: tuple[str, ...] = ("Au-rich", "Ir-rich", "Rh-rich")
+    #: Grid areas per library. EDX and predicted XPS cover all of them.
+    areas_per_library: int = 12
+    #: Areas actually measured by SECCM. The remainder stand in for the source's excluded areas,
+    #: so an adapter meets a grid position with no LSV and must return a structured unavailable.
+    seccm_areas_per_library: int = 4
+    #: Measured XPS covers a sparse subset, as in the source; predicted XPS covers the full grid.
+    xps_measured_per_library: int = 2
+    #: The source's LSV files are 208 or 209 rows. A fixed length would hide that.
+    lsv_row_counts: tuple[int, ...] = (208, 209)
+
+
+def _rng(spec: FixtureSpec, key: str) -> random.Random:
+    """A stream from the seed and a stable key, so each member is independently reproducible."""
+    return random.Random(f"{spec.seed}:{key}")
+
+
+def _closed_composition(rng: random.Random, count: int, decimals: int) -> list[str]:
+    """Percentages summing to exactly 100 after rounding.
+
+    The closure is imposed here for the same reason it holds in the source: at.% values normalised
+    over the reported elements sum to 100 by construction. That is an artifact of normalisation, not
+    evidence that no other element is present.
+    """
+    weights = [rng.uniform(1.0, 10.0) for _ in range(count)]
+    total = sum(weights)
+    head = [round(w / total * 100, decimals) for w in weights[:-1]]
+    tail = round(100 - sum(head), decimals)
+    return [f"{value:.{decimals}f}" for value in [*head, tail]]
+
+
+def _table(header: Sequence[str], rows: Sequence[Sequence[str]], *, line_ending: str) -> bytes:
+    lines = [",".join(header), *(",".join(row) for row in rows)]
+    return (line_ending.join(lines) + line_ending).encode("utf-8")
+
+
+def _grid_table(spec: FixtureSpec, library: str, kind: str) -> bytes:
+    """The schema shared by EDX and predicted XPS — identical headers, identical row count.
+
+    They are one schema in the source too. Nothing distinguishes them but the archive and the
+    filename, which is why the source-type field must be set from the path (F-046).
+    """
+    rng = _rng(spec, f"grid:{kind}:{library}")
+    header = ["Area", "Au [at.%]", "Ir [at.%]", "Rh [at.%]"]
+    rows = [
+        [str(area), *_closed_composition(rng, 3, 2)]
+        for area in range(1, spec.areas_per_library + 1)
+    ]
+    return _table(header, rows, line_ending="\n")
+
+
+def _measured_xps_table(spec: FixtureSpec, library: str) -> bytes:
+    """Eight columns, a different identifier name, and CR-only line endings — all as recorded."""
+    rng = _rng(spec, f"xps:{library}")
+    header = [
+        "MA",
+        "Au [at.%]",
+        "Ir [at.%]",
+        "Rh [at.%]",
+        "Rh-Native Oxide [at.%]",
+        "Rh-Hydroxide [at.%]",
+        "O [at.%]",
+        "C [at.%]",
+    ]
+    areas = _measured_areas(spec, library)
+    rows = [[str(area), *_closed_composition(rng, 7, 1)] for area in areas]
+    return _table(header, rows, line_ending="\r")
+
+
+def _lsv_table(spec: FixtureSpec, library: str, area: int) -> bytes:
+    """A monotone cathodic ramp. An arbitrary synthetic shape, not a kinetic model.
+
+    The signs are the point: potential runs from just above zero down the cathodic direction on the
+    RHE scale, current density is negative throughout, and the standard deviation is positive.
+    """
+    rng = _rng(spec, f"lsv:{library}:{area}")
+    count = spec.lsv_row_counts[area % len(spec.lsv_row_counts)]
+    header = [
+        "Potential vs. RHE [V]",
+        "Current density [A/cm^2]",
+        "Standard deviation [A/cm^2]",
+    ]
+    rows: list[list[str]] = []
+    for index in range(count):
+        fraction = index / (count - 1)
+        potential = _POTENTIAL_START + fraction * (_POTENTIAL_END - _POTENTIAL_START)
+        current = _CURRENT_FLOOR * fraction**2 * rng.uniform(0.85, 1.15)
+        deviation = abs(current) * _STDDEV_SCALE * rng.uniform(0.5, 1.5) + 1e-4
+        rows.append([f"{potential:.16f}", f"{current:.16f}", f"{deviation:.16f}"])
+    return _table(header, rows, line_ending="\r\n")
+
+
+def _fit_table(spec: FixtureSpec) -> bytes:
+    """One row per LSV, with the limiting current density positive as the source stores it."""
+    header = ["Library", "Area", "i_lim [A/cm^2]", "k^0 [cm/s]", "alpha [a.u.]"]
+    rows: list[list[str]] = []
+    for library in spec.libraries:
+        for area in _seccm_areas(spec, library):
+            rng = _rng(spec, f"fit:{library}:{area}")
+            rows.append(
+                [
+                    library,
+                    str(area),
+                    f"{rng.uniform(1.0, 4.0):.16f}",
+                    f"{rng.uniform(1e-4, 5e-3):.16f}",
+                    f"{rng.uniform(0.20, 0.40):.16f}",
+                ]
+            )
+    return _table(header, rows, line_ending="\n")
+
+
+def _seccm_areas(spec: FixtureSpec, library: str) -> list[int]:
+    """The measured subset. Every other grid area is unavailable, as areas are in the source."""
+    rng = _rng(spec, f"seccm-areas:{library}")
+    return sorted(rng.sample(range(1, spec.areas_per_library + 1), spec.seccm_areas_per_library))
+
+
+def _measured_areas(spec: FixtureSpec, library: str) -> list[int]:
+    rng = _rng(spec, f"xps-areas:{library}")
+    return sorted(rng.sample(range(1, spec.areas_per_library + 1), spec.xps_measured_per_library))
+
+
+def _coordinate(spec: FixtureSpec, library: str, area: int) -> tuple[float, float]:
+    """Stage coordinates for the filename grammar, which encodes them as `x=..._y=...`."""
+    rng = _rng(spec, f"xy:{library}:{area}")
+    return round(rng.uniform(-40, 40), 2), round(rng.uniform(-40, 40), 2)
+
+
+def _members(spec: FixtureSpec) -> dict[str, dict[str, bytes]]:
+    """Every archive and member, keyed exactly as the recorded filename grammar keys them."""
+    edx: dict[str, bytes] = {}
+    xps: dict[str, bytes] = {}
+    seccm: dict[str, bytes] = {}
+
+    for library in spec.libraries:
+        stem = f"Au-Ir-Rh_{library}"
+        edx[f"EDX_dataset/{stem}_EDX.csv"] = _grid_table(spec, library, "edx")
+        xps[f"XPS_dataset/{stem}_XPS.csv"] = _measured_xps_table(spec, library)
+        xps[f"XPS_dataset/{stem}_XPS_predicted.csv"] = _grid_table(spec, library, "predicted")
+        for area in _seccm_areas(spec, library):
+            x, y = _coordinate(spec, library, area)
+            name = f"SECCM_dataset/{stem}_SECCM_area_{area}_x={x:.2f}_y={y:.2f}_LSV.csv"
+            seccm[name] = _lsv_table(spec, library, area)
+    seccm["SECCM_dataset/LSV_fit_parameters.csv"] = _fit_table(spec)
+
+    return {"EDX_dataset.zip": edx, "SECCM_dataset.zip": seccm, "XPS_dataset.zip": xps}
+
+
+def _write_archive(path: Path, members: dict[str, bytes]) -> str:
+    """Write one zip with fixed member timestamps, so identical input yields identical bytes."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name in sorted(members):
+            info = zipfile.ZipInfo(name, date_time=_ZIP_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, members[name])
+    raw = buffer.getvalue()
+    path.write_bytes(raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def build_fixture(root: Path, *, spec: FixtureSpec, generator_version: str) -> FixtureManifest:
+    """Write the fixture archives into `root` and return the manifest describing them."""
+    root.mkdir(parents=True, exist_ok=True)
+    archives = _members(spec)
+    written = [
+        FixtureArchive(
+            filename=name,
+            sha256=_write_archive(root / name, members),
+            member_count=len(members),
+        )
+        for name, members in sorted(archives.items())
+    ]
+    return FixtureManifest(
+        generator_version=generator_version,
+        seed=spec.seed,
+        archives=tuple(written),
+    )

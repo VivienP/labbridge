@@ -148,3 +148,31 @@ The current repository begins as a specification. Present-tense claims about uni
 - public and internal documentation must identify status;
 - only reproducible evidence can promote a claim to `demonstrated`;
 - role-fit language distinguishes target signal from current evidence.
+
+---
+
+## ADR-009 — Redistribution of the HER dataset is permitted with attribution
+
+**Status:** accepted (data-use decision)  
+**Decision:** the pinned HER dataset may be redistributed, including in adapted form, under CC BY 4.0, provided the source is attributed and changes are indicated. The repository nonetheless keeps the archive and archive-derived rows fetched on demand and git-ignored.
+
+### Context
+
+`docs/DATA_STRATEGY.md` §2.3 recorded that the Zenodo record showed no clear licence value, which made redistribution an unresolved blocker on Gate 0. That statement is superseded by direct verification.
+
+Read from `https://zenodo.org/api/records/20439519` on 2026-07-30: `metadata.license.id` is `cc-by-4.0` and `access` is `open`. CC BY 4.0 permits reproduction and redistribution of the material in any medium or format, and of adapted material, subject to attribution and to indicating whether changes were made.
+
+Two things this decision does **not** rest on. LabBridge's own source licence is irrelevant here: releasing LabBridge under any licence grants nothing over a third party's dataset. And no LabBridge code infers redistribution from a licence string at runtime — the evidence is recorded here, and the code applies the recorded decision.
+
+### Consequences
+
+- `LicenceStatus.redistribution` gains `permitted_with_attribution`; `unresolved` remains the default and remains the only value a parser can produce;
+- a `DataUseDecision` is pinned to the DOI **and** to the licence identifier it was verified against. If the record stops declaring `cc-by-4.0`, the decision stops applying and the gate reopens without anyone editing this file;
+- `provenance.json` carries the decision in force at fetch time, so a consumer reading only that document knows the licence, the verification date, and the attribution to reproduce;
+- any committed artifact derived from the archive MUST carry the attribution recorded in `data_use.HER_DATA_USE` and MUST indicate the changes LabBridge made;
+- the archive, extracted data, and derived rows remain git-ignored and fetched on demand. This is a repository-hygiene policy, narrower than the licence permits, adopted so the DOI stays the single source of truth. It MUST NOT be read as a licence restriction;
+- Gate 0's redistribution criterion is satisfied. The offline fixture stays independently generated for the separate reason that a test suite must not depend on a multi-hundred-megabyte download.
+
+### Limits
+
+This decision records what the record declares, with the date and the endpoint it was read from. It is not legal advice, and it does not cover material the record does not itself license.
