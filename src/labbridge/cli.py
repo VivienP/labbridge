@@ -10,6 +10,7 @@ acquisition logic (AI_CONTRACT.md section 5).
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Final
@@ -28,6 +29,12 @@ from labbridge.infrastructure.her_ingestion.fetch import (
     run_fetch,
 )
 from labbridge.infrastructure.her_ingestion.httpx_transport import HttpxTransport
+from labbridge.infrastructure.her_ingestion.inspect import build_inventory
+from labbridge.infrastructure.her_ingestion.provenance import (
+    DATASET_INVENTORY_FILENAME,
+    PROVENANCE_FILENAME,
+    write_document,
+)
 from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
 
@@ -139,3 +146,43 @@ def _render(report: FetchReport, *, dry_run: bool) -> None:
     for fetched in report.fetched:
         console.print(f"landed {fetched.landing_path}  sha256:{fetched.computed_sha256[:16]}...")
     console.print(f"provenance written to {report.provenance_path}")
+
+
+@app.command("inspect-her")
+def inspect_her(
+    landing_root: Annotated[
+        Path,
+        typer.Option("--landing-root", help="Landing directory holding the acquired archives."),
+    ] = DEFAULT_LANDING_ROOT,
+) -> None:
+    """Inspect the acquired archives and write the versioned dataset inventory."""
+    provenance = landing_root / PROVENANCE_FILENAME
+    inventory = build_inventory(
+        landing_root,
+        clock=_utc_now,
+        tool_version=__version__,
+        provenance_sha256=(
+            hashlib.sha256(provenance.read_bytes()).hexdigest() if provenance.exists() else None
+        ),
+    )
+    destination = landing_root / DATASET_INVENTORY_FILENAME
+    write_document(destination, inventory)
+
+    table = Table(title="archives inspected")
+    table.add_column("archive")
+    table.add_column("members", justify="right")
+    table.add_column("tables", justify="right")
+    table.add_column("filename shapes", justify="right")
+    for archive in inventory.archives:
+        table.add_row(
+            archive.archive_filename,
+            str(archive.member_count),
+            str(len(archive.tables)),
+            str(len(archive.groups)),
+        )
+    console.print(table)
+    if inventory.provenance_sha256 is None:
+        console.print(
+            "[yellow]no provenance.json found: the inventory is not tied to an acquisition[/yellow]"
+        )
+    console.print(f"dataset inventory written to {destination}")

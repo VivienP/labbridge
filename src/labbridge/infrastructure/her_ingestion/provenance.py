@@ -19,10 +19,12 @@ from typing import Final
 
 from pydantic import BaseModel
 
+from .dataset import DatasetInventory
 from .records import ArchiveInventory, ProvenanceDocument
 
 PROVENANCE_FILENAME: Final = "provenance.json"
 INVENTORY_FILENAME: Final = "archive_inventory.json"
+DATASET_INVENTORY_FILENAME: Final = "dataset_inventory.json"
 
 
 def canonical_json_bytes(model: BaseModel) -> bytes:
@@ -43,3 +45,7 @@ def read_provenance(path: Path) -> ProvenanceDocument:
 
 def read_inventory(path: Path) -> ArchiveInventory:
     return ArchiveInventory.model_validate_json(path.read_bytes())
+
+
+def read_dataset_inventory(path: Path) -> DatasetInventory:
+    return DatasetInventory.model_validate_json(path.read_bytes())
