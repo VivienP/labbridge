@@ -80,6 +80,36 @@ def test_a_datetime_is_canonicalised_by_its_isoformat() -> None:
     assert canonicalise(moment) == moment.isoformat()
 
 
+def test_raw_bytes_are_refused_rather_than_encoded_as_a_list_of_integers() -> None:
+    """Falling through to the sequence branch gave `b"ab"` the identity of `[97, 98]`."""
+    with pytest.raises(CanonicalisationError, match="hash it and pass the digest"):
+        canonical_bytes(b"ab")
+
+
+@pytest.mark.parametrize("value", [bytearray(b"ab"), memoryview(b"ab")])
+def test_the_other_buffer_types_are_refused_too(value: object) -> None:
+    """A `memoryview` is a mutable location, which invariant 7 names explicitly."""
+    with pytest.raises(CanonicalisationError):
+        canonical_bytes(value)
+
+
+def test_a_non_string_mapping_key_is_refused() -> None:
+    """`str(key)` collapsed `{1: "a"}` and `{"1": "a"}` into one identity."""
+    with pytest.raises(CanonicalisationError, match="not str"):
+        canonical_bytes({1: "a"})
+
+
+def test_a_mixed_key_mapping_is_refused_with_a_typed_error() -> None:
+    """It has no canonical order at all, and a bare TypeError would not say why."""
+    with pytest.raises(CanonicalisationError, match="not str"):
+        canonical_bytes({1: "a", "b": 2})
+
+
+def test_a_set_with_unorderable_members_is_refused_with_a_typed_error() -> None:
+    with pytest.raises(CanonicalisationError, match="cannot be ordered"):
+        canonical_bytes({1, "a"})
+
+
 def test_an_unknown_type_is_refused_rather_than_repr_ed() -> None:
     """A `repr` fallback is exactly the identity source invariant 7 forbids."""
 

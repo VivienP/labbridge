@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import zipfile
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 from labbridge.infrastructure.her_ingestion.dataset import TableProfile
@@ -116,15 +117,26 @@ def test_lsv_row_counts_vary_so_no_adapter_may_assume_a_fixed_length(tmp_path: P
     assert len(counts) > 1
 
 
-def test_the_lsv_current_density_is_negative_and_the_deviation_positive(tmp_path: Path) -> None:
-    """HER is a reduction. A fixture on the wrong sign convention would train the adapter wrong."""
+def test_the_lsv_sweep_is_cathodic_and_the_deviation_positive(tmp_path: Path) -> None:
+    """HER is a reduction, so the sweep must go strongly negative in every file."""
     tables = _tables(_build(tmp_path))
-    lsv = next(t for p, t in tables.items() if p.endswith("_LSV.csv"))
 
-    current = lsv.columns[1]
-    deviation = lsv.columns[2]
-    assert float(current.maximum) <= 0
-    assert float(deviation.minimum) > 0
+    for path, table in tables.items():
+        if not path.endswith("_LSV.csv"):
+            continue
+        assert Decimal(table.columns[1].minimum) < 0, path
+        assert Decimal(table.columns[2].minimum) > 0, path
+
+
+def test_some_lsv_files_reach_a_positive_current_and_some_do_not(tmp_path: Path) -> None:
+    """46 of the archive's 966 LSV files reach a positive current density near onset. A fixture
+    that never went positive would let an ingestion rule be calibrated to reject those real files,
+    and a strict `current <= 0` check would then look correct offline."""
+    tables = _tables(_build(tmp_path))
+    maxima = [Decimal(t.columns[1].maximum) for p, t in tables.items() if p.endswith("_LSV.csv")]
+
+    assert any(value > 0 for value in maxima)
+    assert any(value <= 0 for value in maxima)
 
 
 def test_the_fitted_limiting_current_is_positive_as_the_source_records_it(tmp_path: Path) -> None:

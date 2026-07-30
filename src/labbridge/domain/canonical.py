@@ -17,6 +17,10 @@ The rules, stated because a hash is worthless if nobody can say what it covers:
 * **NaN and infinities are refused.** They have no meaningful identity and must fail validation
   rather than silently acquire one;
 * **explicit nulls are kept.** A field recorded as absent differs from a field never recorded;
+* **raw bytes are refused.** They would otherwise encode as a list of integers, giving `b"ab"` the
+  same identity as `[97, 98]`. Hash them and pass the digest, as `observation_id` does;
+* **mapping keys must be strings.** Coercing them would collapse `{1: "a"}` and `{"1": "a"}` into
+  one identity, and a mixed-key mapping has no canonical order at all;
 * **strings are NFC-normalised**, so two spellings of the same text do not produce two identities;
 * the payload is UTF-8, with `:` and `,` separators and no insignificant whitespace.
 """
@@ -50,7 +54,7 @@ def _decimal(value: Decimal) -> str:
     return format(value, "f")
 
 
-def canonicalise(value: object) -> object:  # noqa: PLR0911
+def canonicalise(value: object) -> object:  # noqa: PLR0911, PLR0912
     """Reduce a value to JSON-encodable primitives under the rules in the module docstring.
 
     One return per handled type. A dispatch table would satisfy the branch limit while hiding which
@@ -74,11 +78,34 @@ def canonicalise(value: object) -> object:  # noqa: PLR0911
         return canonicalise(value.value)
     if isinstance(value, BaseModel):
         return canonicalise(value.model_dump(mode="python"))
+    if isinstance(value, bytes | bytearray | memoryview):
+        # Refused rather than encoded. Falling through to the sequence branch would turn b"ab" into
+        # [97, 98], giving raw bytes the same identity as a list of integers, and a `memoryview` is
+        # a mutable location — both are exactly what invariant 7 forbids as an identity source.
+        # Bytes already have a canonical identity: pass their SHA-256, as `observation_id` does.
+        raise CanonicalisationError(
+            f"raw {type(value).__name__} has no canonical form here; hash it and pass the digest"
+        )
     if isinstance(value, Mapping):
-        return {str(key): canonicalise(item) for key, item in sorted(value.items())}
-    if isinstance(value, Sequence | set | frozenset):
-        items = sorted(value) if isinstance(value, set | frozenset) else value
+        # String keys only. `str(key)` would collapse {1: "a"} and {"1": "a"} to one identity, and
+        # a mixed-key mapping cannot be ordered at all. Sorting happens once, in `canonical_bytes`.
+        for key in value:
+            if not isinstance(key, str):
+                raise CanonicalisationError(
+                    f"mapping key {key!r} is {type(key).__name__}, not str; "
+                    "convert it deliberately so the conversion is visible"
+                )
+        return {key: canonicalise(item) for key, item in value.items()}
+    if isinstance(value, set | frozenset):
+        try:
+            items: list[object] = sorted(value)
+        except TypeError as error:
+            raise CanonicalisationError(
+                f"set with mixed element types cannot be ordered canonically: {value!r}"
+            ) from error
         return [canonicalise(item) for item in items]
+    if isinstance(value, Sequence):
+        return [canonicalise(item) for item in value]
     raise CanonicalisationError(f"no canonical form defined for {type(value).__name__}")
 
 

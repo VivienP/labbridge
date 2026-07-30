@@ -50,6 +50,8 @@ _POTENTIAL_START: Final = 0.01
 _POTENTIAL_END: Final = -0.90
 _CURRENT_FLOOR: Final = -5.0
 _STDDEV_SCALE: Final = 0.05
+#: A small positive background near onset, as some source files show before the cathodic sweep.
+_ONSET_BACKGROUND: Final = 0.08
 
 
 class FixtureArchive(_Record):
@@ -166,14 +168,27 @@ def _lsv_table(spec: FixtureSpec, library: str, area: int) -> bytes:
         "Current density [A/cm^2]",
         "Standard deviation [A/cm^2]",
     ]
+    # 46 of the archive's 966 LSV files reach a positive current density near onset, so the source
+    # is *predominantly* cathodic-negative, not negative throughout. A fixture that never went
+    # positive would let an ingestion rule be calibrated to reject those 46 real files. The share
+    # here is a fixture choice, not a source statistic; what matters is that both kinds occur.
+    background = _ONSET_BACKGROUND if _has_positive_onset(spec, library, area) else 0.0
     rows: list[list[str]] = []
     for index in range(count):
         fraction = index / (count - 1)
         potential = _POTENTIAL_START + fraction * (_POTENTIAL_END - _POTENTIAL_START)
-        current = _CURRENT_FLOOR * fraction**2 * rng.uniform(0.85, 1.15)
+        current = _CURRENT_FLOOR * fraction**2 * rng.uniform(0.85, 1.15) + background * (
+            1 - fraction
+        )
         deviation = abs(current) * _STDDEV_SCALE * rng.uniform(0.5, 1.5) + 1e-4
         rows.append([f"{potential:.16f}", f"{current:.16f}", f"{deviation:.16f}"])
     return _table(header, rows, line_ending="\r\n")
+
+
+def _has_positive_onset(spec: FixtureSpec, library: str, area: int) -> bool:
+    """At least one file per library, so every library exercises both kinds."""
+    measured = _seccm_areas(spec, library)
+    return bool(measured) and area == measured[0]
 
 
 def _fit_table(spec: FixtureSpec) -> bytes:

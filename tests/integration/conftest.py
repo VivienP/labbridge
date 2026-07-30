@@ -15,12 +15,15 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+import boto3
 import pytest
 from alembic import command
 from alembic.config import Config
+from botocore.config import Config as BotoConfig
 from sqlalchemy import Connection, Engine, create_engine, text
 
-from labbridge.infrastructure.persistence.config import DatabaseSettings
+from labbridge.infrastructure.objectstore import S3ObjectStore
+from labbridge.infrastructure.persistence.config import DatabaseSettings, ObjectStoreSettings
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -57,6 +60,29 @@ def migrated(engine: Engine) -> Engine:
     """The schema at head, applied by Alembic exactly as a deployment would apply it."""
     command.upgrade(_alembic_config(), "head")
     return engine
+
+
+@pytest.fixture(scope="session")
+def object_store() -> Iterator[S3ObjectStore]:
+    """A real S3-compatible store. Skips rather than passing vacuously when MinIO is not up."""
+    settings = ObjectStoreSettings()
+    client = boto3.client(
+        "s3",
+        endpoint_url=settings.endpoint_url,
+        aws_access_key_id=settings.access_key,
+        aws_secret_access_key=settings.secret_key,
+        config=BotoConfig(signature_version="s3v4", retries={"max_attempts": 1}),
+        region_name=settings.region,
+    )
+    store = S3ObjectStore(client, bucket=f"{settings.bucket}-tests")
+    try:
+        store.ensure_bucket()
+    except Exception as error:
+        pytest.skip(
+            f"MinIO unreachable at {settings.endpoint_url} ({error}). "
+            "Start it with `docker compose up -d`."
+        )
+    yield store
 
 
 @pytest.fixture
