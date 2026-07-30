@@ -85,8 +85,14 @@ fi
 
 # --- source quality gates -------------------------------------------------------------------------
 if [ -n "$staged_code" ]; then
-  run "ruff format --check" ruff format --check src/ tests/ scripts/
-  run "ruff check"          ruff check src/ tests/ scripts/
+  # Pass only directories that exist: ruff exits 2 on a missing path, which would fail the gate
+  # with an error unrelated to the change.
+  lint_targets=""
+  for d in src tests scripts; do [ -d "$d" ] && lint_targets="$lint_targets $d/"; done
+  # shellcheck disable=SC2086
+  run "ruff format --check" ruff format --check $lint_targets
+  # shellcheck disable=SC2086
+  run "ruff check"          ruff check $lint_targets
   [ -d src ] && run "mypy --strict" mypy --strict src/ || echo "  [skip] mypy --strict (no src/ yet)"
   [ -d tests ] && run "pytest (offline)" pytest -q -m "not slow and not data and not integration" \
     || echo "  [skip] pytest (no tests/ yet)"
@@ -95,10 +101,10 @@ else
 fi
 
 # --- artifact validation ----------------------------------------------------------------------------
-if [ -f src/labbridge/cli.py ] && have labbridge; then
+if have labbridge && labbridge validate-artifacts --help >/dev/null 2>&1; then
   run "artifact validation" labbridge validate-artifacts
 else
-  echo "  [skip] artifact validation (labbridge CLI not implemented yet — ROADMAP Slice 3)"
+  echo "  [skip] artifact validation (validate-artifacts not implemented yet — ROADMAP Slice 3)"
 fi
 
 # --- secret scan on staged content ------------------------------------------------------------------

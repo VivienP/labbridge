@@ -1,0 +1,141 @@
+"""The `labbridge` command line.
+
+Registers only what is implemented. docs/SPEC.md section 11.2 lists the V1 minimum command set; a
+stub for a command with no code behind it would be a claim without evidence (AI_CONTRACT.md
+invariant 10).
+
+This module translates options, calls the application operation, and renders the result. It holds no
+acquisition logic (AI_CONTRACT.md section 5).
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, Final
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from labbridge import __version__
+from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
+from labbridge.infrastructure.her_ingestion.fetch import (
+    DEFAULT_LANDING_ROOT,
+    DEFAULT_MAX_BYTES,
+    FetchReport,
+    FetchRequest,
+    run_fetch,
+)
+from labbridge.infrastructure.her_ingestion.httpx_transport import HttpxTransport
+from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
+from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
+
+EXPECTED_DOI: Final = PINNED_DOI
+
+app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.splitlines()[0])
+console = Console()
+
+
+@app.callback()
+def main() -> None:
+    """Keep subcommand dispatch even while only one command is registered.
+
+    Without a callback, Typer collapses a single-command app into a root command, and
+    `labbridge fetch-her` would fail as an unexpected argument. docs/SPEC.md section 11.2 fixes the
+    subcommand form.
+    """
+
+
+def _build_transport() -> ZenodoTransport:
+    """The single place the real network transport is constructed; monkeypatched in tests."""
+    return HttpxTransport()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+@app.command("fetch-her")
+def fetch_her(
+    record_id: Annotated[str, typer.Option("--record-id", help="Zenodo record identifier.")],
+    file: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--file", help="A filename to acquire. Repeatable. Required unless --dry-run."
+        ),
+    ] = None,
+    landing_root: Annotated[
+        Path, typer.Option("--landing-root", help="Immutable raw landing directory.")
+    ] = DEFAULT_LANDING_ROOT,
+    max_bytes: Annotated[
+        int, typer.Option("--max-bytes", help="Refuse any file above this size.")
+    ] = DEFAULT_MAX_BYTES,
+    allow_large: Annotated[
+        list[str] | None,
+        typer.Option("--allow-large", help="Permit one named file above --max-bytes. Repeatable."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="Read the record and write the inventory; download nothing."
+        ),
+    ] = False,
+) -> None:
+    """Acquire explicitly named files from the pinned HER Zenodo record."""
+    request = FetchRequest(
+        record_id=record_id,
+        filenames=tuple(file or ()),
+        landing_root=landing_root,
+        max_bytes=max_bytes,
+        allow_large=tuple(allow_large or ()),
+        dry_run=dry_run,
+        expected_doi=EXPECTED_DOI,
+    )
+    try:
+        report = run_fetch(
+            request,
+            transport=_build_transport(),
+            clock=_utc_now,
+            tool_version=__version__,
+        )
+    except HerIngestionError as error:
+        console.print(f"[red]{error.code}[/red]: {error}")
+        raise typer.Exit(code=1) from error
+
+    _render(report, dry_run=dry_run)
+
+
+def _render(report: FetchReport, *, dry_run: bool) -> None:
+    inventory = report.inventory
+    console.print(
+        f"record [bold]{inventory.record_id}[/bold] version {inventory.record_version} — "
+        f"{inventory.title}"
+    )
+    console.print(
+        f"declared licence: {inventory.licence.raw_value or 'none'}  "
+        f"redistribution: [yellow]{inventory.licence.redistribution}[/yellow]"
+    )
+
+    table = Table(title="record files")
+    table.add_column("filename")
+    table.add_column("bytes", justify="right")
+    table.add_column("checksum")
+    table.add_column("selected", justify="center")
+    selected = {remote.filename for remote in report.selected}
+    for remote in inventory.files:
+        table.add_row(
+            remote.filename,
+            str(remote.byte_size),
+            f"{remote.checksum_algorithm}:{remote.checksum_value[:12]}...",
+            "yes" if remote.filename in selected else "",
+        )
+    console.print(table)
+    console.print(f"inventory written to {report.inventory_path}")
+
+    if dry_run:
+        console.print("[dim]dry run: nothing was downloaded[/dim]")
+        return
+    for fetched in report.fetched:
+        console.print(f"landed {fetched.landing_path}  sha256:{fetched.computed_sha256[:16]}...")
+    console.print(f"provenance written to {report.provenance_path}")
