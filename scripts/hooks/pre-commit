@@ -88,7 +88,7 @@ if [ -n "$staged_code" ]; then
   # Pass only directories that exist: ruff exits 2 on a missing path, which would fail the gate
   # with an error unrelated to the change.
   lint_targets=""
-  for d in src tests scripts; do [ -d "$d" ] && lint_targets="$lint_targets $d/"; done
+  for d in src tests scripts migrations; do [ -d "$d" ] && lint_targets="$lint_targets $d/"; done
   # shellcheck disable=SC2086
   run "ruff format --check" ruff format --check $lint_targets
   # shellcheck disable=SC2086
