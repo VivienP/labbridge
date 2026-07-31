@@ -233,7 +233,18 @@ async def test_the_source_record_carries_the_classified_type(fixture_root: Path)
     result = await adapter.execute(_candidate(key.library_id, key.measurement_area_id))
     assert isinstance(result, AdapterSuccess)
 
-    record = adapter.source_record(result, doi="10.5281/zenodo.9999999", record_version="0")
+    record = adapter.source_record_for(result.source_path)
 
     assert record.source_type == "measured_lsv"
     assert record.is_measured
+
+
+def test_a_failure_with_no_member_still_yields_a_lineage_root(fixture_root: Path) -> None:
+    """§3.5 makes provenance mandatory on every outcome, including one that read no member. The
+    archive is known even when the member is not, so that is what gets recorded."""
+    adapter = HerReplayAdapter(fixture_root)
+
+    record = adapter.source_record_for(None)
+
+    assert record.source_filename == "SECCM_dataset.zip"
+    assert record.source_path == "SECCM_dataset.zip"

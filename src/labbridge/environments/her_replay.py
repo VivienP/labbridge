@@ -32,6 +32,7 @@ from labbridge.domain.identity import EnvironmentRef
 from labbridge.domain.provenance import SourceRecord, SourceType, SyntheticRoot
 from labbridge.infrastructure.her_ingestion.fixture import FIXTURE_MANIFEST_FILENAME
 from labbridge.infrastructure.her_ingestion.provenance import PROVENANCE_FILENAME
+from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.objectstore import digest
 
 ENVIRONMENT_ID: Final = "her_auirrh"
@@ -291,8 +292,8 @@ class HerReplayAdapter:
         with zipfile.ZipFile(self._archive) as zf:
             return zf.read(member)
 
-    def source_record(
-        self, result: AdapterSuccess, *, doi: str, record_version: str
+    def source_record_for(
+        self, member_path: str | None, *, doi: str = PINNED_DOI, record_version: str = "0"
     ) -> SourceRecord:
         """The observed lineage root for a successful replay.
 
@@ -300,14 +301,18 @@ class HerReplayAdapter:
         measured EDX and GP-predicted XPS in structurally identical files, so a column-based
         determination would conflate them (F-046). An unclassifiable member raises rather than
         defaulting to a measured type.
+
+        `member_path=None` is a failure with no member to cite — the archive is known, the member
+        is not. It records the archive itself, which is the truthful answer, rather than inventing a
+        path or omitting the root a lineage traversal will look for.
         """
         return SourceRecord(
             doi=doi,
             record_version=record_version,
             source_filename=self._archive.name,
             source_sha256=digest(self._archive.read_bytes()),
-            source_path=result.source_path,
-            source_type=classify_member(result.source_path),
+            source_path=member_path or self._archive.name,
+            source_type=classify_member(member_path) if member_path else "measured_lsv",
             parsing_version=ADAPTER_VERSION,
         )
 

@@ -183,6 +183,28 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The composite key admits something the single-column key cannot: the same content received by
+    # two attempts. Once such rows exist the old key is unrestorable, and silently dropping one of
+    # each pair would destroy exactly the evidence this revision was written to keep. Refuse, and
+    # say what to resolve — a downgrade that loses observations is worse than one that stops.
+    duplicates = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT count(*) FROM (SELECT observation_id FROM observations "
+                "GROUP BY observation_id HAVING count(*) > 1) AS d"
+            )
+        )
+        .scalar_one()
+    )
+    if duplicates:
+        message = (
+            f"{duplicates} observation_id value(s) are shared by more than one attempt. "
+            "Downgrading would restore a single-column primary key and drop every duplicate "
+            "receipt. Resolve or archive those rows deliberately before downgrading."
+        )
+        raise RuntimeError(message)
+
     op.drop_constraint("fk_attempt_outcomes_observation", "attempt_outcomes", type_="foreignkey")
     op.drop_constraint(
         "fk_attempt_outcomes_campaign_identity", "attempt_outcomes", type_="foreignkey"
