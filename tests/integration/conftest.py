@@ -12,18 +12,31 @@ runs (`AI_CONTRACT.md` §10).
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Final
 
 import boto3
 import pytest
 from alembic import command
 from alembic.config import Config
 from botocore.config import Config as BotoConfig
-from sqlalchemy import Connection, Engine, create_engine, text
+from sqlalchemy import Connection, Engine, create_engine, delete, select, text
 
 from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.config import DatabaseSettings, ObjectStoreSettings
+from labbridge.infrastructure.persistence.tables import (
+    attempt_outcomes,
+    attempts,
+    budget_ledger,
+    campaigns,
+    derived_metrics,
+    events,
+    jobs,
+    observations,
+    work_items,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -94,3 +107,43 @@ def connection(migrated: Engine) -> Iterator[Connection]:
             yield connection
         finally:
             transaction.rollback()
+
+
+#: Children before parents. Every RESTRICT in the schema is deliberate, so a teardown that ignored
+#: them would fail loudly rather than cascade evidence away — and the order lives here once, because
+#: three copies of it is how adding `budget_ledger` broke three test files at the same time.
+_PURGE_ORDER: Final = (
+    (derived_metrics, "observation"),
+    (attempt_outcomes, "campaign"),
+    (observations, "campaign"),
+    (attempts, "work_item"),
+    (jobs, "work_item"),
+    (budget_ledger, "campaign"),
+    (events, "campaign"),
+    (work_items, "campaign"),
+    (campaigns, "self"),
+)
+
+
+@pytest.fixture
+def purge_campaign() -> Callable[[Connection, uuid.UUID], None]:
+    """Injected rather than imported: `tests/` is not a package, so a relative import from a
+    conftest does not resolve."""
+    return _purge_campaign
+
+
+def _purge_campaign(connection: Connection, campaign_id: uuid.UUID) -> None:
+    """Delete everything one campaign owns, in foreign-key order."""
+    owned_items = select(work_items.c.work_item_id).where(work_items.c.campaign_id == campaign_id)
+    owned_observations = select(observations.c.observation_id).where(
+        observations.c.campaign_id == campaign_id
+    )
+    for table, scope in _PURGE_ORDER:
+        if scope == "campaign":
+            connection.execute(delete(table).where(table.c.campaign_id == campaign_id))
+        elif scope == "work_item":
+            connection.execute(delete(table).where(table.c.work_item_id.in_(owned_items)))
+        elif scope == "observation":
+            connection.execute(delete(table).where(table.c.observation_id.in_(owned_observations)))
+        else:
+            connection.execute(delete(table).where(table.c.campaign_id == campaign_id))

@@ -14,11 +14,11 @@ import asyncio
 import hashlib
 import json
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Connection, Engine, select
 
 from labbridge.demo import run_demo
 from labbridge.environments.her_replay import HerReplayAdapter
@@ -39,13 +39,6 @@ from labbridge.infrastructure.her_ingestion.provenance import write_document
 from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
-    attempts,
-    campaigns,
-    derived_metrics,
-    events,
-    jobs,
-    observations,
-    work_items,
 )
 
 pytestmark = pytest.mark.integration
@@ -65,36 +58,18 @@ def demo_fixture_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture
 def demo(
-    migrated: Engine, demo_fixture_root: Path, object_store: S3ObjectStore, tmp_path: Path
+    migrated: Engine,
+    demo_fixture_root: Path,
+    object_store: S3ObjectStore,
+    tmp_path: Path,
+    purge_campaign: Callable[[Connection, uuid.UUID], None],
 ) -> Iterator[tuple[Engine, Path, uuid.UUID]]:
     """Run one demonstration and clean up after it, in foreign-key order."""
     adapter = HerReplayAdapter(demo_fixture_root)
     report = asyncio.run(run_demo(migrated, adapter, object_store, tmp_path, locations=LOCATIONS))
     yield migrated, report.bundle_path, report.campaign_id
     with migrated.begin() as connection:
-        owned = select(work_items.c.work_item_id).where(
-            work_items.c.campaign_id == report.campaign_id
-        )
-        connection.execute(
-            delete(derived_metrics).where(
-                derived_metrics.c.observation_id.in_(
-                    select(observations.c.observation_id).where(
-                        observations.c.campaign_id == report.campaign_id
-                    )
-                )
-            )
-        )
-        connection.execute(
-            delete(attempt_outcomes).where(attempt_outcomes.c.campaign_id == report.campaign_id)
-        )
-        connection.execute(
-            delete(observations).where(observations.c.campaign_id == report.campaign_id)
-        )
-        connection.execute(delete(attempts).where(attempts.c.work_item_id.in_(owned)))
-        connection.execute(delete(jobs).where(jobs.c.work_item_id.in_(owned)))
-        connection.execute(delete(events).where(events.c.campaign_id == report.campaign_id))
-        connection.execute(delete(work_items).where(work_items.c.campaign_id == report.campaign_id))
-        connection.execute(delete(campaigns).where(campaigns.c.campaign_id == report.campaign_id))
+        purge_campaign(connection, report.campaign_id)
 
 
 def test_the_demonstration_produces_a_bundle_that_verifies(

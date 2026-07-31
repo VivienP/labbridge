@@ -16,12 +16,12 @@ like from the database's point of view.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Connection, Engine, delete, func, select
+from sqlalchemy import Connection, Engine, func, select
 
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.quantities import Quantity
@@ -37,10 +37,7 @@ from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
     campaigns,
-    derived_metrics,
-    events,
     jobs,
-    observations,
     storage_objects,
     work_items,
 )
@@ -93,7 +90,9 @@ def adapter(crash_fixture_root: Path) -> HerReplayAdapter:
 
 
 @pytest.fixture
-def campaign(migrated: Engine) -> Iterator[uuid.UUID]:
+def campaign(
+    migrated: Engine, purge_campaign: Callable[[Connection, uuid.UUID], None]
+) -> Iterator[uuid.UUID]:
     campaign_id = uuid.uuid4()
     with migrated.begin() as connection:
         connection.execute(
@@ -113,25 +112,7 @@ def campaign(migrated: Engine) -> Iterator[uuid.UUID]:
         )
     yield campaign_id
     with migrated.begin() as connection:
-        owned = select(work_items.c.work_item_id).where(work_items.c.campaign_id == campaign_id)
-        connection.execute(
-            delete(derived_metrics).where(
-                derived_metrics.c.observation_id.in_(
-                    select(observations.c.observation_id).where(
-                        observations.c.campaign_id == campaign_id
-                    )
-                )
-            )
-        )
-        connection.execute(
-            delete(attempt_outcomes).where(attempt_outcomes.c.campaign_id == campaign_id)
-        )
-        connection.execute(delete(observations).where(observations.c.campaign_id == campaign_id))
-        connection.execute(delete(attempts).where(attempts.c.work_item_id.in_(owned)))
-        connection.execute(delete(jobs).where(jobs.c.work_item_id.in_(owned)))
-        connection.execute(delete(events).where(events.c.campaign_id == campaign_id))
-        connection.execute(delete(work_items).where(work_items.c.campaign_id == campaign_id))
-        connection.execute(delete(campaigns).where(campaigns.c.campaign_id == campaign_id))
+        purge_campaign(connection, campaign_id)
 
 
 def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -> uuid.UUID:
