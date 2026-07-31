@@ -135,12 +135,16 @@ or operational experiment proves it), or `deferred`.
 | PostgreSQL schema, constraints, and first migration | `implemented` |
 | HER replay adapter, with origin decided by the evidence on disk | `implemented` |
 | Object storage with read-back checksum verification and a pending/committed lifecycle | `implemented` |
-| Durable worker, job leases, and heartbeats | `planned` |
-| Event append with expected-version concurrency; deterministic state reconstruction | `planned` |
-| Transactional budget reservation and consumption | `planned` |
-| Evidence bundles and `labbridge validate-artifacts` | `planned` |
+| Durable jobs with atomic claim, leases, and lease recovery | `implemented` |
+| Worker heartbeats and retry scheduling | `planned` |
+| Event append, unique and monotonic per aggregate | `implemented` |
+| Deterministic state reconstruction from the event log | `planned` |
+| Append-only budget ledger, written in the outcome transaction | `implemented` |
+| Budget reservation and hard stopping rules | `planned` |
+| Evidence bundles and `labbridge validate-artifacts` | `implemented` |
 | Biosensor simulator and fault injection | `planned` |
-| Campaign API, observability, and operator runbook | `planned` |
+| Campaign submission API with idempotency keys | `implemented` |
+| Campaign control endpoints, observability, and operator runbook | `planned` |
 | Deployment, backup restore, and the seeded fault-injection experiment | `planned` |
 | Model-based selection policy beyond a seeded random baseline | `deferred` |
 
@@ -149,11 +153,24 @@ a manifest, and none has been released yet.
 
 ## Limitations
 
-- The end-to-end campaign path does not run. The replay adapter and the object store exist, but
-  nothing leases a job, records an outcome transactionally, or exports an evidence bundle.
-- At-least-once delivery with idempotent effect handling is the intended worker protocol; the
-  constraints that would enforce at most one accepted outcome per intended attempt exist in the
-  schema, but no concurrent worker exercises them yet.
+- The end-to-end campaign path runs on the generated fixture only. `labbridge demo her` completes
+  and its bundle verifies, but every record it produces is synthetic and none of it is evidence
+  about the physical system.
+- **No process reclaims an expired lease.** `recover_expired_leases` exists and is tested, but
+  nothing calls it outside the test suite: a worker killed today strands its job until an operator
+  intervenes. There is no sweeper and no worker loop yet.
+- **The worker never heartbeats and never schedules a retry.** Its only terminal paths are success
+  and terminal failure, so retry with backoff, `timed_out`, and `failed_retryable` are unreachable
+  in production even though the job store implements them.
+- **An adapter failure other than an unsupported schema or an unavailable location leaves no
+  outcome record.** The exception escapes the worker, and the attempt stays `running`.
+- **The evidence bundle checksums its own members, not the stored observation objects.** Deleting an
+  object from the bucket does not make the bundle fail verification.
+- Crash recovery is proven across an in-process exception, not across a real process boundary. That
+  is a weaker claim than `AI_CONTRACT.md` §9 requires for the guarantee.
+- At-least-once delivery with idempotent effect handling is the worker protocol. The constraint that
+  enforces at most one accepted outcome per work item is a partial unique index and is tested, but
+  the racing case is exercised sequentially rather than by two genuinely concurrent workers.
 - The acquired HER archives and the generated fixture are git-ignored. A clean checkout has no data
   until `labbridge fetch-her` or `labbridge build-her-fixture` produces it.
 - The integration suite requires the PostgreSQL and MinIO services from `docker-compose.yml`, and
