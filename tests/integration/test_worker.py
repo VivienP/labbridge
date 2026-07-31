@@ -34,6 +34,7 @@ from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
     campaigns,
+    derived_metrics,
     events,
     jobs,
     observations,
@@ -90,6 +91,15 @@ def campaign(migrated: Engine) -> Iterator[uuid.UUID]:
     # a teardown that ignores them fails loudly rather than cascading away evidence.
     with migrated.begin() as connection:
         owned = select(work_items.c.work_item_id).where(work_items.c.campaign_id == campaign_id)
+        connection.execute(
+            delete(derived_metrics).where(
+                derived_metrics.c.observation_id.in_(
+                    select(observations.c.observation_id).where(
+                        observations.c.campaign_id == campaign_id
+                    )
+                )
+            )
+        )
         connection.execute(
             delete(attempt_outcomes).where(attempt_outcomes.c.campaign_id == campaign_id)
         )
@@ -308,3 +318,60 @@ async def test_an_empty_queue_is_a_no_op(
         )
 
     assert await _worker(migrated, adapter, object_store).run_once() is None
+
+
+async def test_the_accepted_metric_resolves_to_its_observation_and_root(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    """A Slice 1 exit criterion: every accepted metric resolves to a retained observation and to a
+    lineage root. Checked by following the link rather than by trusting the writer."""
+    key = adapter.known_locations()[0]
+    _submit(migrated, campaign, _candidate(key.library_id, key.measurement_area_id))
+
+    await _worker(migrated, adapter, object_store).run_once()
+
+    with migrated.begin() as connection:
+        rows = connection.execute(
+            select(derived_metrics)
+            .join(
+                observations,
+                (derived_metrics.c.observation_id == observations.c.observation_id)
+                & (derived_metrics.c.attempt_id == observations.c.attempt_id),
+            )
+            .where(observations.c.campaign_id == campaign)
+        ).all()
+
+    assert rows
+    for metric in rows:
+        assert metric.analysis_name == "labbridge_lsv_cathodic_extremum"
+        assert metric.analysis_version
+        assert metric.parameter_hash
+        assert metric.provenance["synthetic_root"]["seed"] is not None
+        assert metric.provenance["source_record"] is None
+
+
+async def test_a_metric_is_not_mistaken_for_a_source_provided_fit(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    """docs/SPEC.md §3.6: a LabBridge recomputation and the source's own fit must stay distinct, so
+    the analysis name is the thing that separates them and it must not be the source's."""
+    key = adapter.known_locations()[0]
+    _submit(migrated, campaign, _candidate(key.library_id, key.measurement_area_id))
+
+    await _worker(migrated, adapter, object_store).run_once()
+
+    with migrated.begin() as connection:
+        names = set(
+            connection.execute(
+                select(derived_metrics.c.analysis_name)
+                .join(
+                    observations,
+                    (derived_metrics.c.observation_id == observations.c.observation_id)
+                    & (derived_metrics.c.attempt_id == observations.c.attempt_id),
+                )
+                .where(observations.c.campaign_id == campaign)
+            ).scalars()
+        )
+
+    assert names == {"labbridge_lsv_cathodic_extremum"}
+    assert "source_provided" not in "".join(names)

@@ -32,9 +32,10 @@ from typing import Final
 from sqlalchemy import Connection, Engine, and_, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from labbridge.analysis import lsv
 from labbridge.domain.candidates import HerCandidate
 from labbridge.domain.provenance import Provenance, SourceRecord, SyntheticRoot
-from labbridge.domain.results import QuantityDescriptor, observation_id
+from labbridge.domain.results import QuantityDescriptor, metric_id, observation_id
 from labbridge.environments.her_replay import (
     AdapterSuccess,
     AdapterUnavailable,
@@ -46,6 +47,7 @@ from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
     campaigns,
+    derived_metrics,
     observations,
     storage_objects,
     work_items,
@@ -313,6 +315,7 @@ class Worker:
                 provenance=provenance,
                 observation=identity,
             )
+            self._write_metrics(connection, identity, attempt_id, result, provenance)
             connection.execute(
                 attempts.update()
                 .where(attempts.c.attempt_id == attempt_id)
@@ -383,6 +386,59 @@ class Worker:
             )
             jobs.fail_terminally(connection, lease, failure={"failure_code": failure_code})
         return WorkOutcome(lease.job_id, "failed_terminal", failure_code=failure_code)
+
+    def _write_metrics(
+        self,
+        connection: Connection,
+        identity: str,
+        attempt_id: uuid.UUID,
+        result: AdapterSuccess,
+        provenance: Provenance,
+    ) -> None:
+        """Derive and record the metric, in the same transaction as the observation it came from.
+
+        A rejected metric is still written. `F-021` is explicit that an analysis failing does not
+        invalidate the acquisition: the observation stays accepted and retained, and the metric
+        carries the reason it could not be computed. Dropping the row instead would leave no record
+        that the analysis was ever attempted.
+        """
+        analysis = lsv.analyse(
+            result.payload,
+            potential_unit=LSV_DESCRIPTORS[0].unit,
+            current_unit=LSV_DESCRIPTORS[1].unit,
+        )
+        parameters = lsv.parameter_hash()
+        for name, quantity in (
+            (lsv.METRIC_CURRENT, analysis.current_extremum),
+            (lsv.METRIC_POTENTIAL, analysis.potential_at_extremum),
+        ):
+            if quantity is None:
+                continue
+            connection.execute(
+                derived_metrics.insert().values(
+                    metric_id=metric_id(
+                        observation_id=identity,
+                        attempt_id=str(attempt_id),
+                        name=name,
+                        analysis_name=lsv.ANALYSIS_NAME,
+                        analysis_version=lsv.ANALYSIS_VERSION,
+                        parameter_hash=parameters,
+                    ),
+                    observation_id=identity,
+                    attempt_id=attempt_id,
+                    name=name,
+                    value_numeric=quantity.value,
+                    value=quantity.model_dump(mode="json"),
+                    unit=quantity.unit,
+                    analysis_name=lsv.ANALYSIS_NAME,
+                    analysis_version=lsv.ANALYSIS_VERSION,
+                    parameter_hash=parameters,
+                    quality_status=analysis.quality_status,
+                    quality_reason=analysis.quality_reason,
+                    provenance=provenance.model_dump(mode="json"),
+                    created_at=func.now(),
+                )
+            )
 
     def _write_outcome(
         self,

@@ -222,20 +222,27 @@ class DerivedMetric(_Model):
 def metric_id(
     *,
     observation_id: str,
+    attempt_id: str,
     name: str,
     analysis_name: str,
     analysis_version: str,
     parameter_hash: str,
 ) -> str:
-    """Identity for a derived metric: one observation, one analysis, one parameter set.
+    """Identity for a derived metric: one receipt, one analysis, one parameter set.
 
-    Re-running the same analysis at the same version with the same parameters over the same
-    observation yields the same id, which is what makes recomputation idempotent.
+    Re-running the same analysis at the same version with the same parameters over the same receipt
+    yields the same id, which is what makes recomputation idempotent.
+
+    `attempt_id` is part of the identity for the same reason it is part of the observation's key.
+    `observation_id` is content-derived, so two campaigns replaying one location share it; without
+    the attempt, a metric from the second campaign's receipt would collide with the first's, and
+    the two are not the same result however identical the bytes.
     """
     return content_id(
         "metric",
         {
             "observation_id": observation_id,
+            "attempt_id": attempt_id,
             "name": name,
             "analysis_name": analysis_name,
             "analysis_version": analysis_version,

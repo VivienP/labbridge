@@ -202,6 +202,7 @@ def test_a_source_fit_and_a_labbridge_recomputation_get_different_identities() -
     """docs/SPEC.md section 3.6: they must never merge into one metric."""
     source = metric_id(
         observation_id="obs:1",
+        attempt_id="att:1",
         name="i_lim",
         analysis_name="source_provided_fit",
         analysis_version="1",
@@ -209,6 +210,7 @@ def test_a_source_fit_and_a_labbridge_recomputation_get_different_identities() -
     )
     recomputed = metric_id(
         observation_id="obs:1",
+        attempt_id="att:1",
         name="i_lim",
         analysis_name="labbridge_fit",
         analysis_version="1",
@@ -221,6 +223,7 @@ def test_a_source_fit_and_a_labbridge_recomputation_get_different_identities() -
 def test_recomputing_the_same_analysis_is_idempotent_by_identity() -> None:
     args = {
         "observation_id": "obs:1",
+        "attempt_id": "att:1",
         "name": "i_lim",
         "analysis_name": "labbridge_fit",
         "analysis_version": "1",
@@ -228,3 +231,20 @@ def test_recomputing_the_same_analysis_is_idempotent_by_identity() -> None:
     }
 
     assert metric_id(**args) == metric_id(**args)  # type: ignore[arg-type]
+
+
+def test_two_receipts_of_identical_content_get_different_metric_identities() -> None:
+    """`observation_id` is content-derived, so two campaigns replaying one location share it. A
+    metric identity without the attempt would collide across campaigns."""
+    shared = {
+        "observation_id": "obs:1",
+        "name": "i_lim",
+        "analysis_name": "labbridge_fit",
+        "analysis_version": "1",
+        "parameter_hash": "abc",
+    }
+
+    first = metric_id(attempt_id="att:1", **shared)  # type: ignore[arg-type]
+    second = metric_id(attempt_id="att:2", **shared)  # type: ignore[arg-type]
+
+    assert first != second
