@@ -59,6 +59,12 @@ DEFAULT_FIXTURE_ROOT: Final = Path("data/her/fixture")
 DEFAULT_BUNDLE_ROOT: Final = Path("data/bundles")
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.splitlines()[0])
+#: `docs/SPEC.md` §11.2 fixes `labbridge demo her` and `labbridge evidence verify <bundle>` as
+#: subcommand groups, so they are groups rather than hyphenated names.
+demo_app = typer.Typer(no_args_is_help=True, help="Run a demonstration campaign end to end.")
+evidence_app = typer.Typer(no_args_is_help=True, help="Build and verify evidence bundles.")
+app.add_typer(demo_app, name="demo")
+app.add_typer(evidence_app, name="evidence")
 console = Console()
 
 
@@ -194,6 +200,7 @@ def build_her_fixture(
     console.print(f"manifest written to {root / FIXTURE_MANIFEST_FILENAME}")
 
 
+@evidence_app.command("verify")
 @app.command("validate-artifacts")
 def validate_artifacts(
     bundle: Annotated[
@@ -212,6 +219,11 @@ def validate_artifacts(
     With no `--bundle` it verifies every bundle under the root, so the bare command is the gate
     `AI_CONTRACT.md` §10 names. An empty root is reported as such rather than passing silently —
     "nothing to check" and "everything checks out" are different answers.
+
+    Registered under two names because the documents disagree: `AI_CONTRACT.md` §10 calls the gate
+    `labbridge validate-artifacts`, while `docs/SPEC.md` §11.2 lists `labbridge evidence verify`.
+    Both resolve here rather than one being silently preferred; the contradiction is recorded in
+    `docs/AGENT_SYSTEM.md`.
     """
     if bundle is not None:
         _verify_one(bundle)
@@ -250,7 +262,7 @@ def _verify_one(bundle: Path) -> None:
     console.print("[green]every checksum matches[/green]")
 
 
-@app.command("demo-her")
+@demo_app.command("her")
 def demo_her(
     landing_root: Annotated[
         Path, typer.Option("--root", help="Fixture or landing root the replay adapter reads.")
