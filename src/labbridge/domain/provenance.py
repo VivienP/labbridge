@@ -22,6 +22,29 @@ from .identity import EnvironmentRef
 
 RelationPredicate = Literal["derived_from", "supersedes", "invalidates", "replaces"]
 
+#: What kind of source value a record came from. Enumerated, not free text, because this field is
+#: the **only** thing separating a measurement from a model output: the archive stores measured EDX
+#: and GP-predicted XPS in structurally identical files — same headers, same units, same row count —
+#: so no column check can tell them apart (F-046). A free-form string left the one defence against
+#: that conflation to whatever a caller happened to type.
+#:
+#: The mapping from an archive path to one of these values belongs to the adapter that knows the
+#: archive, not here: `AI_CONTRACT.md` §5 keeps filesystem knowledge out of the domain. The domain
+#: owns the scientific categories; infrastructure owns which file is which.
+SourceType = Literal[
+    "measured_lsv",
+    "measured_edx",
+    "measured_xps",
+    "predicted_xps",
+    "source_fitted_parameters",
+]
+
+#: The subset that is a measurement. Anything else is a model output or a source-provided
+#: derivation, and must never be presented as observed (`docs/DATA_STRATEGY.md` §2.2).
+MEASURED_SOURCE_TYPES: frozenset[SourceType] = frozenset(
+    {"measured_lsv", "measured_edx", "measured_xps"}
+)
+
 
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -37,11 +60,14 @@ class SourceRecord(_Model):
     source_sha256: str = Field(min_length=64, max_length=64)
     #: Where inside the archive the values came from, e.g. a member path.
     source_path: str = Field(min_length=1)
-    #: Distinguishes measured from predicted and raw from source-provided fit. Set from the path at
-    #: ingestion, never from column names: the archive stores measured EDX and GP-predicted XPS in
-    #: structurally identical files, so column validation cannot separate them (F-046).
-    source_type: str = Field(min_length=1)
+    #: Set from the path at ingestion, never from column names (F-046).
+    source_type: SourceType
     parsing_version: str = Field(min_length=1)
+
+    @property
+    def is_measured(self) -> bool:
+        """Whether these values are a measurement rather than a model output or a source fit."""
+        return self.source_type in MEASURED_SOURCE_TYPES
 
 
 class SyntheticRoot(_Model):

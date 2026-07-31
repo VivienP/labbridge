@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from labbridge.domain.candidates import HerCandidate
+from labbridge.domain.provenance import MEASURED_SOURCE_TYPES
 from labbridge.domain.quantities import Quantity
 from labbridge.environments.her_replay import (
     EXPECTED_LSV_HEADER,
@@ -23,8 +24,10 @@ from labbridge.environments.her_replay import (
     AmbiguousRootError,
     HerReplayAdapter,
     UnknownRootError,
+    UnknownSourceTypeError,
     UnsupportedSchemaError,
     build_index,
+    classify_member,
     resolve_environment,
 )
 from labbridge.infrastructure.her_ingestion.fixture import (
@@ -192,3 +195,45 @@ def test_a_fixture_backed_adapter_offers_a_synthetic_root_only(fixture_root: Pat
 
     assert root.seed == SPEC.seed
     assert adapter.environment.data_origin == "synthetic"
+
+
+@pytest.mark.parametrize(
+    ("member", "expected"),
+    [
+        ("XPS_dataset/Au-Ir-Rh_Au-rich_XPS_predicted.csv", "predicted_xps"),
+        ("XPS_dataset/Au-Ir-Rh_Au-rich_XPS.csv", "measured_xps"),
+        ("EDX_dataset/Au-Ir-Rh_Au-rich_EDX.csv", "measured_edx"),
+        ("SECCM_dataset/Au-Ir-Rh_Au-rich_SECCM_area_1_x=0.00_y=0.00_LSV.csv", "measured_lsv"),
+        ("SECCM_dataset/LSV_fit_parameters.csv", "source_fitted_parameters"),
+    ],
+)
+def test_each_member_kind_is_classified_from_its_path(member: str, expected: str) -> None:
+    """The only defence against F-046: measured EDX and predicted XPS are structurally identical,
+    so nothing but the path can separate a measurement from a model output."""
+    assert classify_member(member) == expected
+
+
+def test_predicted_xps_is_never_classified_as_measured() -> None:
+    """The suffix order matters: `_XPS_predicted.csv` also ends with the measured stem plus a
+    suffix, so a reversed order would label every GP prediction a measurement."""
+    predicted = classify_member("XPS_dataset/Au-Ir-Rh_Rh-rich_XPS_predicted.csv")
+
+    assert predicted == "predicted_xps"
+    assert predicted not in MEASURED_SOURCE_TYPES
+
+
+def test_an_unclassifiable_member_is_refused_not_defaulted() -> None:
+    with pytest.raises(UnknownSourceTypeError, match="cannot determine the source type"):
+        classify_member("SECCM_dataset/something_new.csv")
+
+
+async def test_the_source_record_carries_the_classified_type(fixture_root: Path) -> None:
+    adapter = HerReplayAdapter(fixture_root)
+    key = adapter.known_locations()[0]
+    result = await adapter.execute(_candidate(key.library_id, key.measurement_area_id))
+    assert isinstance(result, AdapterSuccess)
+
+    record = adapter.source_record(result, doi="10.5281/zenodo.9999999", record_version="0")
+
+    assert record.source_type == "measured_lsv"
+    assert record.is_measured

@@ -173,9 +173,19 @@ Two things this decision does **not** rest on. LabBridge's own source licence is
 - the archive, extracted data, and derived rows remain git-ignored and fetched on demand. This is a repository-hygiene policy, narrower than the licence permits, adopted so the DOI stays the single source of truth. It MUST NOT be read as a licence restriction;
 - Gate 0's redistribution criterion is satisfied. The offline fixture stays independently generated for the separate reason that a test suite must not depend on a multi-hundred-megabyte download.
 
+### Scope — amended 2026-07-31
+
+Review found the attribution obligation breached by the commit that introduced it: `fixture.py` and its tests reproduce the archive's column headers, declared units, filename grammar, line endings, and row counts, and carried no attribution. Rather than leave a rule the repository violates, the scope is stated:
+
+**Attribution is required on** any artifact carrying archive *values* — rows, subsets, aggregates, fitted parameters, plots, exports, and evidence bundles derived from them.
+
+**Attribution is not required on** structural metadata: column names, declared units, filename grammar, line endings, row and column counts, and the schemas recorded in `dataset_inventory.json`. These are facts about the shape of the data, they are what `AI_CONTRACT.md` §7 obliges the implementation to record by inspection, and a schema cannot be described without restating them.
+
+The distinction is between describing a dataset and redistributing it. Where citing costs nothing — the fixture generator, the Gate 0 spec — the source is cited anyway, because a reader meeting an archive-shaped file should be able to find the archive.
+
 ### Limits
 
-This decision records what the record declares, with the date and the endpoint it was read from. It is not legal advice, and it does not cover material the record does not itself license.
+This decision records what the record declares, with the date and the endpoint it was read from. It is not legal advice, and it does not cover material the record does not itself license. The scope amendment above is an engineering rule about this repository's own obligations; it does not interpret CC BY 4.0 on anyone else's behalf.
 
 ---
 

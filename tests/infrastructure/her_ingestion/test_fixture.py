@@ -37,7 +37,9 @@ MEASURED_XPS_HEADER = [
     "C [at.%]",
 ]
 ARCHIVE_COUNT = 3
-COMPOSITION_TOTAL = 100.0
+COMPOSITION_TOTAL = Decimal("100")
+#: The archive's own closure spread: EDX 99.99-100.01, measured XPS 99.9-100.2.
+CLOSURE_TOLERANCE = Decimal("0.25")
 
 
 def _build(tmp_path: Path, **overrides: object) -> Path:
@@ -149,15 +151,18 @@ def test_the_fitted_limiting_current_is_positive_as_the_source_records_it(tmp_pa
     assert float(i_lim.minimum) > 0
 
 
-def test_compositions_close_to_one_hundred(tmp_path: Path) -> None:
-    """Closure is an artifact of normalisation; the fixture exhibits it rather than hiding it."""
+def test_compositions_close_to_about_one_hundred_not_exactly(tmp_path: Path) -> None:
+    """The archive closes to rounding, not to the number: EDX rows sum to 99.99 to 100.01. A fixture
+    that closed exactly would let a validation rule be calibrated to `== 100` and reject real rows.
+    Both bounds are asserted, so neither exact closure nor a drifting sum passes."""
     root = _build(tmp_path)
     with zipfile.ZipFile(root / "EDX_dataset.zip") as archive:
         raw = archive.read("EDX_dataset/Au-Ir-Rh_Au-rich_EDX.csv").decode("utf-8")
 
-    for line in raw.splitlines()[1:]:
-        cells = line.split(",")
-        assert sum(float(v) for v in cells[1:]) == COMPOSITION_TOTAL
+    sums = [sum(Decimal(v) for v in line.split(",")[1:]) for line in raw.splitlines()[1:] if line]
+
+    assert all(abs(total - COMPOSITION_TOTAL) <= CLOSURE_TOLERANCE for total in sums)
+    assert any(total != COMPOSITION_TOTAL for total in sums)
 
 
 def test_grid_areas_without_an_lsv_exist_so_unavailability_is_exercised(tmp_path: Path) -> None:

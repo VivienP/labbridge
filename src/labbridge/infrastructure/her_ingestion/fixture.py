@@ -5,6 +5,13 @@ archive rows, and this module still copies none: a fixture built from archive va
 offline suite depend on a multi-hundred-megabyte download, and would make a schema regression
 indistinguishable from a data change.
 
+The structure mirrored here belongs to Thelen F, Kim M, Arruda de Oliveira G, Bürgel JL,
+Schuhmann W, Ludwig A, *Dataset — Autonomous scanning electrochemical cell microscopy enables rapid
+exploration of large compositionally complex material spaces*, Zenodo 2026,
+doi:10.5281/zenodo.20439519, CC BY 4.0.
+ADR-009 does not require attribution on structural metadata, only on artifacts carrying archive
+values; the citation is here anyway so a reader meeting an archive-shaped file can find the archive.
+
 What is reproduced is **structure**, read from the recorded `dataset_inventory.json` and not from
 memory: the four table schemas, their headers and declared units, their delimiters, their three
 different line endings, the varying LSV row count, the filename grammar, and the relationships among
@@ -17,8 +24,8 @@ nothing here may be cited as evidence about the physical system (`AI_CONTRACT.md
 
 Two source conventions are preserved deliberately, because an adapter that gets them wrong is wrong:
 
-* the LSV current density is **negative** — HER is a reduction, and the archive records the signed
-  cathodic value;
+* the LSV current density sweeps **negative** — HER is a reduction, and the archive records the
+  signed cathodic value — while some files still reach a small positive background near onset;
 * the fitted limiting current density is **positive** — the source stores it as a magnitude, on the
   opposite sign convention from the raw column it summarises.
 """
@@ -104,17 +111,20 @@ def _rng(spec: FixtureSpec, key: str) -> random.Random:
 
 
 def _closed_composition(rng: random.Random, count: int, decimals: int) -> list[str]:
-    """Percentages summing to exactly 100 after rounding.
+    """Percentages summing to about 100.
 
-    The closure is imposed here for the same reason it holds in the source: at.% values normalised
-    over the reported elements sum to 100 by construction. That is an artifact of normalisation, not
-    evidence that no other element is present.
+    Closure is an artifact of normalisation: at.% values normalised over the reported elements sum
+    to about 100 by construction, which is not evidence that no other element is present.
+
+    "About" is the point. Every value is rounded independently, so the row sums land near 100 rather
+    than on it — the archive's measured XPS rows sum to 99.9 through 100.2, and its EDX rows to
+    99.99 through 100.01. Forcing exact closure by absorbing the residue into the last column would
+    let a validation rule be calibrated to `== 100` and then reject real rows, the same way the
+    strictly-negative current density did.
     """
     weights = [rng.uniform(1.0, 10.0) for _ in range(count)]
     total = sum(weights)
-    head = [round(w / total * 100, decimals) for w in weights[:-1]]
-    tail = round(100 - sum(head), decimals)
-    return [f"{value:.{decimals}f}" for value in [*head, tail]]
+    return [f"{weight / total * 100:.{decimals}f}" for weight in weights]
 
 
 def _table(header: Sequence[str], rows: Sequence[Sequence[str]], *, line_ending: str) -> bytes:
@@ -159,7 +169,8 @@ def _lsv_table(spec: FixtureSpec, library: str, area: int) -> bytes:
     """A monotone cathodic ramp. An arbitrary synthetic shape, not a kinetic model.
 
     The signs are the point: potential runs from just above zero down the cathodic direction on the
-    RHE scale, current density is negative throughout, and the standard deviation is positive.
+    RHE scale, the current density sweeps strongly negative, and the standard deviation is positive.
+    Some files carry a small positive background near onset, as 46 of the archive's 966 do.
     """
     rng = _rng(spec, f"lsv:{library}:{area}")
     count = spec.lsv_row_counts[area % len(spec.lsv_row_counts)]

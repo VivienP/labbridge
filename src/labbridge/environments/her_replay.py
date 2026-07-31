@@ -29,7 +29,7 @@ from typing import ClassVar, Final, Literal
 
 from labbridge.domain.candidates import HerCandidate
 from labbridge.domain.identity import EnvironmentRef
-from labbridge.domain.provenance import SourceRecord, SyntheticRoot
+from labbridge.domain.provenance import SourceRecord, SourceType, SyntheticRoot
 from labbridge.infrastructure.her_ingestion.fixture import FIXTURE_MANIFEST_FILENAME
 from labbridge.infrastructure.her_ingestion.provenance import PROVENANCE_FILENAME
 from labbridge.infrastructure.objectstore import digest
@@ -87,6 +87,46 @@ class UnsupportedSchemaError(ReplayAdapterError):
             f"member `{member}` header {found} does not match adapter version "
             f"{ADAPTER_VERSION} (expected {EXPECTED_LSV_HEADER})"
         )
+
+
+#: Which member is which kind of value, matched most specific first. This mapping is the whole
+#: defence against F-046: measured EDX and GP-predicted XPS are structurally identical files, so the
+#: only thing that separates them is the path. Predicted is tested before measured: the predicted
+#: filename ends in the measured one's stem plus a suffix, so reversing the order would silently
+#: label every model output as a measurement.
+_SOURCE_TYPE_BY_SUFFIX: Final[tuple[tuple[str, SourceType], ...]] = (
+    ("_XPS_predicted.csv", "predicted_xps"),
+    ("_XPS.csv", "measured_xps"),
+    ("_EDX.csv", "measured_edx"),
+    ("_LSV.csv", "measured_lsv"),
+)
+
+
+class UnknownSourceTypeError(ReplayAdapterError):
+    """A member this adapter cannot classify. Never defaulted to a measured type."""
+
+    code: ClassVar[str] = "unknown_source_type"
+
+    def __init__(self, member: str) -> None:
+        self.member = member
+        super().__init__(
+            f"cannot determine the source type of `{member}`; classifying it as measured by "
+            "default would be the conflation F-046 describes"
+        )
+
+
+def classify_member(member_path: str) -> SourceType:
+    """Map an archive member to its scientific kind, or refuse.
+
+    Refusing matters more than classifying: an unrecognised member defaulted to `measured_lsv`
+    would present a model output as a measurement, and nothing downstream could detect it.
+    """
+    if member_path == _FIT_MEMBER:
+        return "source_fitted_parameters"
+    for suffix, source_type in _SOURCE_TYPE_BY_SUFFIX:
+        if member_path.endswith(suffix):
+            return source_type
+    raise UnknownSourceTypeError(member_path)
 
 
 @dataclass(frozen=True)
@@ -256,9 +296,10 @@ class HerReplayAdapter:
     ) -> SourceRecord:
         """The observed lineage root for a successful replay.
 
-        `source_type` is set from the archive and member path, never from the columns: the source
-        stores measured EDX and GP-predicted XPS in structurally identical files, so a column-based
-        determination would conflate them (F-046).
+        `source_type` is derived from the member path, never from the columns: the source stores
+        measured EDX and GP-predicted XPS in structurally identical files, so a column-based
+        determination would conflate them (F-046). An unclassifiable member raises rather than
+        defaulting to a measured type.
         """
         return SourceRecord(
             doi=doi,
@@ -266,7 +307,7 @@ class HerReplayAdapter:
             source_filename=self._archive.name,
             source_sha256=digest(self._archive.read_bytes()),
             source_path=result.source_path,
-            source_type="measured_lsv",
+            source_type=classify_member(result.source_path),
             parsing_version=ADAPTER_VERSION,
         )
 
