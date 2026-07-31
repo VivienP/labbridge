@@ -10,16 +10,22 @@ acquisition logic (AI_CONTRACT.md section 5).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Final
 
+import boto3
 import typer
+from botocore.config import Config as BotoConfig
 from rich.console import Console
 from rich.table import Table
 
 from labbridge import __version__
+from labbridge.demo import engine_from_settings, run_demo
+from labbridge.environments.her_replay import HerReplayAdapter
+from labbridge.evidence.bundle import BundleVerificationError, verify_bundle
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
 from labbridge.infrastructure.her_ingestion.fetch import (
     DEFAULT_LANDING_ROOT,
@@ -42,11 +48,15 @@ from labbridge.infrastructure.her_ingestion.provenance import (
 )
 from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
+from labbridge.infrastructure.objectstore import S3ObjectStore
+from labbridge.infrastructure.persistence.config import ObjectStoreSettings
 
 EXPECTED_DOI: Final = PINNED_DOI
 #: Beside the landing root and git-ignored with it. The fixture is regenerable from its seed, so
 #: committing the archives would add bytes that the manifest already accounts for.
 DEFAULT_FIXTURE_ROOT: Final = Path("data/her/fixture")
+#: Bundles are regenerable from the database, so they live beside the data and stay git-ignored.
+DEFAULT_BUNDLE_ROOT: Final = Path("data/bundles")
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.splitlines()[0])
 console = Console()
@@ -182,6 +192,112 @@ def build_her_fixture(
     console.print(table)
     console.print(f"[yellow]data_origin: {manifest.data_origin}[/yellow] — {manifest.note}")
     console.print(f"manifest written to {root / FIXTURE_MANIFEST_FILENAME}")
+
+
+@app.command("validate-artifacts")
+def validate_artifacts(
+    bundle: Annotated[
+        Path | None,
+        typer.Option("--bundle", help="One bundle to verify. Omit to verify every bundle found."),
+    ] = None,
+    bundle_root: Annotated[
+        Path, typer.Option("--bundle-root", help="Where to look when --bundle is omitted.")
+    ] = DEFAULT_BUNDLE_ROOT,
+) -> None:
+    """Recompute every checksum in an evidence bundle and report whether it still matches.
+
+    Recomputed from the bytes on disk, never compared against a recorded size: a file edited in
+    place keeps its size far more often than it keeps its hash.
+
+    With no `--bundle` it verifies every bundle under the root, so the bare command is the gate
+    `AI_CONTRACT.md` §10 names. An empty root is reported as such rather than passing silently —
+    "nothing to check" and "everything checks out" are different answers.
+    """
+    if bundle is not None:
+        _verify_one(bundle)
+        return
+
+    candidates = sorted(p for p in bundle_root.glob("*") if (p / "manifest.json").exists())
+    if not candidates:
+        console.print(f"[yellow]no bundle found under {bundle_root}[/yellow] — nothing verified")
+        return
+    for candidate in candidates:
+        _verify_one(candidate)
+    console.print(f"[green]{len(candidates)} bundle(s) verified[/green]")
+
+
+def _verify_one(bundle: Path) -> None:
+    try:
+        manifest = verify_bundle(bundle)
+    except BundleVerificationError as error:
+        console.print(f"[red]bundle verification failed[/red] ({len(error.problems)} problem(s)):")
+        for problem in error.problems:
+            console.print(f"  - {problem}")
+        raise typer.Exit(code=1) from error
+
+    files = manifest["files"]
+    assert isinstance(files, list)
+    table = Table(title=f"bundle {manifest['campaign_id']}")
+    table.add_column("file")
+    table.add_column("bytes", justify="right")
+    table.add_column("sha256")
+    for entry in files:
+        table.add_row(entry["name"], str(entry["byte_size"]), f"{entry['sha256'][:16]}...")
+    console.print(table)
+    origin = manifest["data_origin"]
+    colour = "yellow" if origin == "synthetic" else "green"
+    console.print(f"data_origin: [{colour}]{origin}[/{colour}]  mode: {manifest['execution_mode']}")
+    console.print("[green]every checksum matches[/green]")
+
+
+@app.command("demo-her")
+def demo_her(
+    landing_root: Annotated[
+        Path, typer.Option("--root", help="Fixture or landing root the replay adapter reads.")
+    ] = DEFAULT_FIXTURE_ROOT,
+    bundle_root: Annotated[
+        Path, typer.Option("--bundle-root", help="Where to write the evidence bundle.")
+    ] = DEFAULT_BUNDLE_ROOT,
+    locations: Annotated[
+        int, typer.Option("--locations", help="How many measured locations to submit.")
+    ] = 3,
+) -> None:
+    """Run one campaign end to end and verify the evidence bundle it produces.
+
+    Requires PostgreSQL and MinIO from `docker-compose.yml`, and a fixture or landing root. This
+    demonstrates the runtime; it is not a scientific result, and a fixture-backed run records
+    itself as synthetic throughout.
+    """
+    adapter = HerReplayAdapter(landing_root)
+    settings = ObjectStoreSettings()
+    client = boto3.client(
+        "s3",
+        endpoint_url=settings.endpoint_url,
+        aws_access_key_id=settings.access_key,
+        aws_secret_access_key=settings.secret_key,
+        config=BotoConfig(signature_version="s3v4"),
+        region_name=settings.region,
+    )
+    store = S3ObjectStore(client, bucket=settings.bucket)
+    store.ensure_bucket()
+
+    report = asyncio.run(
+        run_demo(engine_from_settings(), adapter, store, bundle_root, locations=locations)
+    )
+
+    table = Table(title=f"campaign {report.campaign_id}")
+    table.add_column("outcome")
+    table.add_column("count", justify="right")
+    table.add_row("submitted", str(report.submitted))
+    table.add_row("succeeded", str(report.succeeded))
+    table.add_row("failed_terminal", str(report.failed_terminal))
+    table.add_row("duplicate_suppressed", str(report.suppressed))
+    console.print(table)
+    console.print(
+        f"[yellow]data_origin: {report.manifest['data_origin']}[/yellow] — a fixture-backed run "
+        "is not evidence about the physical system"
+    )
+    console.print(f"bundle written and verified at {report.bundle_path}")
 
 
 @app.command("inspect-her")

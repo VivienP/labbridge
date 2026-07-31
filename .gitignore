@@ -2,6 +2,8 @@
 # Only a tiny synthetic fixture ships in-repo for offline tests/demo.
 data/raw/
 data/her/
+# Evidence bundles are regenerable from the database and carry their own manifests.
+data/bundles/
 data/cache/
 *.parquet
 !fixtures/**/*.parquet
