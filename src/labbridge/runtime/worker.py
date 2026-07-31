@@ -46,6 +46,7 @@ from labbridge.infrastructure.objectstore import ObjectStore
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
+    budget_ledger,
     campaigns,
     derived_metrics,
     observations,
@@ -115,6 +116,32 @@ def _campaign_of(connection: Connection, work_item_id: uuid.UUID) -> tuple[uuid.
         .where(work_items.c.work_item_id == work_item_id)
     ).one()
     return row.campaign_id, row.data_origin, row.execution_mode
+
+
+def _record_cost(
+    connection: Connection, campaign_id: uuid.UUID, work_item_id: uuid.UUID, kind: str
+) -> None:
+    """Append one budget entry, inside the outcome's transaction.
+
+    Append-only: a reservation and its release are two rows, never an update of one, so the ledger
+    reconstructs how a budget was spent rather than only its current total (`docs/SPEC.md` §8).
+
+    The unit is `attempt`, not money. A replay costs no consumables and no compute worth pricing;
+    counting attempts is the honest measure of what this environment actually spends, and inventing
+    a currency amount would put a number in the ledger that means nothing.
+    """
+    connection.execute(
+        budget_ledger.insert().values(
+            entry_id=uuid.uuid4(),
+            campaign_id=campaign_id,
+            work_item_id=work_item_id,
+            kind=kind,
+            amount=1,
+            unit="attempt",
+            reason="one replay attempt against the HER environment",
+            recorded_at=func.now(),
+        )
+    )
 
 
 def _candidate_of(connection: Connection, work_item_id: uuid.UUID) -> HerCandidate:
@@ -316,6 +343,7 @@ class Worker:
                 observation=identity,
             )
             self._write_metrics(connection, identity, attempt_id, result, provenance)
+            _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
             connection.execute(
                 attempts.update()
                 .where(attempts.c.attempt_id == attempt_id)
@@ -376,6 +404,9 @@ class Worker:
                 .where(work_items.c.work_item_id == lease.work_item_id)
                 .values(state="rejected", updated_at=func.now())
             )
+            # A failed attempt still consumed one, so the ledger records it. A budget that only
+            # counted successes would let a campaign burn its allowance invisibly.
+            _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
             append_event(
                 connection,
                 campaign_id=campaign_id,

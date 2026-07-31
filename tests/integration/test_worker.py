@@ -33,6 +33,7 @@ from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
+    budget_ledger,
     campaigns,
     derived_metrics,
     events,
@@ -106,6 +107,7 @@ def campaign(migrated: Engine) -> Iterator[uuid.UUID]:
         connection.execute(delete(observations).where(observations.c.campaign_id == campaign_id))
         connection.execute(delete(attempts).where(attempts.c.work_item_id.in_(owned)))
         connection.execute(delete(jobs).where(jobs.c.work_item_id.in_(owned)))
+        connection.execute(delete(budget_ledger).where(budget_ledger.c.campaign_id == campaign_id))
         connection.execute(delete(events).where(events.c.campaign_id == campaign_id))
         connection.execute(delete(work_items).where(work_items.c.campaign_id == campaign_id))
         connection.execute(delete(campaigns).where(campaigns.c.campaign_id == campaign_id))
@@ -375,3 +377,35 @@ async def test_a_metric_is_not_mistaken_for_a_source_provided_fit(
 
     assert names == {"labbridge_lsv_cathodic_extremum"}
     assert "source_provided" not in "".join(names)
+
+
+async def test_every_attempt_appends_a_budget_entry_in_the_same_transaction(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    """docs/SPEC.md §8 and Slice 1: outcome, event, projection and budget change share one
+    transaction. A failed attempt is recorded too — a budget that counted only successes would let
+    a campaign burn its allowance invisibly."""
+    key = adapter.known_locations()[0]
+    _submit(migrated, campaign, _candidate(key.library_id, key.measurement_area_id))
+    measured = {
+        k.measurement_area_id for k in adapter.known_locations() if k.library_id == "Au-rich"
+    }
+    missing = next(
+        str(area) for area in range(1, SPEC.areas_per_library + 1) if str(area) not in measured
+    )
+    _submit(migrated, campaign, _candidate("Au-rich", missing))
+
+    worker = _worker(migrated, adapter, object_store)
+    await worker.run_once()
+    await worker.run_once()
+
+    with migrated.begin() as connection:
+        entries = connection.execute(
+            select(budget_ledger).where(budget_ledger.c.campaign_id == campaign)
+        ).all()
+
+    assert len(entries) == TWO_OUTCOMES
+    for entry in entries:
+        assert entry.kind == "consumed"
+        assert entry.unit == "attempt"
+        assert entry.reason
