@@ -80,8 +80,10 @@ def test_a_file_with_no_data_rows_is_rejected_not_crashed() -> None:
 
 
 def test_a_non_cathodic_sweep_warns_rather_than_being_discarded() -> None:
-    """F-023: a poor but valid signal is still a successful observation. Discarding it would lose
-    real data — 46 of the archive's 966 LSV files reach positive current near onset."""
+    """A sweep truncated before onset, or recorded on the opposite sign convention. No archive file
+    reaches this branch — all 966 have a negative minimum — so it is a guard for input the source
+    does not contain, not the handling of the 46 positive-onset files, which sweep cathodic and are
+    accepted. Warned rather than rejected because F-023 keeps a poor but valid signal successful."""
     result = _analyse(_sweep(floor=Decimal("0.5")))
 
     assert result.quality_status == "warning"

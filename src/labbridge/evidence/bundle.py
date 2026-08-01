@@ -119,6 +119,7 @@ def _metric_rows(connection: Connection, campaign_id: uuid.UUID) -> list[dict[st
             "name": row["name"],
             "value": row["value"],
             "unit": row["unit"],
+            "normalisation_basis": row["normalisation_basis"],
             "analysis_name": row["analysis_name"],
             "analysis_version": row["analysis_version"],
             "parameter_hash": row["parameter_hash"],

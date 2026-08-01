@@ -1,7 +1,8 @@
 """Invariant 1 and PO-06, enforced rather than documented.
 
 `AI_CONTRACT.md` invariant 1 requires that an adapter *cannot* emit an incompatible origin/mode pair
-and that a test prove it. PO-06 requires a record resolving to neither root, or to both, to fail.
+and that a test prove it. PO-06 requires a record to resolve to exactly one lineage root — enforced
+on `Observation` and `DerivedMetric`, since an attempt that read nothing has no root to cite.
 """
 
 from __future__ import annotations
@@ -78,14 +79,18 @@ def test_synthetic_replay_is_admissible_so_a_fixture_run_need_not_lie(  # ADR-01
     assert _environment("synthetic", "replay").is_synthetic
 
 
-def test_provenance_with_no_root_is_rejected() -> None:
-    with pytest.raises(ValidationError, match="exactly one root"):
-        Provenance(environment=_environment(), code_version="1", config_hash="x")
+def test_provenance_with_no_root_is_allowed_only_because_a_failure_read_nothing() -> None:
+    """An attempt that timed out, met an unavailable location, or lost its lease has no member to
+    cite. Inventing one would put a false path in the record, so the root is required where PO-06
+    actually requires it — on an observation and on a derived metric — not on this type."""
+    provenance = Provenance(environment=_environment(), code_version="1", config_hash="x")
+
+    assert not provenance.has_root
 
 
 def test_provenance_with_both_roots_is_rejected() -> None:
-    """Two roots is as unusable as none: the metric resolves ambiguously (PO-06)."""
-    with pytest.raises(ValidationError, match="exactly one root"):
+    """A record derives from observed data or from generated data, never both (PO-06)."""
+    with pytest.raises(ValidationError, match="two roots"):
         Provenance(
             environment=_environment("observed", "replay"),
             source_record=_source(),

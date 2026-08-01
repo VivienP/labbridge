@@ -8,13 +8,21 @@ transaction. That is the window the worker's step ordering exists to make surviv
 storage, nothing in the database references them, and the job is still leased by a process that will
 never come back.
 
-No production code is modified to make this testable. The crash comes from a store wrapper that
-raises after a successful upload, which is exactly what a process death after `put_and_verify` looks
-like from the database's point of view.
+The worker runs as a **real subprocess** and is killed, because that is the only way to cross a
+process boundary. An exception raised inside the worker is caught by the worker's own handlers and
+recorded as a `failed_retryable` outcome — correct behaviour, and precisely why it proves nothing
+about a process that stops existing (`AI_CONTRACT.md` §9).
+
+No production code is modified to make this testable: the subprocess entry point in
+`worker_subprocess.py` wraps the object store, and the store it wraps is the real one.
 """
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from decimal import Decimal
@@ -32,7 +40,7 @@ from labbridge.infrastructure.her_ingestion.fixture import (
     build_fixture,
 )
 from labbridge.infrastructure.her_ingestion.provenance import write_document
-from labbridge.infrastructure.objectstore import S3ObjectStore, StoredObject
+from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
@@ -46,34 +54,50 @@ from labbridge.runtime.worker import Worker
 
 pytestmark = pytest.mark.integration
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEC = FixtureSpec(areas_per_library=6, seccm_areas_per_library=2)
 ONE = 1
 TWO_ATTEMPTS = 2
 
 
-class CrashAfterUpload:
-    """A store that writes the object and then the process dies.
+def _kill_a_worker_after_upload(fixture_root: Path, tmp_path: Path) -> None:
+    """Start a real worker process, wait until its object has landed, then kill it.
 
-    Delegates rather than fakes: the bytes really are uploaded and really are verified, so the
-    database is left in exactly the state a mid-flight death leaves it in.
+    Killed rather than signalled: the point is a process that stops existing between the upload and
+    the outcome transaction, leaving bytes in storage, a `pending` row, and a live lease held by
+    nobody.
     """
-
-    def __init__(self, inner: S3ObjectStore) -> None:
-        self._inner = inner
-        self.bucket = inner.bucket
-        self.uploads = 0
-
-    def put_and_verify(self, key: str, data: bytes, *, media_type: str) -> StoredObject:
-        self._inner.put_and_verify(key, data, media_type=media_type)
-        self.uploads += 1
-        message = "worker process died after the upload, before the outcome transaction"
-        raise RuntimeError(message)
-
-    def get(self, key: str) -> bytes:
-        return self._inner.get(key)
-
-    def exists(self, key: str) -> bool:
-        return self._inner.exists(key)
+    marker = tmp_path / "uploaded"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("worker_subprocess.py")),
+            str(fixture_root),
+            str(marker),
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src") + os.pathsep + str(REPO_ROOT)},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if marker.exists():
+                break
+            if process.poll() is not None:
+                _, err = process.communicate()
+                message = (
+                    f"worker subprocess exited before uploading: {err.decode(errors='replace')}"
+                )
+                raise AssertionError(message)
+            time.sleep(0.1)
+        else:  # pragma: no cover - only on a hung environment
+            message = "worker subprocess never reported an upload"
+            raise AssertionError(message)
+    finally:
+        process.kill()
+        process.wait(timeout=30)
 
 
 @pytest.fixture(scope="session")
@@ -146,18 +170,20 @@ def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -
 
 
 async def test_a_crash_after_upload_loses_no_outcome_and_creates_no_duplicate(
-    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+    migrated: Engine,
+    adapter: HerReplayAdapter,
+    object_store: S3ObjectStore,
+    campaign: uuid.UUID,
+    crash_fixture_root: Path,
+    tmp_path: Path,
 ) -> None:
     """The Slice 1 exit criterion. The first worker dies with the bytes uploaded and nothing in the
     database referencing them; after the lease lapses a second worker completes the work, and the
     campaign ends with exactly one accepted outcome."""
     work_item_id = _submit(migrated, campaign, adapter)
-    crashing = Worker(migrated, adapter, CrashAfterUpload(object_store), name="worker-doomed")
+    _kill_a_worker_after_upload(crash_fixture_root, tmp_path)
 
-    with pytest.raises(RuntimeError, match="died after the upload"):
-        await crashing.run_once()
-
-    # Nothing was accepted, and the job is still held by a worker that will never return.
+    # Nothing was accepted, and the job is still held by a process that no longer exists.
     with migrated.begin() as connection:
         assert _accepted(connection, work_item_id) == 0
         job_id = connection.execute(
@@ -184,16 +210,18 @@ async def test_a_crash_after_upload_loses_no_outcome_and_creates_no_duplicate(
 
 
 async def test_the_orphaned_object_is_visible_as_pending_rather_than_lost(
-    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+    migrated: Engine,
+    adapter: HerReplayAdapter,
+    object_store: S3ObjectStore,
+    campaign: uuid.UUID,
+    crash_fixture_root: Path,
+    tmp_path: Path,
 ) -> None:
     """Why the upload comes first. The bytes are in storage and a `pending` row points at them, so a
     sweep can find the orphan. Had the row been written only after the upload, the object would be
     unreferenced by anything and unfindable without listing the whole bucket."""
     _submit(migrated, campaign, adapter)
-    crashing = Worker(migrated, adapter, CrashAfterUpload(object_store), name="worker-doomed")
-
-    with pytest.raises(RuntimeError):
-        await crashing.run_once()
+    _kill_a_worker_after_upload(crash_fixture_root, tmp_path)
 
     with migrated.begin() as connection:
         pending = connection.execute(

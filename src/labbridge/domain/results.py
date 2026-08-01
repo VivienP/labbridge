@@ -98,6 +98,13 @@ class Observation(_Model):
     def _a_rejected_observation_states_why(self) -> Self:
         if self.status in ("corrupted", "invalidated") and not self.status_reason:
             raise ValueError(f"observation status `{self.status}` requires a status_reason")
+        if not self.provenance.has_root:
+            # An observation exists because bytes arrived, and bytes always came from somewhere.
+            # PO-06 is enforced here rather than on `Provenance`, so a failure record that read
+            # nothing can still carry provenance without inventing a source it never touched.
+            raise ValueError(
+                "an observation must resolve to a lineage root (docs/DATA_STRATEGY.md section 6)"
+            )
         return self
 
 
@@ -216,6 +223,8 @@ class DerivedMetric(_Model):
     def _a_non_accepted_metric_states_why(self) -> Self:
         if self.quality_status != "accepted" and not self.quality_reason:
             raise ValueError(f"quality_status `{self.quality_status}` requires a quality_reason")
+        if not self.provenance.has_root:
+            raise ValueError("a derived metric must resolve to exactly one lineage root (PO-06)")
         return self
 
 

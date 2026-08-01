@@ -20,6 +20,7 @@ hide a source change.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -28,6 +29,7 @@ from pathlib import Path
 from typing import ClassVar, Final, Literal
 
 from labbridge.domain.candidates import HerCandidate
+from labbridge.domain.canonical import canonical_bytes
 from labbridge.domain.identity import EnvironmentRef
 from labbridge.domain.provenance import SourceRecord, SourceType, SyntheticRoot
 from labbridge.infrastructure.her_ingestion.fixture import FIXTURE_MANIFEST_FILENAME
@@ -92,9 +94,10 @@ class UnsupportedSchemaError(ReplayAdapterError):
 
 #: Which member is which kind of value, matched most specific first. This mapping is the whole
 #: defence against F-046: measured EDX and GP-predicted XPS are structurally identical files, so the
-#: only thing that separates them is the path. Predicted is tested before measured: the predicted
-#: filename ends in the measured one's stem plus a suffix, so reversing the order would silently
-#: label every model output as a measurement.
+#: only thing that separates them is the path. The order is most-specific-first as a matter of
+#: discipline rather than necessity: `endswith` makes these four suffixes mutually exclusive today,
+#: so reordering is currently inert — but the moment a prefix or substring match is introduced the
+#: order becomes load-bearing, and a predicted file classified as measured is F-046 exactly.
 _SOURCE_TYPE_BY_SUFFIX: Final[tuple[tuple[str, SourceType], ...]] = (
     ("_XPS_predicted.csv", "predicted_xps"),
     ("_XPS.csv", "measured_xps"),
@@ -293,7 +296,7 @@ class HerReplayAdapter:
             return zf.read(member)
 
     def source_record_for(
-        self, member_path: str | None, *, doi: str = PINNED_DOI, record_version: str = "0"
+        self, member_path: str, *, doi: str = PINNED_DOI, record_version: str = "0"
     ) -> SourceRecord:
         """The observed lineage root for a successful replay.
 
@@ -302,25 +305,44 @@ class HerReplayAdapter:
         determination would conflate them (F-046). An unclassifiable member raises rather than
         defaulting to a measured type.
 
-        `member_path=None` is a failure with no member to cite — the archive is known, the member
-        is not. It records the archive itself, which is the truthful answer, rather than inventing a
-        path or omitting the root a lineage traversal will look for.
+        A member path is required. An earlier version accepted None for a failure with no member
+        and filled `source_type` with `measured_lsv`, which made every terminal failure persist a
+        record asserting that a zip archive is a measured LSV — and `SourceRecord.is_measured`
+        returned True for it, so any "measurements only" filter would have admitted it.
         """
         return SourceRecord(
             doi=doi,
             record_version=record_version,
             source_filename=self._archive.name,
             source_sha256=digest(self._archive.read_bytes()),
-            source_path=member_path or self._archive.name,
-            source_type=classify_member(member_path) if member_path else "measured_lsv",
+            source_path=member_path,
+            source_type=classify_member(member_path),
             parsing_version=ADAPTER_VERSION,
         )
 
-    def synthetic_root(self, *, generator: str, generator_version: str, seed: int) -> SyntheticRoot:
-        """The synthetic lineage root for a fixture-backed replay."""
-        return SyntheticRoot(
-            generator=generator,
-            generator_version=generator_version,
-            seed=seed,
-            config_hash=digest(self._archive.read_bytes()),
-        )
+    def synthetic_root(self) -> SyntheticRoot:
+        """The synthetic lineage root, read from the fixture's own manifest.
+
+        Every field comes from `fixture_manifest.json`, which the generator wrote. An earlier
+        version took the generator name, its version and the seed as arguments, and the worker
+        passed a default seed of 0, the *adapter's* version, and the digest of the generated
+        archive as the configuration hash. All three were wrong, and the root looked complete: rerun
+        from it and you get different bytes. `docs/DATA_STRATEGY.md` §6 wants the configuration that
+        produced the output, not the output.
+        """
+        manifest_path = self._root / FIXTURE_MANIFEST_FILENAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        try:
+            return SyntheticRoot(
+                generator=manifest["generator"],
+                generator_version=manifest["generator_version"],
+                seed=int(manifest["seed"]),
+                config_hash=digest(canonical_bytes(manifest.get("spec", manifest))),
+                component_versions=(("schema_version", str(manifest["schema_version"])),),
+            )
+        except KeyError as error:
+            message = (
+                f"{manifest_path} does not record {error}; the synthetic lineage root cannot be "
+                "reconstructed and must not be invented"
+            )
+            raise UnknownRootError(message) from error

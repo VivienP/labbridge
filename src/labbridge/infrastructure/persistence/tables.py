@@ -324,6 +324,11 @@ derived_metrics = Table(
     Column("value_numeric", Numeric, nullable=True),
     Column("value", JSONB, nullable=False),
     Column("unit", String(64), nullable=False),
+    #: How the value was normalised, when the unit alone does not say. `A/cm^2` states the
+    #: dimension; it does not say *which* cm² — geometric, meniscus contact, or ECSA — and the
+    #: archive states none of them. Encoding it into the unit string would break every unit
+    #: comparison, so it rides its own column and reaches the exported bundle.
+    Column("normalisation_basis", String(32), nullable=True),
     Column("uncertainty", JSONB, nullable=True),
     Column("analysis_name", String(128), nullable=False),
     Column("analysis_version", String(32), nullable=False),

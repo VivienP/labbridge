@@ -5,10 +5,12 @@ where it is because of what happens when the process dies immediately after it:
 
 1. **claim** — atomic, leased, attempt counted;
 2. **stage the object first, outside the outcome transaction.** An object written but never
-   referenced is an orphan, which a sweep can find and which costs storage. A row referencing an
-   object that was never written is a dangling pointer to evidence that does not exist, and no sweep
-   can repair it. Orphans are the cheaper failure, so the upload happens before the commit
-   (`docs/SPEC.md` §4.2, F-028);
+   referenced is an orphan; a row referencing an object that was never written is a dangling pointer
+   to evidence that does not exist. The first is recoverable in principle and the second is not, so
+   the upload happens before the commit (`docs/SPEC.md` §4.2, F-028). **No sweep exists yet**: the
+   `pending` row records the orphan so one can find it later, and `storage_objects.state='orphaned'`
+   is declared in the schema and written by nothing. That is a Slice 2 gap, not a delivered
+   reconciliation;
 3. **one transaction** for the observation, the outcome, the event, the object's committed state,
    and the job's completion. Either the result is accepted with all of its evidence, or none of it
    is and the job is retried — never a budget spent with no outcome, nor an outcome with no event
@@ -35,6 +37,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from labbridge.analysis import lsv
 from labbridge.domain.candidates import HerCandidate
 from labbridge.domain.provenance import Provenance, SourceRecord, SyntheticRoot
+from labbridge.domain.quantities import UNKNOWN_UNIT
 from labbridge.domain.results import QuantityDescriptor, metric_id, observation_id
 from labbridge.environments.her_replay import (
     AdapterSuccess,
@@ -171,11 +174,16 @@ class Worker:
         self._fixture_seed = fixture_seed
         self._clock = clock
 
-    async def run_once(self) -> WorkOutcome | None:
+    async def run_once(self) -> WorkOutcome | None:  # noqa: PLR0911
         """Claim and process one job, or return None when the queue is empty.
 
         The claim commits on its own so the lease is visible to every other worker immediately. A
         claim held open until the work finished would serialise the whole pool behind one job.
+
+        Many exits, on purpose: empty queue, environment mismatch, unsupported schema, any other
+        adapter error, unavailable location, lease lost, outcome-write failure, success. Each one
+        writes a different record, and collapsing them would be collapsing the distinctions the
+        evidence depends on.
         """
         with self._engine.begin() as connection:
             lease = jobs.claim(connection, owner=self.name)
@@ -184,6 +192,7 @@ class Worker:
             jobs.mark_running(connection, lease)
             campaign_id, origin, mode = _campaign_of(connection, lease.work_item_id)
             candidate = _candidate_of(connection, lease.work_item_id)
+            mismatch = self._environment_mismatch(origin, mode)
             ordinal = _next_ordinal(connection, lease.work_item_id)
             attempt_id = uuid.uuid4()
             connection.execute(
@@ -198,21 +207,121 @@ class Worker:
                 )
             )
 
+        if mismatch is not None:
+            # The campaign declared an origin and mode the adapter cannot serve. Writing the
+            # campaign's label onto bytes the adapter says are something else is the conflation
+            # invariant 1 forbids: an `observed` row whose lineage resolves to a synthetic root,
+            # and a bundle manifest that then declares the whole campaign observed. Refuse instead.
+            # Recorded under the *campaign's* pair, which is what the composite foreign key
+            # requires and what is honest here: this outcome produced no bytes, so its origin
+            # column describes the campaign's declared environment rather than any data. The
+            # adapter's pair is named in the summary. What matters is that no observation and no
+            # metric is written at all — the refusal happens before anything is read.
+            return self._record_failure(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                "environment_mismatch",
+                mismatch,
+                retryable=False,
+                category="policy",
+            )
+
+        # From here the columns are the *adapter's* pair, not the campaign's. They are equal — the
+        # check above guarantees it — but taking them from the adapter says which one is the truth
+        # about the bytes.
+        origin = self._adapter.environment.data_origin
+        mode = self._adapter.environment.execution_mode
+
         try:
             result = await self._adapter.execute(candidate)
         except UnsupportedSchemaError as error:
-            return self._record_terminal_failure(
-                lease, attempt_id, campaign_id, origin, mode, error.code, str(error)
+            # F-019: an unrecognised schema will not parse on the next attempt either.
+            return self._record_failure(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                error.code,
+                str(error),
+                retryable=False,
+            )
+        except Exception as error:
+            # Every other failure. Catching broadly is deliberate: an exception that escapes here
+            # leaves the attempt `running`, the job leased by a process that is about to move on,
+            # and no record of why — which is the evidence loss invariant 2 forbids. The failure is
+            # classified retryable because a transport or storage fault usually is; a terminal one
+            # is recognised above by its type, not guessed at from a message.
+            return self._record_failure(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                "adapter_error",
+                f"{type(error).__name__}: {error}",
+                retryable=True,
+                category="transport",
+                exception_type=type(error).__name__,
             )
 
         if isinstance(result, AdapterUnavailable):
             # F-017: the location was never measured. Terminal, not retryable — trying again will
             # not make an unmeasured location measured.
-            return self._record_terminal_failure(
-                lease, attempt_id, campaign_id, origin, mode, result.failure_code, result.reason
+            return self._record_failure(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                result.failure_code,
+                result.reason,
+                retryable=False,
+                # Not `instrument`: the archive omits 20 areas per library from SECCM by design,
+                # so nothing failed. Recording an instrument fault would assert a breakage the
+                # source records as a deliberate exclusion (F-017).
+                category="policy",
             )
 
-        return self._record_success(lease, attempt_id, campaign_id, origin, mode, result)
+        try:
+            return self._record_success(lease, attempt_id, campaign_id, origin, mode, result)
+        except jobs.LeaseLostError:
+            # The lease lapsed while the adapter ran and another worker owns the job now. The
+            # result is correctly rejected — but the rejection must leave a record, or the attempt
+            # vanishes from the campaign's history (F-008). Written on its own connection, because
+            # the transaction that failed has already rolled back.
+            return self._record_lease_lost(lease, attempt_id, campaign_id, origin, mode)
+        except Exception as error:
+            return self._record_failure(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                "outcome_write_failed",
+                f"{type(error).__name__}: {error}",
+                retryable=True,
+                exception_type=type(error).__name__,
+            )
+
+    def _environment_mismatch(self, origin: str, mode: str) -> str | None:
+        """Whether the campaign's declared pair disagrees with what the adapter is actually reading.
+
+        The campaign row is a client's declaration; the adapter's pair came from the evidence on
+        disk (ADR-010). When they differ the declaration is wrong, and the only safe answer is to
+        refuse: relabelling the bytes to match the declaration is the origin conflation, and
+        relabelling the campaign to match the adapter would rewrite a client's intent.
+        """
+        environment = self._adapter.environment
+        if (origin, mode) == (environment.data_origin, environment.execution_mode):
+            return None
+        return (
+            f"campaign declares {origin}+{mode} but the adapter reads "
+            f"{environment.data_origin}+{environment.execution_mode} from its source root"
+        )
 
     def _provenance(self, result: AdapterSuccess | None) -> Provenance:
         """The lineage root, chosen by what the adapter is actually reading.
@@ -221,23 +330,19 @@ class Worker:
         (ADR-010). Nothing here decides it, which is why a fixture-backed run cannot be recorded as
         observed however the campaign row is configured.
 
-        A failure carries no `AdapterSuccess`, so an observed-origin failure has no member path to
-        cite. Provenance is still required — §3.5 makes it mandatory on every outcome — so the
-        source record names the archive without a member, which is exactly what is known.
+        A failure that read nothing has no root, and `Provenance` now allows that: there is no
+        member to cite and no generated configuration to name, so inventing either would put a
+        false path in the record. The root is required where PO-06 actually requires it — on an
+        observation and on a derived metric — and both validate it.
         """
         environment = self._adapter.environment
         source: SourceRecord | None = None
         synthetic: SyntheticRoot | None = None
-        if environment.data_origin == "observed":
-            source = self._adapter.source_record_for(
-                result.source_path if result is not None else None
-            )
-        else:
-            synthetic = self._adapter.synthetic_root(
-                generator=FIXTURE_GENERATOR,
-                generator_version=self._adapter.environment.adapter_version,
-                seed=self._fixture_seed,
-            )
+        if result is not None:
+            if environment.data_origin == "observed":
+                source = self._adapter.source_record_for(result.source_path)
+            else:
+                synthetic = self._adapter.synthetic_root()
         return Provenance(
             environment=environment,
             source_record=source,
@@ -270,8 +375,9 @@ class Worker:
         uri = f"s3://{self._store.bucket}/{key}"
         with self._engine.begin() as connection:
             # `pending` first, in its own transaction: if the process dies during the upload, this
-            # row is what lets a sweep find the orphan. `DO NOTHING` because a retry of the same
-            # bytes writes the same content-addressed key, and that is a no-op rather than a clash.
+            # row is the only record that the object exists, and is what a future sweep would need.
+            # Nothing sweeps today. `DO NOTHING` because a retry of the same bytes writes the same
+            # content-addressed key, and that is a no-op rather than a clash.
             connection.execute(
                 pg_insert(storage_objects)
                 .values(
@@ -351,7 +457,12 @@ class Worker:
             )
             connection.execute(
                 work_items.update()
-                .where(work_items.c.work_item_id == lease.work_item_id)
+                .where(
+                    and_(
+                        work_items.c.work_item_id == lease.work_item_id,
+                        work_items.c.state.in_(("queued", "quarantined")),
+                    )
+                )
                 .values(state="accepted", updated_at=func.now())
             )
             append_event(
@@ -366,7 +477,7 @@ class Worker:
 
         return WorkOutcome(lease.job_id, "succeeded", observation_id=identity)
 
-    def _record_terminal_failure(
+    def _record_failure(
         self,
         lease: jobs.Lease,
         attempt_id: uuid.UUID,
@@ -375,7 +486,19 @@ class Worker:
         mode: str,
         failure_code: str,
         summary: str,
+        *,
+        retryable: bool,
+        category: str = "instrument",
+        exception_type: str | None = None,
     ) -> WorkOutcome:
+        """Record why an attempt did not produce an observation.
+
+        `category` is passed rather than hardcoded: an excluded location is not an instrument
+        fault. The archive omits 20 areas per library from SECCM by design, and recording that as
+        `instrument` would assert the instrument failed where the source records that no
+        measurement was attempted (F-017).
+        """
+        status = "failed_retryable" if retryable else "failed_terminal"
         provenance = self._provenance(None)
         with self._engine.begin() as connection:
             self._write_outcome(
@@ -385,25 +508,34 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                status="failed_terminal",
+                status=status,
                 provenance=provenance,
                 failure={
                     "failure_code": failure_code,
-                    "category": "instrument",
-                    "retryable": False,
+                    "category": category,
+                    "retryable": retryable,
                     "summary": summary,
+                    "exception_type": exception_type,
                 },
             )
             connection.execute(
-                attempts.update()
-                .where(attempts.c.attempt_id == attempt_id)
-                .values(state="failed_terminal")
+                attempts.update().where(attempts.c.attempt_id == attempt_id).values(state=status)
             )
-            connection.execute(
-                work_items.update()
-                .where(work_items.c.work_item_id == lease.work_item_id)
-                .values(state="rejected", updated_at=func.now())
-            )
+            if not retryable:
+                # Guarded on the source state. An unconditional UPDATE would drive an already
+                # `accepted` item to `rejected` on a redelivery whose adapter now reports the
+                # location unavailable, and the projection would then contradict the observation
+                # it points at. `accepted` and `rejected` are terminal (docs/SPEC.md §7.2).
+                connection.execute(
+                    work_items.update()
+                    .where(
+                        and_(
+                            work_items.c.work_item_id == lease.work_item_id,
+                            work_items.c.state.in_(("queued", "quarantined")),
+                        )
+                    )
+                    .values(state="rejected", updated_at=func.now())
+                )
             # A failed attempt still consumed one, so the ledger records it. A budget that only
             # counted successes would let a campaign burn its allowance invisibly.
             _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
@@ -412,11 +544,66 @@ class Worker:
                 campaign_id=campaign_id,
                 aggregate_id=lease.work_item_id,
                 aggregate_type="work_item",
-                event_type="attempt.failed_terminal",
+                event_type=f"attempt.{status}",
                 payload={"failure_code": failure_code, "attempt_id": str(attempt_id)},
             )
-            jobs.fail_terminally(connection, lease, failure={"failure_code": failure_code})
-        return WorkOutcome(lease.job_id, "failed_terminal", failure_code=failure_code)
+            if retryable:
+                # Backoff applied by the database, and the attempt cap enforced there too, so a
+                # failing dependency is retried without becoming a retry storm.
+                jobs.schedule_retry(connection, lease, failure={"failure_code": failure_code})
+            else:
+                jobs.fail_terminally(connection, lease, failure={"failure_code": failure_code})
+        return WorkOutcome(lease.job_id, status, failure_code=failure_code)
+
+    def _record_lease_lost(
+        self,
+        lease: jobs.Lease,
+        attempt_id: uuid.UUID,
+        campaign_id: uuid.UUID,
+        origin: str,
+        mode: str,
+    ) -> WorkOutcome:
+        """F-008. The lease lapsed while the adapter ran, so this result is rejected — but the
+        rejection has to leave a record, or the attempt disappears from the campaign's history.
+
+        The job is deliberately not touched: it belongs to another worker now, and this one has no
+        standing to change its state.
+        """
+        provenance = self._provenance(None)
+        with self._engine.begin() as connection:
+            self._write_outcome(
+                connection,
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                status="lease_lost",
+                provenance=provenance,
+                failure={
+                    "failure_code": "lease_lost",
+                    "category": "worker",
+                    "retryable": False,
+                    "summary": "the lease expired during the adapter call and another worker "
+                    "claimed the job; this result was not accepted",
+                    "exception_type": None,
+                },
+            )
+            connection.execute(
+                attempts.update()
+                .where(attempts.c.attempt_id == attempt_id)
+                .values(state="lease_lost")
+            )
+            _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
+            append_event(
+                connection,
+                campaign_id=campaign_id,
+                aggregate_id=lease.work_item_id,
+                aggregate_type="work_item",
+                event_type="attempt.lease_lost",
+                payload={"attempt_id": str(attempt_id)},
+            )
+        return WorkOutcome(lease.job_id, "lease_lost", failure_code="lease_lost")
 
     def _write_metrics(
         self,
@@ -443,8 +630,10 @@ class Worker:
             (lsv.METRIC_CURRENT, analysis.current_extremum),
             (lsv.METRIC_POTENTIAL, analysis.potential_at_extremum),
         ):
-            if quantity is None:
-                continue
+            # A rejected analysis produces no value, and the row is written anyway with a null
+            # value and the reason. Skipping it left no record that the analysis had run at all,
+            # so a bundle reader could not tell "rejected, here is why" from "never attempted" —
+            # which is the misrepresentation this module's own docstring says it prevents (F-021).
             connection.execute(
                 derived_metrics.insert().values(
                     metric_id=metric_id(
@@ -458,9 +647,13 @@ class Worker:
                     observation_id=identity,
                     attempt_id=attempt_id,
                     name=name,
-                    value_numeric=quantity.value,
-                    value=quantity.model_dump(mode="json"),
-                    unit=quantity.unit,
+                    value_numeric=quantity.value if quantity else None,
+                    value=quantity.model_dump(mode="json") if quantity else {},
+                    unit=quantity.unit if quantity else UNKNOWN_UNIT,
+                    # The area the current density is normalised by. Carried onto the row and into
+                    # the bundle: a caveat reachable only by joining back to the observation is a
+                    # caveat a chart-builder will not join for.
+                    normalisation_basis=analysis.area_basis,
                     analysis_name=lsv.ANALYSIS_NAME,
                     analysis_version=lsv.ANALYSIS_VERSION,
                     parameter_hash=parameters,

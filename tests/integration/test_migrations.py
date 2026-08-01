@@ -122,8 +122,12 @@ def test_the_downgrade_refuses_rather_than_dropping_a_receipt(
     campaign_id, first_attempt, second_attempt = _two_attempts_sharing_content(engine)
 
     try:
+        # Target the revision *before* the guarded one: `downgrade(rev)` unwinds down *to* `rev`,
+        # so naming the guarded revision would stop just above it and never run its downgrade. A
+        # relative `-1` had the same problem once a later revision was added on top — it silently
+        # exercised that one instead.
         with pytest.raises(RuntimeError, match="shared by more than one attempt"):
-            command.downgrade(alembic_config, "-1")
+            command.downgrade(alembic_config, "32ec7ead3c65")
     finally:
         _clear_all(engine)
         command.upgrade(alembic_config, "head")

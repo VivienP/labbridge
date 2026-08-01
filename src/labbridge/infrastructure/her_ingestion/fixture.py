@@ -37,7 +37,7 @@ import io
 import random
 import zipfile
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Final
 
@@ -77,6 +77,9 @@ class FixtureManifest(_Record):
     #: Records produced from these bytes are synthetic. A fixture-backed run is not an observation,
     #: however faithfully it reproduces the observed schema.
     data_origin: str = "synthetic"
+    #: The configuration the generator ran with, so the lineage root can name the *configuration*
+    #: rather than a digest of the output it produced. Rerunning from this reproduces the bytes.
+    spec: dict[str, object] = Field(default_factory=dict)
     note: str = (
         "Independently generated, schema-compatible fixture. Contains no value from the HER "
         "archive. Not observed data and not a measurement."
@@ -117,10 +120,15 @@ def _closed_composition(rng: random.Random, count: int, decimals: int) -> list[s
     to about 100 by construction, which is not evidence that no other element is present.
 
     "About" is the point. Every value is rounded independently, so the row sums land near 100 rather
-    than on it — the archive's measured XPS rows sum to 99.9 through 100.2, and its EDX rows to
-    99.99 through 100.01. Forcing exact closure by absorbing the residue into the last column would
-    let a validation rule be calibrated to `== 100` and then reject real rows, the same way the
+    than on it. Forcing exact closure by absorbing the residue into the last column would let a
+    validation rule be calibrated to `== 100` and then reject real rows, the same way the
     strictly-negative current density did.
+
+    No archive row-sum range is quoted here. An earlier version quoted one; recomputation found it
+    wrong, and the number had come from an ad-hoc inspection rather than from
+    `dataset_inventory.json`, which records per-column extremes and no row sums at all.
+    `AI_CONTRACT.md` §7 does not admit a figure from memory, and this fixture does not need one:
+    what matters is that closure is approximate, not what the archive's exact spread is.
     """
     weights = [rng.uniform(1.0, 10.0) for _ in range(count)]
     total = sum(weights)
@@ -286,5 +294,6 @@ def build_fixture(root: Path, *, spec: FixtureSpec, generator_version: str) -> F
     return FixtureManifest(
         generator_version=generator_version,
         seed=spec.seed,
+        spec=asdict(spec),
         archives=tuple(written),
     )

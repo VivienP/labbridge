@@ -41,9 +41,10 @@ from sqlalchemy import (
 from labbridge.domain.lifecycle import JobState, check_job_transition
 from labbridge.infrastructure.persistence.tables import jobs
 
-#: How long a claim holds a job before the lease is reclaimable. Short enough that a dead worker
-#: does not strand work for long, long enough that a slow adapter call does not lose its lease
-#: mid-flight. The heartbeat extends it, so this is a floor on liveness, not a task timeout.
+#: How long a claim holds a job before the lease is reclaimable. `heartbeat` extends it — but the
+#: worker does not call `heartbeat` yet, so for the shipped runtime this is a hard cap on how long
+#: an adapter call may take before another worker may claim the same job. Stated rather than
+#: implied: the intent is a liveness floor, the delivered behaviour is a timeout.
 DEFAULT_LEASE_SECONDS: Final = 60
 #: Exponential, capped. A retry storm against a failing dependency is itself a failure mode.
 RETRY_BASE_SECONDS: Final = 2
@@ -299,9 +300,9 @@ def fail_terminally(
 def recover_expired_leases(connection: Connection) -> int:
     """Return every job whose lease has expired to the queue, and report how many.
 
-    This is what makes a killed worker recoverable: the job it held becomes claimable again once
-    its lease lapses, and the token it still holds is now stale, so it cannot complete behind the
-    new owner's back (F-005).
+    This is what *would* make a killed worker recoverable — but **nothing calls it in production**.
+    There is no sweeper and no worker loop, so today a killed worker strands its job until an
+    operator runs recovery by hand. The mechanism is here and tested; the schedule is not (F-005).
 
     A job that has already used its attempts is failed terminally instead of looping forever.
     """

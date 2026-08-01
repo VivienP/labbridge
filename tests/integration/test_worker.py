@@ -32,6 +32,7 @@ from labbridge.infrastructure.her_ingestion.provenance import write_document
 from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
+    attempts,
     budget_ledger,
     campaigns,
     derived_metrics,
@@ -390,3 +391,125 @@ async def test_every_attempt_appends_a_budget_entry_in_the_same_transaction(
         assert entry.kind == "consumed"
         assert entry.unit == "attempt"
         assert entry.reason
+
+
+async def test_a_campaign_declaring_the_wrong_origin_is_refused_not_relabelled(
+    migrated: Engine,
+    adapter: HerReplayAdapter,
+    object_store: S3ObjectStore,
+    purge_campaign: Callable[[Connection, uuid.UUID], None],
+) -> None:
+    """The conflation ADR-010 exists to prevent, at the one place it could still happen. The API
+    accepts a client-supplied `observed + replay`, which is admissible on its own; running it
+    against a fixture-backed adapter previously wrote observation rows labelled `observed` whose
+    lineage resolved to a synthetic root, and stamped `observed` into the bundle manifest."""
+    campaign_id = uuid.uuid4()
+    with migrated.begin() as connection:
+        connection.execute(
+            campaigns.insert().values(
+                campaign_id=campaign_id,
+                name="declares observed, adapter reads synthetic",
+                environment_id="her_auirrh",
+                adapter_version="1",
+                data_origin="observed",
+                execution_mode="replay",
+                state="active",
+                declaration={},
+                declaration_hash="0" * 64,
+                created_at=func.now(),
+                updated_at=func.now(),
+            )
+        )
+    try:
+        key = adapter.known_locations()[0]
+        work_item_id, _ = _submit(
+            migrated, campaign_id, _candidate(key.library_id, key.measurement_area_id)
+        )
+
+        outcome = await _worker(migrated, adapter, object_store).run_once()
+
+        assert outcome is not None
+        assert outcome.failure_code == "environment_mismatch"
+        with migrated.begin() as connection:
+            assert (
+                connection.execute(
+                    select(func.count())
+                    .select_from(observations)
+                    .where(observations.c.work_item_id == work_item_id)
+                ).scalar_one()
+                == 0
+            )
+            stored = connection.execute(
+                select(attempt_outcomes).where(attempt_outcomes.c.work_item_id == work_item_id)
+            ).one()
+            # The outcome carries the campaign's declared pair — it produced no bytes, so there
+            # is no data whose origin it could misstate — and the summary names what the adapter
+            # actually reads, which is the disagreement itself.
+            assert stored.data_origin == "observed"
+            assert stored.failure["category"] == "policy"
+            assert "synthetic+replay" in stored.failure["summary"]
+    finally:
+        with migrated.begin() as connection:
+            purge_campaign(connection, campaign_id)
+
+
+async def test_an_adapter_crash_still_records_an_outcome(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    """Invariant 2: every attempt produces a durable outcome. An exception that escaped left the
+    attempt `running`, the job leased by a process about to move on, and no record of why."""
+    key = adapter.known_locations()[0]
+    work_item_id, _ = _submit(
+        migrated, campaign, _candidate(key.library_id, key.measurement_area_id)
+    )
+
+    class Exploding:
+        environment = adapter.environment
+
+        def known_locations(self) -> object:
+            return adapter.known_locations()
+
+        async def execute(self, candidate: object) -> object:
+            message = "the instrument went away"
+            raise OSError(message)
+
+        def synthetic_root(self) -> object:
+            return adapter.synthetic_root()
+
+    worker = Worker(migrated, Exploding(), object_store, name="worker-doomed")  # type: ignore[arg-type]
+    outcome = await worker.run_once()
+
+    assert outcome is not None
+    assert outcome.status == "failed_retryable"
+    with migrated.begin() as connection:
+        stored = connection.execute(
+            select(attempt_outcomes).where(attempt_outcomes.c.work_item_id == work_item_id)
+        ).one()
+        attempt_state = connection.execute(
+            select(attempts.c.state).where(attempts.c.work_item_id == work_item_id)
+        ).scalar_one()
+    assert stored.failure["exception_type"] == "OSError"
+    assert stored.failure["retryable"] is True
+    assert attempt_state == "failed_retryable"
+
+
+async def test_an_unavailable_location_is_not_recorded_as_an_instrument_fault(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    """The archive omits 20 areas per library from SECCM by design. Recording that as `instrument`
+    would assert the instrument failed where the source records that nothing was attempted."""
+    measured = {
+        k.measurement_area_id for k in adapter.known_locations() if k.library_id == "Au-rich"
+    }
+    missing = next(
+        str(area) for area in range(1, SPEC.areas_per_library + 1) if str(area) not in measured
+    )
+    work_item_id, _ = _submit(migrated, campaign, _candidate("Au-rich", missing))
+
+    await _worker(migrated, adapter, object_store).run_once()
+
+    with migrated.begin() as connection:
+        stored = connection.execute(
+            select(attempt_outcomes).where(attempt_outcomes.c.work_item_id == work_item_id)
+        ).one()
+    assert stored.failure["category"] != "instrument"

@@ -6,9 +6,11 @@ observation hash, parsing version, and analysis version; or a synthetic root ide
 version, canonical configuration hash, seed, component-model versions, generated observation hash,
 and analysis version.
 
-`SourceRecord` and the seed are the two roots. Exactly one is present, and that is validated here
-rather than left to the caller: a record resolving to neither root, or to both, is a blocking defect
-(PO-06), and it is cheaper to make it unconstructable than to detect it later.
+`SourceRecord` and `SyntheticRoot` are the two roots. **At most one** is present, validated here:
+resolving to both is unconstructable. Resolving to *neither* is allowed only on this type, because
+an attempt that read nothing — a timeout, an unavailable location, a lost lease — has no member to
+cite and inventing one would put a false path in the record. The root is required where PO-06
+actually requires it: `Observation` and `DerivedMetric` both reject provenance without one.
 """
 
 from __future__ import annotations
@@ -93,13 +95,25 @@ class Provenance(_Model):
     #: The records this one was produced from. Empty for a root record.
     parent_ids: tuple[str, ...] = ()
 
+    @property
+    def has_root(self) -> bool:
+        """Whether this provenance resolves to a lineage root.
+
+        False only for an attempt that produced no observation — a timeout, an unavailable
+        location, a lost lease. There is no source member to cite because nothing was read, and
+        inventing one would put a false path in the record. `docs/DATA_STRATEGY.md` §6 requires a
+        root of every accepted *derived metric* and every accepted observation, which is where the
+        requirement is enforced; a failure record is not one of those.
+        """
+        return self.source_record is not None or self.synthetic_root is not None
+
     @model_validator(mode="after")
-    def _exactly_one_root(self) -> Self:
+    def _at_most_one_root(self) -> Self:
         roots = [self.source_record is not None, self.synthetic_root is not None]
-        if sum(roots) != 1:
+        if sum(roots) > 1:
             raise ValueError(
-                "provenance must resolve to exactly one root: a source_record for observed data "
-                "or a synthetic_root for generated data (docs/DATA_STRATEGY.md section 6, PO-06)"
+                "provenance resolves to two roots; a record derives from observed data or from "
+                "generated data, never both (docs/DATA_STRATEGY.md section 6, PO-06)"
             )
         if self.source_record is not None and self.environment.data_origin != "observed":
             raise ValueError("a source_record root requires data_origin=observed")

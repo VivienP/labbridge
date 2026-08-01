@@ -191,9 +191,11 @@ async def test_the_recorded_grid_coordinates_come_from_the_filename(fixture_root
 def test_a_fixture_backed_adapter_offers_a_synthetic_root_only(fixture_root: Path) -> None:
     adapter = HerReplayAdapter(fixture_root)
 
-    root = adapter.synthetic_root(generator="fixture", generator_version="0.1.0", seed=SPEC.seed)
+    root = adapter.synthetic_root()
 
     assert root.seed == SPEC.seed
+    assert root.generator == "labbridge.infrastructure.her_ingestion.fixture"
+    assert root.generator_version == "0.1.0"
     assert adapter.environment.data_origin == "synthetic"
 
 
@@ -239,12 +241,17 @@ async def test_the_source_record_carries_the_classified_type(fixture_root: Path)
     assert record.is_measured
 
 
-def test_a_failure_with_no_member_still_yields_a_lineage_root(fixture_root: Path) -> None:
-    """§3.5 makes provenance mandatory on every outcome, including one that read no member. The
-    archive is known even when the member is not, so that is what gets recorded."""
+def test_the_synthetic_root_is_reconstructable_from_the_manifest(fixture_root: Path) -> None:
+    """Every field comes from `fixture_manifest.json`, not from the worker's arguments. An earlier
+    version took the seed and version as parameters and the worker passed a default seed of 0 and
+    the adapter's version, so the recorded root looked complete and regenerated different bytes."""
     adapter = HerReplayAdapter(fixture_root)
 
-    record = adapter.source_record_for(None)
+    root = adapter.synthetic_root()
 
-    assert record.source_filename == "SECCM_dataset.zip"
-    assert record.source_path == "SECCM_dataset.zip"
+    assert root.seed == SPEC.seed
+    assert root.generator == "labbridge.infrastructure.her_ingestion.fixture"
+    # The configuration, not a digest of the output: the same spec hashes the same regardless of
+    # which directory the archives happen to sit in.
+    other = HerReplayAdapter(fixture_root)
+    assert other.synthetic_root().config_hash == root.config_hash

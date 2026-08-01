@@ -33,6 +33,11 @@ from labbridge.domain.quantities import UNKNOWN_UNIT, Quantity
 
 #: Bumped whenever the definition below changes. A new version produces new metric ids rather than
 #: silently reinterpreting the old ones.
+#:
+#: What the definition does *not* yet pin: the potential window. Every archive LSV ends near
+#: -0.845 V vs RHE, so this metric is in practice "the current at the end of the sweep" — and an
+#: archive revision sweeping further would change its meaning with no version movement. Recorded as
+#: a known limit rather than silently accepted.
 ANALYSIS_VERSION: Final = "1"
 ANALYSIS_NAME: Final = "labbridge_lsv_cathodic_extremum"
 #: The source's own fitted parameters use a different name, so the two can never merge (§3.6).
@@ -116,9 +121,11 @@ def analyse(payload: bytes, *, potential_unit: str, current_unit: str) -> LsvAna
 
     potential, current = min(samples, key=lambda pair: pair[1])
     if current >= 0:
-        # A sweep whose most extreme current is not cathodic is not a reduction sweep. Warned
-        # rather than rejected: the archive holds files that reach positive values near onset, and
-        # discarding them would lose real data (F-023 — a poor but valid signal still succeeded).
+        # No file in the archive reaches this branch: all 966 have a negative minimum, and the 46
+        # that touch positive current near onset still sweep cathodic and take the accepted path.
+        # It exists for a sweep that was truncated before onset or recorded on the opposite sign
+        # convention. Warned rather than rejected, because F-023 keeps a poor but valid signal a
+        # successful observation — the caller decides, the analysis does not discard.
         return LsvAnalysis(
             quality_status="warning",
             quality_reason=(
