@@ -7,9 +7,15 @@ returning 501.
 
 **Every mutating endpoint requires an idempotency key**, and the requirement is not decoration: a
 client that retries a submission after an ambiguous timeout must get the same campaign back, not a
-second one. The key is stored with a hash of the request body, so a key reused with a *different*
-body is a client bug and is reported as a conflict rather than silently returning the first result
-(F-001, F-002).
+second one. The key is stored with a canonical fingerprint of the request, so a key reused with a
+*different* body is a client bug and is reported as a conflict rather than silently returning the
+first result (F-001, F-002).
+
+**The key reservation is the first statement of the submission transaction**, written with
+`INSERT ... ON CONFLICT DO NOTHING`. That is what makes the uniqueness constraint decide which of
+two concurrent identical requests creates the campaign. A prior `SELECT` would let both through:
+each would find no record, each would create a campaign, and the loser would surface as a
+constraint violation the caller sees as a 500 (ADR-015).
 
 Errors use typed shapes with machine-readable codes, so a caller can branch on `code` rather than
 parsing prose.
@@ -17,16 +23,23 @@ parsing prose.
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from typing import Annotated, Any, Final
 
 from fastapi import FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy import Connection, Engine, create_engine, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from labbridge.domain.candidates import HerCandidate, candidate_id
-from labbridge.domain.canonical import canonical_bytes
+from labbridge.domain.idempotency import (
+    IdempotencyConflictError,
+    IdempotencyKeyError,
+    check_request_fingerprint,
+    normalise_idempotency_key,
+    request_fingerprint,
+    work_item_instruction_key,
+)
 from labbridge.domain.identity import ADMISSIBLE_PAIRS, DataOrigin, ExecutionMode
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import (
@@ -86,6 +99,56 @@ def _error(code: str, message: str, http_status: int) -> HTTPException:
     )
 
 
+def _replay(
+    connection: Connection, response: Response, *, key: str, request_hash: str
+) -> CampaignCreated:
+    """Answer a request whose key was already reserved, or refuse it as a conflict.
+
+    Reached only when the reservation above inserted nothing, which means a committed record holds
+    the key. `.one()` rather than `.one_or_none()` for that reason: had the holding transaction
+    rolled back, `ON CONFLICT DO NOTHING` would have inserted instead of returning nothing, so an
+    absent row here is a broken invariant and must fail loudly rather than be papered over. This
+    rests on READ COMMITTED, where each statement takes a fresh snapshot; under a stricter isolation
+    level PostgreSQL raises a serialisation failure rather than hiding the committed row.
+
+    A record that names no campaign is refused rather than dereferenced. The column is nullable for
+    records written before it existed, and the migration backfills it only where the campaign
+    survives — so the one reachable case is a replay of a key whose campaign is gone, which is a
+    typed conflict rather than a 500 from a null.
+    """
+    stored = connection.execute(
+        select(
+            idempotency_keys.c.request_hash,
+            idempotency_keys.c.campaign_id,
+            idempotency_keys.c.response,
+        ).where(
+            idempotency_keys.c.scope == SUBMIT_SCOPE,
+            idempotency_keys.c.idempotency_key == key,
+        )
+    ).one()
+    try:
+        check_request_fingerprint(key=key, stored=stored.request_hash, offered=request_hash)
+    except IdempotencyConflictError as error:
+        raise _error(
+            error.code,
+            "this Idempotency-Key was used with a different request body",
+            status.HTTP_409_CONFLICT,
+        ) from error
+    body: dict[str, Any] = stored.response or {}
+    if stored.campaign_id is None or "work_items" not in body:
+        raise _error(
+            "idempotency_record_unresolvable",
+            f"the record for Idempotency-Key {key!r} no longer names a campaign",
+            status.HTTP_409_CONFLICT,
+        )
+    response.status_code = status.HTTP_200_OK
+    return CampaignCreated(
+        campaign_id=stored.campaign_id,
+        work_items=int(body["work_items"]),
+        replayed=True,
+    )
+
+
 def create_app(engine: Engine | None = None) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
@@ -138,12 +201,10 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         the campaign never recorded — would leave jobs referencing a campaign that does not exist,
         and no retry could repair it.
         """
-        if not idempotency_key:
-            raise _error(
-                "idempotency_key_required",
-                "every mutating request requires an Idempotency-Key header",
-                status.HTTP_400_BAD_REQUEST,
-            )
+        try:
+            key = normalise_idempotency_key(idempotency_key)
+        except IdempotencyKeyError as error:
+            raise _error(error.code, str(error), status.HTTP_400_BAD_REQUEST) from error
         if (request.data_origin, request.execution_mode) not in ADMISSIBLE_PAIRS:
             raise _error(
                 "inadmissible_origin_mode",
@@ -152,34 +213,35 @@ def create_app(engine: Engine | None = None) -> FastAPI:
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
 
-        request_hash = hashlib.sha256(canonical_bytes(request.model_dump(mode="json"))).hexdigest()
+        declaration = request.model_dump(mode="json")
+        request_hash = request_fingerprint(declaration)
+        campaign_uuid = uuid.uuid4()
+        stored_response = {
+            "campaign_id": str(campaign_uuid),
+            "work_items": len(request.candidates),
+        }
 
         with _engine().begin() as connection:
-            existing = connection.execute(
-                select(idempotency_keys.c.request_hash, idempotency_keys.c.response).where(
-                    idempotency_keys.c.idempotency_key == idempotency_key
+            # First statement, deliberately. The unique key is the arbiter: a concurrent identical
+            # request blocks here until this transaction settles and then reads what it committed,
+            # rather than both requests finding nothing and both creating a campaign.
+            reserved = connection.execute(
+                pg_insert(idempotency_keys)
+                .values(
+                    scope=SUBMIT_SCOPE,
+                    idempotency_key=key,
+                    request_hash=request_hash,
+                    campaign_id=campaign_uuid,
+                    response=stored_response,
+                    created_at=func.now(),
                 )
+                .on_conflict_do_nothing(index_elements=["scope", "idempotency_key"])
+                .returning(idempotency_keys.c.idempotency_key)
             ).one_or_none()
-            if existing is not None:
-                if existing.request_hash != request_hash:
-                    # Same key, different body. Returning the first result would silently discard
-                    # this request; creating a second campaign would break the key's promise.
-                    raise _error(
-                        "idempotency_key_reused",
-                        "this Idempotency-Key was used with a different request body",
-                        status.HTTP_409_CONFLICT,
-                    )
-                response.status_code = status.HTTP_200_OK
-                stored: dict[str, Any] = existing.response or {}
-                return CampaignCreated(
-                    campaign_id=uuid.UUID(stored["campaign_id"]),
-                    work_items=int(stored["work_items"]),
-                    replayed=True,
-                )
+            if reserved is None:
+                return _replay(connection, response, key=key, request_hash=request_hash)
 
-            campaign_uuid = uuid.uuid4()
             correlation_id = uuid.uuid4()
-            declaration = request.model_dump(mode="json")
             connection.execute(
                 campaigns.insert().values(
                     campaign_id=campaign_uuid,
@@ -249,23 +311,16 @@ def create_app(engine: Engine | None = None) -> FastAPI:
                     connection,
                     campaign_id=campaign_uuid,
                     work_item_id=work_item_id,
-                    idempotency_key=f"{idempotency_key}:{candidate_id(candidate)}",
+                    # The instruction identity is the work item, not this request's token. A
+                    # redelivery of the same instruction is then recognisable as the same work
+                    # whatever delivery carries it.
+                    instruction_key=work_item_instruction_key(
+                        work_item_id=work_item_id, command_version=COMMAND_VERSION
+                    ),
                     command_version=COMMAND_VERSION,
                     correlation_id=correlation_id,
                     causation_id=work_item_event.event_id,
                 )
-            connection.execute(
-                idempotency_keys.insert().values(
-                    idempotency_key=idempotency_key,
-                    scope=SUBMIT_SCOPE,
-                    request_hash=request_hash,
-                    response={
-                        "campaign_id": str(campaign_uuid),
-                        "work_items": len(request.candidates),
-                    },
-                    created_at=func.now(),
-                )
-            )
 
         return CampaignCreated(
             campaign_id=campaign_uuid, work_items=len(request.candidates), replayed=False

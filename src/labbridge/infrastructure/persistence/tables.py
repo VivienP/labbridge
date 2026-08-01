@@ -8,10 +8,11 @@ exact SQL, atomic claims, and partial indexes. An identity map would add a layer
 and the guarantees it is trying to make.
 
 **The constraints are the point.** A rule enforced only in Python holds until the next writer — a
-migration, a repair script, an admin session. Three are therefore also enforced here:
+migration, a repair script, an admin session. Four are therefore also enforced here:
 
 * the admissible origin/mode pairs (ADR-010, invariant 1);
 * at most one accepted outcome per work item, by partial unique index (PO-02);
+* one campaign per scoped idempotency key, and one job per instruction key (ADR-015, PO-02);
 * event sequences unique and per aggregate (§5.1).
 
 A naming convention is declared so Alembic emits stable, comparable constraint names instead of
@@ -432,11 +433,33 @@ storage_objects = Table(
 idempotency_keys = Table(
     "idempotency_keys",
     metadata,
+    # The scope is part of the key, not decoration beside it. Two operations that each accept a
+    # caller-chosen token would otherwise collide on a token neither of them chose, and the second
+    # would be answered with the first one's response.
+    Column("scope", String(64), primary_key=True),
     Column("idempotency_key", String(255), primary_key=True),
-    Column("scope", String(64), nullable=False),
+    #: The canonical request fingerprint (`domain.idempotency.request_fingerprint`). Without it a
+    #: key is only a promise: the runtime could not tell a genuine retry from a key reused with a
+    #: different body, and would have to guess which of the two the caller meant.
     Column("request_hash", _HASH, nullable=False),
+    #: The aggregate the key produced. A column rather than a field inside `response`, so the
+    #: reference is typed, indexable, and checkable — the foreign key below is what stops a stored
+    #: response from naming a campaign that does not exist.
+    Column("campaign_id", UUID(as_uuid=True), nullable=True),
     Column("response", JSONB, nullable=True),
     *_timestamps("created_at"),
+    # Deferred on purpose. The reservation is the *first* statement of the submission transaction —
+    # that is what makes the uniqueness constraint, rather than a prior read, decide which of two
+    # concurrent identical requests creates the campaign. At that point the campaign row does not
+    # exist yet, so the reference can only be checked at commit.
+    ForeignKeyConstraint(
+        ["campaign_id"],
+        ["campaigns.campaign_id"],
+        name="fk_idempotency_keys_campaign_id_campaigns",
+        ondelete="RESTRICT",
+        deferrable=True,
+        initially="DEFERRED",
+    ),
 )
 
 budget_ledger = Table(

@@ -1,6 +1,6 @@
-"""The evidence bundle and the Slice 1 demonstration, end to end.
+"""The evidence bundle and the `labbridge demo her` run, end to end.
 
-`docs/ROADMAP.md` Slice 1 asks that `labbridge demo her` complete and that the resulting bundle
+The demonstration requires that `labbridge demo her` complete and that the resulting bundle
 verify. Both are exercised here against real PostgreSQL and MinIO, because a bundle built from a
 mocked database would prove nothing about what a campaign actually recorded.
 
@@ -85,7 +85,7 @@ def test_the_demonstration_produces_a_bundle_that_verifies(
     demo: tuple[Engine, Path, uuid.UUID],
     object_store: S3ObjectStore,
 ) -> None:
-    """The Slice 1 exit criterion, run rather than argued."""
+    """The whole path, run rather than argued."""
     _, bundle_path, _ = demo
 
     result = verify_bundle(bundle_path, mode=VerificationMode.FULL, object_store=object_store)

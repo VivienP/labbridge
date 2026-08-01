@@ -32,6 +32,7 @@ import pytest
 from sqlalchemy import Connection, Engine, func, select
 
 from labbridge.domain.candidates import HerCandidate, candidate_id
+from labbridge.domain.idempotency import work_item_instruction_key
 from labbridge.domain.quantities import Quantity
 from labbridge.environments.her_replay import HerReplayAdapter
 from labbridge.infrastructure.her_ingestion.fixture import (
@@ -218,7 +219,9 @@ def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -
             connection,
             campaign_id=campaign_id,
             work_item_id=work_item_id,
-            idempotency_key=f"crash:{uuid.uuid4().hex}",
+            instruction_key=work_item_instruction_key(
+                work_item_id=work_item_id, command_version="1"
+            ),
             command_version="1",
             correlation_id=campaign_event.correlation_id,
             causation_id=queued_event.event_id,

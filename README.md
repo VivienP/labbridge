@@ -136,6 +136,7 @@ or operational experiment proves it), or `deferred`.
 | HER replay adapter, with origin decided by the evidence on disk | `implemented` |
 | Object storage with read-back checksum verification and a pending/committed lifecycle | `implemented` |
 | Durable jobs with atomic claim, leases, and lease recovery | `implemented` |
+| Constraint-arbitrated idempotency for submission, enqueueing, and outcome acceptance | `implemented` |
 | Worker heartbeats and retry scheduling | `planned` |
 | Typed, version-checked event append with aggregate and campaign ordering | `implemented` |
 | Explicit legacy/incomplete event-stream boundary and validated replay input | `implemented` |
@@ -169,11 +170,20 @@ a manifest, and none has been released yet.
   and reports `partial`; it does not contact object storage. `--mode full` additionally checks every
   referenced object for existence, byte size, and SHA-256 and reports `complete` only when those checks
   pass.
-- Crash recovery is proven across an in-process exception, not across a real process boundary. That
-  is a weaker claim than `AI_CONTRACT.md` §9 requires for the guarantee.
-- At-least-once delivery with idempotent effect handling is the worker protocol. The constraint that
-  enforces at most one accepted outcome per work item is a partial unique index and is tested, but
-  the racing case is exercised sequentially rather than by two genuinely concurrent workers.
+- Crash recovery is proven across a real process boundary: the test starts a worker as a subprocess
+  and kills it between the object upload and the outcome transaction.
+- At-least-once delivery with idempotent effect handling is the worker protocol, and nothing here is
+  exactly-once. Duplicate submission, duplicate enqueueing, and duplicate acceptance are each decided
+  by a database constraint reached through a conflict-safe insert, and each is tested under real
+  concurrency against PostgreSQL. What is not covered: an accepted work item can still be re-executed
+  by a redelivery, which costs an adapter call and an object upload before the acceptance claim
+  refuses it. Suppression is proven; avoiding the wasted execution is not attempted.
+- **A suppressed duplicate delivery records no observation for the bytes it received**, on the
+  premise that they are identical to the accepted delivery's and therefore already retained at the
+  same content-addressed key. Nothing verifies that premise — the suppressed outcome stores no digest
+  of its own — so two reads of one location that disagreed would leave bytes behind a `pending`
+  object row with nothing pointing at them. It also appends no budget-ledger entry, so the ledger
+  under-counts adapter calls by one per suppressed delivery.
 - The acquired HER archives and the generated fixture are git-ignored. A clean checkout has no data
   until `labbridge fetch-her` or `labbridge build-her-fixture` produces it.
 - The integration suite requires the PostgreSQL and MinIO services from `docker-compose.yml`, and

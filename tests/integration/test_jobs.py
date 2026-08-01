@@ -17,13 +17,16 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from threading import Barrier
+from typing import Any
 
 import pytest
 from sqlalchemy import Connection, Engine, delete, func, select
 
+from labbridge.domain.idempotency import InstructionConflictError
 from labbridge.infrastructure.persistence.tables import campaigns, events, jobs, work_items
 from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import (
+    EnqueuedJob,
     LeaseLostError,
     claim,
     complete,
@@ -40,6 +43,9 @@ pytestmark = pytest.mark.integration
 
 ATTEMPTS_ALLOWED = 3
 SECOND_ATTEMPT = 2
+ONE_JOB = 1
+ONE_EVENT = 1
+CONCURRENT_ENQUEUERS = 4
 
 
 def _candidate_payload() -> dict[str, object]:
@@ -180,9 +186,8 @@ def committed_work_item(migrated: Engine) -> Iterator[uuid.UUID]:
         connection.execute(delete(campaigns).where(campaigns.c.campaign_id == campaign_id))
 
 
-def _enqueue(connection: Connection, work_item_id: uuid.UUID, **kwargs: object) -> uuid.UUID:
-    idempotency_key = str(kwargs.pop("idempotency_key", f"key:{uuid.uuid4().hex}"))
-    context = connection.execute(
+def _job_context(connection: Connection, work_item_id: uuid.UUID) -> Any:
+    return connection.execute(
         select(
             work_items.c.campaign_id,
             events.c.correlation_id,
@@ -191,40 +196,148 @@ def _enqueue(connection: Connection, work_item_id: uuid.UUID, **kwargs: object) 
         .select_from(work_items.join(events, events.c.aggregate_id == work_items.c.work_item_id))
         .where(work_items.c.work_item_id == work_item_id, events.c.event_type == "work_item.queued")
     ).one()
-    job_id = enqueue(
+
+
+def _enqueue(connection: Connection, work_item_id: uuid.UUID, **kwargs: object) -> uuid.UUID:
+    instruction_key = str(kwargs.pop("instruction_key", f"key:{uuid.uuid4().hex}"))
+    context = _job_context(connection, work_item_id)
+    enqueued = enqueue(
         connection,
         campaign_id=context.campaign_id,
         work_item_id=work_item_id,
-        idempotency_key=idempotency_key,
+        instruction_key=instruction_key,
         command_version="1",
         correlation_id=context.correlation_id,
         causation_id=context.event_id,
         **kwargs,  # type: ignore[arg-type]
     )
-    assert job_id is not None
-    return job_id
+    assert enqueued.created
+    return enqueued.job_id
 
 
-def test_a_duplicate_idempotency_key_does_not_create_a_second_job(
+def test_a_duplicate_instruction_key_does_not_create_a_second_job(
     connection: Connection, work_item: uuid.UUID
 ) -> None:
-    """F-001: a resubmitted request is the same job, not a second one."""
+    """F-001: a resubmitted instruction is the same job, not a second one."""
     key = f"key:{uuid.uuid4().hex}"
-    first = _enqueue(connection, work_item, idempotency_key=key)
+    context = _job_context(connection, work_item)
+    first = _enqueue(connection, work_item, instruction_key=key)
     second = enqueue(
         connection,
-        campaign_id=connection.execute(
-            select(work_items.c.campaign_id).where(work_items.c.work_item_id == work_item)
-        ).scalar_one(),
+        campaign_id=context.campaign_id,
         work_item_id=work_item,
-        idempotency_key=key,
+        instruction_key=key,
         command_version="1",
         correlation_id=uuid.uuid4(),
         causation_id=uuid.uuid4(),
     )
 
-    assert first is not None
-    assert second is None
+    assert second.created is False
+    assert second.job_id == first
+    # The repeat produced no second job and no second `job.enqueued` event, so nothing downstream
+    # can execute the instruction twice.
+    assert (
+        connection.execute(
+            select(func.count()).select_from(jobs).where(jobs.c.work_item_id == work_item)
+        ).scalar_one()
+        == ONE_JOB
+    )
+    assert (
+        connection.execute(
+            select(func.count())
+            .select_from(events)
+            .where(events.c.aggregate_id == first, events.c.event_type == "job.enqueued")
+        ).scalar_one()
+        == ONE_EVENT
+    )
+
+
+def test_one_instruction_key_cannot_name_two_work_items(
+    connection: Connection, work_item: uuid.UUID
+) -> None:
+    """A caller that builds its own key rather than deriving it gets a typed error, not a job that
+    silently belongs to somebody else's work item."""
+    key = f"key:{uuid.uuid4().hex}"
+    context = _job_context(connection, work_item)
+    _enqueue(connection, work_item, instruction_key=key)
+    other_work_item = uuid.uuid4()
+    connection.execute(
+        work_items.insert().values(
+            work_item_id=other_work_item,
+            campaign_id=context.campaign_id,
+            candidate_id=f"cand:{uuid.uuid4().hex}",
+            candidate=_candidate_payload(),
+            state="queued",
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+
+    with pytest.raises(InstructionConflictError) as raised:
+        enqueue(
+            connection,
+            campaign_id=context.campaign_id,
+            work_item_id=other_work_item,
+            instruction_key=key,
+            command_version="1",
+            correlation_id=context.correlation_id,
+            causation_id=context.event_id,
+        )
+
+    assert raised.value.code == "instruction_key_reused"
+
+
+def test_concurrent_duplicate_enqueues_create_exactly_one_job(
+    migrated: Engine, committed_work_item: uuid.UUID
+) -> None:
+    """The constraint decides, not a prior read.
+
+    Four separate connections submit the same logical instruction at once. A check-then-insert lets
+    all four past the check, and three of them then collide in the index — an integrity error the
+    caller never asked for. Here exactly one insert wins and the other three read what it wrote.
+    """
+    key = f"key:{uuid.uuid4().hex}"
+    with migrated.begin() as setup:
+        context = _job_context(setup, committed_work_item)
+    barrier = Barrier(CONCURRENT_ENQUEUERS)
+
+    def enqueue_once() -> EnqueuedJob:
+        barrier.wait(timeout=30)
+        with migrated.begin() as connection:
+            return enqueue(
+                connection,
+                campaign_id=context.campaign_id,
+                work_item_id=committed_work_item,
+                instruction_key=key,
+                command_version="1",
+                correlation_id=context.correlation_id,
+                causation_id=context.event_id,
+            )
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_ENQUEUERS) as pool:
+        futures = [pool.submit(enqueue_once) for _ in range(CONCURRENT_ENQUEUERS)]
+        results = [future.result(timeout=60) for future in futures]
+
+    assert sum(1 for result in results if result.created) == ONE_JOB
+    assert len({result.job_id for result in results}) == ONE_JOB
+    with migrated.begin() as connection:
+        assert (
+            connection.execute(
+                select(func.count()).select_from(jobs).where(jobs.c.idempotency_key == key)
+            ).scalar_one()
+            == ONE_JOB
+        )
+        assert (
+            connection.execute(
+                select(func.count())
+                .select_from(events)
+                .where(
+                    events.c.aggregate_id == results[0].job_id,
+                    events.c.event_type == "job.enqueued",
+                )
+            ).scalar_one()
+            == ONE_EVENT
+        )
 
 
 def test_claiming_marks_the_job_leased_and_counts_the_attempt(

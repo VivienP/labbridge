@@ -33,6 +33,7 @@ from labbridge.infrastructure.persistence.tables import (
     campaigns,
     derived_metrics,
     events,
+    idempotency_keys,
     jobs,
     observations,
     work_items,
@@ -121,6 +122,10 @@ _PURGE_ORDER: Final = (
     (budget_ledger, "campaign"),
     (events, "campaign"),
     (work_items, "campaign"),
+    # Before the campaign it references. The foreign key is `DEFERRABLE INITIALLY DEFERRED`, but
+    # that defers only the insert side: `ON DELETE RESTRICT` is checked at the delete itself, so a
+    # campaign removed while an idempotency record still names it fails there, not at commit.
+    (idempotency_keys, "campaign"),
     (campaigns, "self"),
 )
 

@@ -18,9 +18,12 @@ where it is because of what happens when the process dies immediately after it:
 4. **the job completes inside that same transaction.** Marking the job done in a separate commit
    would leave a window where the job is finished but the outcome is not recorded.
 
-Delivery is at least once. A redelivered job that finds its work item already succeeded records
-`duplicate_suppressed` rather than a second accepted outcome — the partial unique index is what
-makes that safe, and this code is what makes it graceful (PO-02).
+Delivery is at least once. Acceptance is not: the first write inside that transaction is a claim on
+the work item's single accepted outcome, and the partial unique index decides it. A delivery that
+loses the claim records `duplicate_suppressed` and writes no observation, no metric, no budget
+entry, and no acceptance event. The index is the arbiter and this code only reads its answer — a
+"has it already succeeded?" query would let two concurrent deliveries past together (PO-02,
+ADR-015).
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final
 
-from sqlalchemy import Connection, Engine, and_, func, select
+from sqlalchemy import Connection, Engine, and_, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from labbridge.analysis import lsv
@@ -90,20 +93,10 @@ def _object_key(campaign_id: uuid.UUID, digest: str) -> str:
     return f"observations/{campaign_id}/{digest}"
 
 
-def _already_succeeded(connection: Connection, work_item_id: uuid.UUID) -> bool:
-    return (
-        connection.execute(
-            select(func.count())
-            .select_from(attempt_outcomes)
-            .where(
-                and_(
-                    attempt_outcomes.c.work_item_id == work_item_id,
-                    attempt_outcomes.c.status == "succeeded",
-                )
-            )
-        ).scalar_one()
-        > 0
-    )
+#: The arbiter of acceptance: `uq_attempt_outcomes_one_success_per_work_item`, inferred by the
+#: columns and predicate it was declared with. Naming the predicate is what lets `ON CONFLICT` reach
+#: a *partial* unique index rather than the primary key.
+_ONE_SUCCESS_PER_WORK_ITEM = text("status = 'succeeded'")
 
 
 def _next_ordinal(connection: Connection, work_item_id: uuid.UUID) -> int:
@@ -469,6 +462,67 @@ class Worker:
             config_hash=self._adapter.environment.adapter_version,
         )
 
+    def _claim_acceptance(
+        self,
+        connection: Connection,
+        lease: jobs.Lease,
+        attempt_id: uuid.UUID,
+        campaign_id: uuid.UUID,
+        origin: str,
+        mode: str,
+        provenance: Provenance,
+    ) -> bool:
+        """Try to become the accepted outcome for this work item. Report whether it worked.
+
+        Two deliveries can reach this line at once, having each run the adapter and staged their
+        bytes. Exactly one may be accepted (PO-02), and the decision belongs to the partial unique
+        index rather than to either worker: `ON CONFLICT DO NOTHING` waits for the other insert to
+        settle and then reports what actually happened, so the loser learns it lost instead of
+        raising an integrity error the caller has to interpret.
+
+        The row is written with no observation because none exists yet — the observation must not
+        be written by a delivery that turns out to have lost. The winner closes the reference in
+        the same transaction; the column is nullable exactly for this window, and the schema's
+        `observation_only_when_bytes_arrived` check permits it.
+
+        The losing delivery writes its own `duplicate_suppressed` outcome here rather than nothing:
+        an attempt that reached finalisation and was refused is a durable fact (invariant 2).
+        """
+        claimed = connection.execute(
+            pg_insert(attempt_outcomes)
+            .values(
+                attempt_id=attempt_id,
+                work_item_id=lease.work_item_id,
+                campaign_id=campaign_id,
+                status="succeeded",
+                observation_id=None,
+                failure=None,
+                cost={},
+                data_origin=origin,
+                execution_mode=mode,
+                provenance=provenance.model_dump(mode="json"),
+                started_at=func.now(),
+                finished_at=func.now(),
+            )
+            .on_conflict_do_nothing(
+                index_elements=["work_item_id"], index_where=_ONE_SUCCESS_PER_WORK_ITEM
+            )
+            .returning(attempt_outcomes.c.attempt_id)
+        ).one_or_none()
+        if claimed is not None:
+            return True
+        self._write_outcome(
+            connection,
+            lease,
+            attempt_id,
+            campaign_id,
+            origin,
+            mode,
+            status="duplicate_suppressed",
+            provenance=provenance,
+        )
+        return False
+
     def _record_success(
         self,
         lease: jobs.Lease,
@@ -511,17 +565,26 @@ class Worker:
 
         # Step 3 and 4: one transaction for the evidence, the event, and the job.
         with self._engine.begin() as connection:
-            if _already_succeeded(connection, lease.work_item_id):
-                self._write_outcome(
-                    connection,
-                    lease,
-                    attempt_id,
-                    campaign_id,
-                    origin,
-                    mode,
-                    status="duplicate_suppressed",
-                    provenance=provenance,
-                )
+            # The acceptance claim is the first write, and the partial unique index decides it. A
+            # prior "has this work item succeeded?" read would let two deliveries past together:
+            # both would find nothing, both would write an observation, and the loser would surface
+            # as an integrity error after the evidence had already been written (ADR-015, PO-02).
+            if not self._claim_acceptance(
+                connection, lease, attempt_id, campaign_id, origin, mode, provenance
+            ):
+                # No observation, no metric, no budget entry, no `observation.accepted` event. What
+                # it does leave is its own attempt and outcome, so the second delivery is visible
+                # rather than erased.
+                #
+                # The bytes this delivery received are retained only insofar as they are the same
+                # bytes the accepted delivery received: `_object_key` is content-addressed, so
+                # identical bytes land at the identical key the accepted observation already
+                # references. That premise holds while the adapter is deterministic and the source
+                # root is unchanged, and **the runtime does not verify it** — this row records no
+                # digest of its own. Bytes that diverged between two reads of one location would
+                # sit behind a `pending` object row with nothing pointing at them, which is short
+                # of what invariant 2 asks for. Stated rather than implied; closing it needs the
+                # received digest recorded here, which is not part of this change.
                 connection.execute(
                     attempts.update()
                     .where(attempts.c.attempt_id == attempt_id)
@@ -597,17 +660,23 @@ class Worker:
                     committed_at=func.now(),
                 )
             )
-            self._write_outcome(
-                connection,
-                lease,
-                attempt_id,
-                campaign_id,
-                origin,
-                mode,
-                status="succeeded",
-                provenance=provenance,
-                observation=identity,
+            # The claim above wrote the outcome without its observation, because the observation
+            # could not exist before the claim was decided. This closes the reference, in the same
+            # transaction, so no committed outcome is ever `succeeded` with nothing to point at.
+            # The rowcount is checked because that guarantee now rests on a second statement rather
+            # than on the shape of a single insert: the schema permits a null observation on a
+            # succeeded outcome for the length of this window, so nothing but this line would notice
+            # the update failing to land.
+            closed = connection.execute(
+                attempt_outcomes.update()
+                .where(attempt_outcomes.c.attempt_id == attempt_id)
+                .values(observation_id=identity)
             )
+            if closed.rowcount != 1:
+                raise RuntimeError(
+                    f"accepted outcome for attempt {attempt_id} did not resolve to observation "
+                    f"{identity}; refusing to commit an acceptance with no evidence"
+                )
             self._write_metrics(connection, identity, attempt_id, result, provenance)
             _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
             connection.execute(

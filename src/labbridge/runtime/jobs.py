@@ -5,8 +5,11 @@ Delivery is **at least once**; the guarantee against duplicate *effects* lives i
 (`AI_CONTRACT.md` invariant 5, PO-02), not here. Nothing in this module may be described as
 exactly-once.
 
-Three decisions carry the correctness of the whole thing:
+Four decisions carry the correctness of the whole thing:
 
+* **`INSERT ... ON CONFLICT DO NOTHING` on the instruction key** makes enqueuing idempotent. The
+  unique index arbitrates, so two callers racing on one logical instruction produce one job — a
+  prior `SELECT` would let both through and turn the loser into an integrity error.
 * **`FOR UPDATE SKIP LOCKED`** makes the claim atomic. Two workers running the same statement select
   different rows; a `SELECT` then `UPDATE` without it hands the same job to both under concurrency,
   which is the classic defect this pattern exists to remove.
@@ -36,7 +39,9 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from labbridge.domain.idempotency import InstructionConflictError
 from labbridge.domain.lifecycle import JobState, check_job_transition
 from labbridge.infrastructure.persistence.tables import campaigns, jobs, work_items
 from labbridge.runtime.events import AppendedEvent, append_event, current_sequence
@@ -91,31 +96,45 @@ class Lease:
         return self.attempt_count >= self.max_attempts
 
 
+@dataclass(frozen=True)
+class EnqueuedJob:
+    """The job an instruction resolves to, and whether this call is what created it.
+
+    `created` is the only thing that distinguishes the two outcomes, and it is returned rather than
+    inferred: a caller that needs to know whether it produced the work — to emit an event, to count
+    a submission — cannot recover that from the identifier alone.
+    """
+
+    job_id: uuid.UUID
+    created: bool
+
+
 def enqueue(
     connection: Connection,
     *,
     campaign_id: uuid.UUID,
     work_item_id: uuid.UUID,
-    idempotency_key: str,
+    instruction_key: str,
     command_version: str,
     correlation_id: uuid.UUID,
     causation_id: uuid.UUID,
     max_attempts: int = 3,
-) -> uuid.UUID | None:
-    """Create a durable job, or return None when this idempotency key already has one.
+) -> EnqueuedJob:
+    """Create the durable job for one logical instruction, or return the one that already exists.
 
-    The uniqueness is a database constraint, so a duplicate submission racing itself loses in the
-    index rather than in application logic (F-001, PO-02).
+    The instruction key is the identity of the work, not of the request that asked for it
+    (`domain.idempotency.work_item_instruction_key`). Enqueuing the same instruction again is a
+    no-op whoever asks and however often.
+
+    **The unique index decides, not a prior read.** `ON CONFLICT DO NOTHING` waits for a concurrent
+    inserter to commit or abort and then reports what actually happened, so two callers racing on
+    one instruction produce one job and one `job.enqueued` event rather than an integrity error
+    escaping into the caller's transaction (F-001, PO-02, ADR-015).
     """
-    existing = connection.execute(
-        select(jobs.c.job_id).where(jobs.c.idempotency_key == idempotency_key)
-    ).scalar_one_or_none()
-    if existing is not None:
-        return None
-
     job_id = uuid.uuid4()
-    connection.execute(
-        jobs.insert().values(
+    inserted = connection.execute(
+        pg_insert(jobs)
+        .values(
             job_id=job_id,
             work_item_id=work_item_id,
             state="available",
@@ -123,12 +142,34 @@ def enqueue(
             attempt_count=0,
             max_attempts=max_attempts,
             command_version=command_version,
-            idempotency_key=idempotency_key,
+            idempotency_key=instruction_key,
             event_correlation_id=correlation_id,
             created_at=func.now(),
             updated_at=func.now(),
         )
-    )
+        .on_conflict_do_nothing(index_elements=["idempotency_key"])
+        .returning(jobs.c.job_id)
+    ).one_or_none()
+    if inserted is None:
+        # The conflicting insert has settled by the time `ON CONFLICT DO NOTHING` returns nothing,
+        # so this read cannot miss it: had that transaction rolled back, the insert above would
+        # have proceeded instead. This depends on READ COMMITTED, where each statement takes a
+        # fresh snapshot — under a stricter isolation level PostgreSQL raises a serialisation
+        # failure here rather than returning a stale answer, which is loud rather than wrong.
+        existing = connection.execute(
+            select(jobs.c.job_id, jobs.c.work_item_id, jobs.c.command_version).where(
+                jobs.c.idempotency_key == instruction_key
+            )
+        ).one()
+        # Both halves of the identity are re-checked, not just the work item: the key is built from
+        # the work item *and* the command version, so a hand-built key that agrees on one and not
+        # the other would otherwise return a job for a command the caller did not ask for.
+        if existing.work_item_id != work_item_id or existing.command_version != command_version:
+            raise InstructionConflictError(
+                instruction_key, stored=existing.work_item_id, offered=work_item_id
+            )
+        return EnqueuedJob(job_id=existing.job_id, created=False)
+
     appended = _append_job_event(
         connection,
         job_id,
@@ -139,7 +180,7 @@ def enqueue(
     connection.execute(
         update(jobs).where(jobs.c.job_id == job_id).values(last_event_id=appended.event_id)
     )
-    return job_id
+    return EnqueuedJob(job_id=job_id, created=True)
 
 
 def _job_event_payload(connection: Connection, job_id: uuid.UUID) -> dict[str, object]:

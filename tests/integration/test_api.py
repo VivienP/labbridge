@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from typing import Any
 
 import pytest
@@ -18,6 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, func, select
 
 from labbridge.api import create_app
+from labbridge.domain.idempotency import MAX_IDEMPOTENCY_KEY_LENGTH
 from labbridge.infrastructure.persistence.tables import (
     campaigns,
     events,
@@ -35,6 +38,11 @@ NOT_FOUND = 404
 CONFLICT = 409
 UNPROCESSABLE = 422
 TWO_CANDIDATES = 2
+ONE_CAMPAIGN = 1
+ONE_EVENT = 1
+#: Enough concurrency that a check-then-insert would lose more than once, so a passing run is not
+#: an accident of two threads happening to serialise.
+CONCURRENT_SUBMISSIONS = 6
 
 
 def _candidate(area: str) -> dict[str, Any]:
@@ -71,16 +79,19 @@ def client(migrated: Engine) -> Iterator[TestClient]:
         test_client.keys = keys  # type: ignore[attr-defined]
         yield test_client
     with migrated.begin() as connection:
+        # Idempotency records first: they reference the campaign, and the reference is `RESTRICT`,
+        # which PostgreSQL checks at the delete rather than at commit however deferrable the
+        # constraint is. Children before parents, as everywhere else in this suite.
+        for key in keys:
+            connection.execute(
+                delete(idempotency_keys).where(idempotency_keys.c.idempotency_key == key)
+            )
         for campaign_id in created:
             owned = select(work_items.c.work_item_id).where(work_items.c.campaign_id == campaign_id)
             connection.execute(delete(jobs).where(jobs.c.work_item_id.in_(owned)))
             connection.execute(delete(events).where(events.c.campaign_id == campaign_id))
             connection.execute(delete(work_items).where(work_items.c.campaign_id == campaign_id))
             connection.execute(delete(campaigns).where(campaigns.c.campaign_id == campaign_id))
-        for key in keys:
-            connection.execute(
-                delete(idempotency_keys).where(idempotency_keys.c.idempotency_key == key)
-            )
 
 
 def _submit(client: TestClient, key: str, **overrides: Any) -> Any:
@@ -103,8 +114,7 @@ def test_a_submission_creates_a_campaign_and_one_job_per_candidate(client: TestC
 def test_a_repeated_request_returns_the_same_campaign_and_creates_nothing(
     client: TestClient, migrated: Engine
 ) -> None:
-    """The Slice 1 exit criterion, on the API side: a retry after an ambiguous timeout must not
-    produce a second campaign."""
+    """A retry after an ambiguous timeout must not produce a second campaign."""
     key = f"key:{uuid.uuid4().hex}"
 
     first = _submit(client, key)
@@ -135,6 +145,69 @@ def test_a_repeated_request_returns_the_same_campaign_and_creates_nothing(
     assert job_count == TWO_CANDIDATES
 
 
+def _campaign_footprint(engine: Engine, campaign_id: uuid.UUID) -> dict[str, int]:
+    """Every count a second creation would move."""
+    owned = select(work_items.c.work_item_id).where(work_items.c.campaign_id == campaign_id)
+    with engine.begin() as connection:
+        return {
+            "campaigns": connection.execute(
+                select(func.count())
+                .select_from(campaigns)
+                .where(campaigns.c.campaign_id == campaign_id)
+            ).scalar_one(),
+            "work_items": connection.execute(
+                select(func.count())
+                .select_from(work_items)
+                .where(work_items.c.campaign_id == campaign_id)
+            ).scalar_one(),
+            "jobs": connection.execute(
+                select(func.count()).select_from(jobs).where(jobs.c.work_item_id.in_(owned))
+            ).scalar_one(),
+            "campaign.created": connection.execute(
+                select(func.count())
+                .select_from(events)
+                .where(
+                    events.c.campaign_id == campaign_id,
+                    events.c.event_type == "campaign.created",
+                )
+            ).scalar_one(),
+        }
+
+
+def test_concurrent_identical_submissions_create_exactly_one_campaign(
+    client: TestClient, migrated: Engine
+) -> None:
+    """F-001, under real concurrency rather than in sequence.
+
+    Six requests carrying the same key and the same body are released together. A check-then-insert
+    lets all six past the check: six campaigns are created, and five of them then collide on the
+    idempotency key — an integrity error the caller sees as a 5xx. Here the reservation is the first
+    statement, so the unique key decides and the other five wait for its answer.
+    """
+    key = f"key:{uuid.uuid4().hex}"
+    barrier = Barrier(CONCURRENT_SUBMISSIONS)
+
+    def submit() -> Any:
+        barrier.wait(timeout=30)
+        return _submit(client, key)
+
+    with ThreadPoolExecutor(max_workers=CONCURRENT_SUBMISSIONS) as pool:
+        futures = [pool.submit(submit) for _ in range(CONCURRENT_SUBMISSIONS)]
+        responses = [future.result(timeout=60) for future in futures]
+
+    statuses = sorted(response.status_code for response in responses)
+    assert statuses == [REPLAYED] * (CONCURRENT_SUBMISSIONS - 1) + [CREATED]
+    identifiers = {response.json()["campaign_id"] for response in responses}
+    assert len(identifiers) == ONE_CAMPAIGN
+    assert sum(1 for response in responses if response.json()["replayed"] is False) == ONE_CAMPAIGN
+    assert _campaign_footprint(migrated, uuid.UUID(identifiers.pop())) == {
+        "campaigns": ONE_CAMPAIGN,
+        "work_items": TWO_CANDIDATES,
+        "jobs": TWO_CANDIDATES,
+        "campaign.created": ONE_EVENT,
+    }
+
+
 def test_the_same_key_with_a_different_body_is_a_conflict(client: TestClient) -> None:
     """Returning the first result would silently discard this request; creating a second campaign
     would break the key's promise. Neither is acceptable, so it is reported."""
@@ -147,11 +220,60 @@ def test_the_same_key_with_a_different_body_is_a_conflict(client: TestClient) ->
     assert clash.json()["detail"]["code"] == "idempotency_key_reused"
 
 
+def test_a_key_raced_with_a_different_body_conflicts_rather_than_creating_a_second_campaign(
+    client: TestClient, migrated: Engine
+) -> None:
+    """Same key, two bodies, released together. One of them wins the key; the other is told the key
+    is taken. Which one wins is a race — that there is exactly one campaign is not."""
+    key = f"key:{uuid.uuid4().hex}"
+    barrier = Barrier(2)
+
+    def submit(name: str) -> Any:
+        barrier.wait(timeout=30)
+        return _submit(client, key, name=name)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(submit, name) for name in ("first body", "second body")]
+        responses = [future.result(timeout=60) for future in futures]
+
+    assert sorted(response.status_code for response in responses) == [CREATED, CONFLICT]
+    created = next(r for r in responses if r.status_code == CREATED)
+    refused = next(r for r in responses if r.status_code == CONFLICT)
+    assert refused.json()["detail"]["code"] == "idempotency_key_reused"
+    assert _campaign_footprint(migrated, uuid.UUID(created.json()["campaign_id"])) == {
+        "campaigns": ONE_CAMPAIGN,
+        "work_items": TWO_CANDIDATES,
+        "jobs": TWO_CANDIDATES,
+        "campaign.created": ONE_EVENT,
+    }
+
+
 def test_a_submission_without_an_idempotency_key_is_refused(client: TestClient) -> None:
     response = client.post("/campaigns", json=_body())
 
     assert response.status_code == BAD_REQUEST
     assert response.json()["detail"]["code"] == "idempotency_key_required"
+
+
+def test_a_blank_idempotency_key_is_refused(client: TestClient) -> None:
+    """A header of spaces is an absent key, not an empty one, and must not become a stored key."""
+    response = client.post("/campaigns", json=_body(), headers={"Idempotency-Key": "   "})
+
+    assert response.status_code == BAD_REQUEST
+    assert response.json()["detail"]["code"] == "idempotency_key_required"
+
+
+def test_an_idempotency_key_too_long_to_store_is_refused_before_the_insert(
+    client: TestClient,
+) -> None:
+    """Otherwise the driver rejects it mid-transaction and the caller sees a 5xx for what is a
+    client error with a stable code."""
+    oversized = "k" * (MAX_IDEMPOTENCY_KEY_LENGTH + 1)
+
+    response = client.post("/campaigns", json=_body(), headers={"Idempotency-Key": oversized})
+
+    assert response.status_code == BAD_REQUEST
+    assert response.json()["detail"]["code"] == "idempotency_key_too_long"
 
 
 def test_an_inadmissible_origin_mode_pair_is_refused_before_it_reaches_the_database(

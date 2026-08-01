@@ -1,4 +1,4 @@
-# Local operation for Slice 1 (ADR-001: PostgreSQL for operational state, S3-compatible object
+# Local operation (ADR-001: PostgreSQL for operational state, S3-compatible object
 # storage for artifacts). Development only — no credential here is a secret, and none may be reused
 # anywhere else. AI_CONTRACT.md section 11 forbids writing real secrets to a tracked file.
 #

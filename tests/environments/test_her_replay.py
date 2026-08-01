@@ -1,7 +1,7 @@
 """The replay adapter returns what was recorded, or says nothing was.
 
 Every archive here is built by the fixture generator, so the suite runs offline and never touches
-the real dataset. The generator is the same code the adapter will meet in Slice 1's demo, which is
+the real dataset. The generator is the same code the adapter meets in `labbridge demo her`, which is
 what makes these tests about the adapter rather than about a hand-written stand-in.
 """
 

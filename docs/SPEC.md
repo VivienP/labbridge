@@ -6,7 +6,7 @@
 
 LabBridge turns replayed or simulated electrochemical runs into validated, provenance-tracked scientific artifacts while executing campaigns through a durable, inspectable, and recoverable runtime. The V1 emphasis is not novel machine learning. It is the operational layer between an experimental request, a failure-prone execution, and evidence that a scientist can inspect and reproduce.
 
-`../AI_CONTRACT.md` defines implementation invariants. `DATA_STRATEGY.md` defines the data sources and scientific limits. `ROADMAP.md` defines delivery order. `SIMULATOR_MODEL.md` defines the biosensor simulator. `FAILURE_MATRIX.md` defines the required fault scenarios.
+`../AI_CONTRACT.md` defines the implementation invariants, and outranks this document wherever the two disagree. `DATA_STRATEGY.md` defines the data sources and scientific limits. `SIMULATOR_MODEL.md` defines the biosensor simulator. `FAILURE_MATRIX.md` defines the required fault scenarios. `ARCHITECTURE_DECISIONS.md` records the accepted decisions and their consequences.
 
 ---
 
@@ -525,6 +525,8 @@ AVAILABLE → LEASED → RUNNING → SUCCEEDED
 
 A job records availability, lease owner, lease expiry, heartbeat, attempt count, command version, and idempotency key.
 
+The job's idempotency key is a **logical instruction identity**, derived from the work item and the command version rather than from a client-supplied token. Enqueueing the same instruction again resolves to the existing job and creates no second unit of executable work. The decision belongs to a uniqueness constraint reached through a conflict-safe insert, never to a prior read (ADR-015).
+
 ### 6.2 Worker behaviour
 
 A worker:
@@ -540,6 +542,12 @@ A worker:
 9. schedules retry or terminal handling according to policy.
 
 If the process dies between stages, lease recovery and idempotency constraints restore progress without accepting duplicate results.
+
+Step 7 begins by claiming the work item's single accepted outcome through the partial unique index. The claim is a conflict-safe insert rather than a "has this already succeeded?" query, because that query answers the same way for two concurrent executions.
+
+An execution that reaches finalisation and loses that claim records a `duplicate_suppressed` outcome for its own attempt, and writes no derived metric, no budget entry, and no acceptance event.
+
+It also writes no `Observation`, which is sound only under a premise the runtime does not currently verify: that its bytes are identical to the accepted delivery's, and therefore already retained at the same content-addressed key that the accepted observation references. That premise holds while the adapter is deterministic and the source root is unchanged between the two deliveries. Where it fails, bytes were received and no `Observation` describes them, which is short of invariant 2 in `AI_CONTRACT.md`. Closing the gap requires recording the received payload digest on the suppressed outcome so the divergence is detectable; until then this limitation MUST be stated wherever the suppression behaviour is described, and MUST NOT be presented as full compliance with invariant 2.
 
 ---
 
@@ -698,6 +706,15 @@ Minimum endpoints:
 Polling is sufficient in V1. Server-sent events MAY be added later.
 
 All mutating endpoints require an idempotency key. Errors use stable typed shapes with machine-readable codes.
+
+An idempotency record persists at minimum the operation scope, the key, a canonical request fingerprint, and the resulting aggregate identity. The scope is part of the key, so a token chosen by a caller for one operation cannot be answered with another operation's result. The endpoint MUST behave as follows:
+
+- same key and same canonical request: return the original result, marked as a replay;
+- same key and a different canonical request: return a stable typed conflict, and create nothing;
+- concurrent identical requests: exactly one aggregate and one initial event, with no uncaught database error and no 5xx caused by the race;
+- missing, blank, or unstorable key: a stable typed client error raised before any statement runs.
+
+The reservation of the key MUST be the first write of the submission transaction, so a uniqueness constraint rather than a prior read decides which request creates the aggregate (ADR-015).
 
 ### 11.2 CLI
 
