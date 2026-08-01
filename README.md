@@ -141,7 +141,7 @@ or operational experiment proves it), or `deferred`.
 | Deterministic state reconstruction from the event log | `planned` |
 | Append-only budget ledger, written in the outcome transaction | `implemented` |
 | Budget reservation and hard stopping rules | `planned` |
-| Evidence bundles and `labbridge validate-artifacts` | `implemented` |
+| Evidence bundles, local bundle checks, and full stored-object verification | `implemented` |
 | Biosensor simulator and fault injection | `planned` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `planned` |
@@ -164,8 +164,10 @@ a manifest, and none has been released yet.
   in production even though the job store implements them.
 - **An adapter failure other than an unsupported schema or an unavailable location leaves no
   outcome record.** The exception escapes the worker, and the attempt stays `running`.
-- **The evidence bundle checksums its own members, not the stored observation objects.** Deleting an
-  object from the bucket does not make the bundle fail verification.
+- `labbridge validate-artifacts` defaults to `--mode bundle-only`, verifies bundle members locally,
+  and reports `partial`; it does not contact object storage. `--mode full` additionally checks every
+  referenced object for existence, byte size, and SHA-256 and reports `complete` only when those checks
+  pass.
 - Crash recovery is proven across an in-process exception, not across a real process boundary. That
   is a weaker claim than `AI_CONTRACT.md` §9 requires for the guarantee.
 - At-least-once delivery with idempotent effect handling is the worker protocol. The constraint that

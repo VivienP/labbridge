@@ -213,3 +213,50 @@ The pair is admissible because the two fields are independent by construction: o
 ### Limits
 
 This decision widens what may be *recorded*. It widens nothing about what may be *claimed*: a `synthetic + replay` result is not evidence about the physical system, and no proof obligation is discharged by a fixture-backed run.
+
+---
+
+ADR-011 and ADR-012 remain reserved and are not reassigned here.
+
+## ADR-013 — Separate local bundle verification from stored-object verification
+
+**Status:** accepted
+
+**Decision:** evidence verification has two explicit modes. `bundle-only` validates the closed bundle
+and returns `partial`; `full` also reads every version 2 inventory object through `ObjectStore`, checks
+its byte size and SHA-256, and returns `complete` only when all requested checks pass.
+
+### Context
+
+A bundle can prove that its local members still match its manifest without proving that referenced raw
+observations remain present and unchanged in object storage. Treating both checks as one success would
+overstate the evidence available from an offline verification.
+
+Manifest version 2 therefore records a deterministic object inventory produced from the observations
+to `storage_objects` join. Each observation attempt remains represented even when several attempts
+refer to the same physical object. Verification may read shared physical bytes once while retaining
+every observation-attempt reference in the manifest. An `objects_digest` covers the canonical inventory,
+while `manifest_digest` covers every manifest field except itself. Construction fails when observation
+and storage-object metadata disagree or the object is not recorded as `committed`.
+
+### Consequences
+
+- version 1 bundles remain verifiable only in `bundle-only` mode and return `partial`;
+- `full` rejects version 1 bundles with `full_verification_requires_manifest_v2`;
+- `full` requires an `ObjectStore` and never falls back to local verification;
+- lookup uses the recorded bucket and key; `object_uri` remains evidence and is not parsed into new
+  storage coordinates;
+- missing objects, size mismatches, SHA-256 mismatches, and object-store access failures remain
+  distinct structured failures;
+- version 2 verification validates manifest identity fields and requires the object inventory to match
+  `observations.json`, including each row's origin, execution mode, and validated rooted provenance
+  environment;
+- verification is read-only and writes no result to PostgreSQL or object storage;
+- released bundle destinations are immutable, and the builder refuses an existing path.
+
+### Limits
+
+`bundle-only` does not establish object-store availability or content integrity. `full` validates the
+objects referenced by one manifest at verification time; it does not publish the bundle, create a
+database snapshot guarantee, or make the capability `demonstrated` without a released reproducible
+artifact.

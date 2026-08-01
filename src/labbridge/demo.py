@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from sqlalchemy import Engine, create_engine, func
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.quantities import Quantity
 from labbridge.environments.her_replay import HerReplayAdapter
-from labbridge.evidence.bundle import build_bundle, verify_bundle
+from labbridge.evidence.bundle import VerificationMode, build_bundle, verify_bundle
 from labbridge.infrastructure.objectstore import ObjectStore
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import campaigns, work_items
@@ -135,8 +136,10 @@ async def run_demo(
 
     destination = bundle_root / str(campaign_id)
     with engine.begin() as connection:
-        manifest = build_bundle(connection, campaign_id, destination)
-    verify_bundle(destination)
+        manifest = build_bundle(
+            connection, campaign_id, destination, generated_at=datetime.now(UTC)
+        )
+    verify_bundle(destination, mode=VerificationMode.FULL, object_store=store)
 
     return DemoReport(
         campaign_id=campaign_id,

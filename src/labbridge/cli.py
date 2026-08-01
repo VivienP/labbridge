@@ -20,12 +20,18 @@ import boto3
 import typer
 from botocore.config import Config as BotoConfig
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from labbridge import __version__
 from labbridge.demo import engine_from_settings, run_demo
 from labbridge.environments.her_replay import HerReplayAdapter
-from labbridge.evidence.bundle import BundleVerificationError, verify_bundle
+from labbridge.evidence.bundle import (
+    BundleVerificationError,
+    VerificationMode,
+    VerificationStatus,
+    verify_bundle,
+)
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
 from labbridge.infrastructure.her_ingestion.fetch import (
     DEFAULT_LANDING_ROOT,
@@ -48,7 +54,7 @@ from labbridge.infrastructure.her_ingestion.provenance import (
 )
 from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
-from labbridge.infrastructure.objectstore import S3ObjectStore
+from labbridge.infrastructure.objectstore import ObjectStore, S3ObjectStore
 from labbridge.infrastructure.persistence.config import ObjectStoreSettings
 
 EXPECTED_DOI: Final = PINNED_DOI
@@ -81,6 +87,19 @@ def main() -> None:
 def _build_transport() -> ZenodoTransport:
     """The single place the real network transport is constructed; monkeypatched in tests."""
     return HttpxTransport()
+
+
+def _build_object_store() -> ObjectStore:
+    settings = ObjectStoreSettings()
+    client = boto3.client(
+        "s3",
+        endpoint_url=settings.endpoint_url,
+        aws_access_key_id=settings.access_key,
+        aws_secret_access_key=settings.secret_key,
+        config=BotoConfig(signature_version="s3v4"),
+        region_name=settings.region,
+    )
+    return S3ObjectStore(client, bucket=settings.bucket)
 
 
 def _utc_now() -> datetime:
@@ -203,6 +222,10 @@ def build_her_fixture(
 @evidence_app.command("verify")
 @app.command("validate-artifacts")
 def validate_artifacts(
+    mode: Annotated[
+        VerificationMode,
+        typer.Option("--mode", help="Verification scope: bundle-only or full."),
+    ] = VerificationMode.BUNDLE_ONLY,
     bundle: Annotated[
         Path | None,
         typer.Option("--bundle", help="One bundle to verify. Omit to verify every bundle found."),
@@ -225,8 +248,9 @@ def validate_artifacts(
     Both resolve here rather than one being silently preferred; the contradiction is recorded in
     `docs/AGENT_SYSTEM.md`.
     """
+    object_store = _build_object_store() if mode is VerificationMode.FULL else None
     if bundle is not None:
-        _verify_one(bundle)
+        _verify_one(bundle, mode, object_store)
         return
 
     candidates = sorted(p for p in bundle_root.glob("*") if (p / "manifest.json").exists())
@@ -234,32 +258,56 @@ def validate_artifacts(
         console.print(f"[yellow]no bundle found under {bundle_root}[/yellow] — nothing verified")
         return
     for candidate in candidates:
-        _verify_one(candidate)
+        _verify_one(candidate, mode, object_store)
     console.print(f"[green]{len(candidates)} bundle(s) verified[/green]")
 
 
-def _verify_one(bundle: Path) -> None:
+def _verify_one(bundle: Path, mode: VerificationMode, object_store: ObjectStore | None) -> None:
     try:
-        manifest = verify_bundle(bundle)
+        result = verify_bundle(bundle, mode=mode, object_store=object_store)
     except BundleVerificationError as error:
-        console.print(f"[red]bundle verification failed[/red] ({len(error.problems)} problem(s)):")
-        for problem in error.problems:
-            console.print(f"  - {problem}")
+        failure = error.to_dict()
+        console.print(
+            f"[red]{escape(str(failure['code']))}[/red]: {escape(str(failure['message']))}"
+        )
+        details = failure["details"]
+        if isinstance(details, dict):
+            for key in sorted(details):
+                console.print(f"  {escape(str(key))}: {escape(str(details[key]))}")
         raise typer.Exit(code=1) from error
 
+    manifest = result.manifest
     files = manifest["files"]
     assert isinstance(files, list)
-    table = Table(title=f"bundle {manifest['campaign_id']}")
+    table = Table(title=f"bundle {escape(str(manifest['campaign_id']))}")
     table.add_column("file")
     table.add_column("bytes", justify="right")
     table.add_column("sha256")
     for entry in files:
-        table.add_row(entry["name"], str(entry["byte_size"]), f"{entry['sha256'][:16]}...")
+        table.add_row(
+            escape(str(entry["name"])),
+            str(entry["byte_size"]),
+            f"{escape(str(entry['sha256'][:16]))}...",
+        )
     console.print(table)
     origin = manifest["data_origin"]
     colour = "yellow" if origin == "synthetic" else "green"
-    console.print(f"data_origin: [{colour}]{origin}[/{colour}]  mode: {manifest['execution_mode']}")
-    console.print("[green]every checksum matches[/green]")
+    console.print(
+        f"data_origin: [{colour}]{escape(str(origin))}[/{colour}]  execution_mode: "
+        f"{escape(str(manifest['execution_mode']))}"
+    )
+    console.print(f"mode: {result.mode.value}  status: {result.status.value}")
+    console.print(
+        f"bundle files verified: {result.bundle_files_verified}  "
+        f"objects referenced: {result.objects_referenced}  "
+        f"objects verified: {result.objects_verified}"
+    )
+    if result.limitations:
+        console.print("limitations:")
+        for limitation in result.limitations:
+            console.print(f"  - {limitation}")
+    elif result.status is VerificationStatus.COMPLETE:
+        console.print("[green]bundle members and recorded object bytes match[/green]")
 
 
 @demo_app.command("her")
