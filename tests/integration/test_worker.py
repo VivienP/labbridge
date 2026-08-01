@@ -1,7 +1,6 @@
 """The worker end to end, against real PostgreSQL and real MinIO.
 
-This is the first test in the repository that exercises a whole campaign-to-evidence path, so it is
-also the first place several Slice 1 guarantees stop being design and start being observable:
+This test exercises a whole campaign-to-evidence path, so several guarantees become observable:
 duplicate delivery does not create a second accepted outcome (PO-02), an unmeasured location becomes
 a terminal outcome rather than a fabricated measurement (F-017), and a fixture-backed run records
 itself as synthetic (ADR-010).
@@ -36,12 +35,13 @@ from labbridge.infrastructure.persistence.tables import (
     budget_ledger,
     campaigns,
     derived_metrics,
+    events,
     jobs,
     observations,
     storage_objects,
     work_items,
 )
-from labbridge.runtime.events import read_stream
+from labbridge.runtime.events import append_event, read_stream
 from labbridge.runtime.jobs import enqueue
 from labbridge.runtime.worker import Worker
 
@@ -84,9 +84,31 @@ def campaign(
                 state="active",
                 declaration={},
                 declaration_hash="f" * 64,
+                event_stream_contract_version=1,
+                event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
             )
+        )
+        append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=campaign_id,
+            aggregate_type="campaign",
+            event_type="campaign.created",
+            payload={
+                "name": "worker end to end",
+                "environment_id": "her_auirrh",
+                "adapter_version": "1",
+                "data_origin": "synthetic",
+                "execution_mode": "replay",
+                "declaration": {},
+                "declaration_hash": "f" * 64,
+                "state": "active",
+            },
+            expected_version=0,
+            correlation_id=uuid.uuid4(),
+            causation_id=None,
         )
     yield campaign_id
     # Deleted in foreign-key order, children first. Every RESTRICT in the schema is deliberate, so
@@ -109,6 +131,12 @@ def _submit(
 ) -> tuple[uuid.UUID, uuid.UUID | None]:
     work_item_id = uuid.uuid4()
     with engine.begin() as connection:
+        campaign_event = connection.execute(
+            select(events.c.event_id, events.c.correlation_id).where(
+                events.c.campaign_id == campaign_id,
+                events.c.event_type == "campaign.created",
+            )
+        ).one()
         connection.execute(
             work_items.insert().values(
                 work_item_id=work_item_id,
@@ -120,17 +148,53 @@ def _submit(
                 updated_at=func.now(),
             )
         )
+        queued_event = append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=work_item_id,
+            aggregate_type="work_item",
+            event_type="work_item.queued",
+            payload={
+                "candidate_id": candidate_id(candidate),
+                "candidate": candidate.model_dump(mode="json"),
+                "state": "queued",
+            },
+            expected_version=0,
+            correlation_id=campaign_event.correlation_id,
+            causation_id=campaign_event.event_id,
+        )
         job_id = enqueue(
             connection,
+            campaign_id=campaign_id,
             work_item_id=work_item_id,
             idempotency_key=key or f"key:{uuid.uuid4().hex}",
             command_version="1",
+            correlation_id=campaign_event.correlation_id,
+            causation_id=queued_event.event_id,
         )
     return work_item_id, job_id
 
 
 def _worker(engine: Engine, adapter: HerReplayAdapter, store: S3ObjectStore) -> Worker:
     return Worker(engine, adapter, store, name="worker-test", fixture_seed=SPEC.seed)
+
+
+def _reenqueue(connection: Connection, campaign_id: uuid.UUID, work_item_id: uuid.UUID) -> None:
+    context = connection.execute(
+        select(events.c.event_id, events.c.correlation_id)
+        .where(events.c.campaign_id == campaign_id, events.c.aggregate_id == work_item_id)
+        .order_by(events.c.sequence.desc())
+        .limit(1)
+    ).one()
+    enqueue(
+        connection,
+        campaign_id=campaign_id,
+        work_item_id=work_item_id,
+        idempotency_key=f"redelivery:{uuid.uuid4().hex}",
+        command_version="1",
+        correlation_id=context.correlation_id,
+        causation_id=context.event_id,
+    )
 
 
 async def test_a_measured_location_runs_to_an_accepted_observation(
@@ -206,6 +270,15 @@ async def test_an_unmeasured_location_is_terminal_and_fabricates_nothing(
         ).one()
         assert stored.failure["retryable"] is False
         assert stored.provenance["code_version"] == "1"
+        stream = read_stream(connection, campaign)
+        assert [event["event_type"] for event in stream[-3:]] == [
+            "attempt.completed",
+            "work_item.rejected",
+            "job.failed_terminal",
+        ]
+        assert stream[-2]["payload"]["state"] == "rejected"
+        assert stream[-2]["payload"]["reason"]
+        assert stream[-1]["causation_id"] == stream[-2]["event_id"]
 
 
 async def test_a_redelivered_job_does_not_create_a_second_accepted_outcome(
@@ -223,12 +296,7 @@ async def test_a_redelivered_job_does_not_create_a_second_accepted_outcome(
     # Re-enqueue the same work item under a fresh key: a delivery the runtime cannot dedupe by key,
     # which is exactly the case the outcome constraint has to catch.
     with migrated.begin() as connection:
-        enqueue(
-            connection,
-            work_item_id=work_item_id,
-            idempotency_key=f"redelivery:{uuid.uuid4().hex}",
-            command_version="1",
-        )
+        _reenqueue(connection, campaign, work_item_id)
     second = await worker.run_once()
 
     assert first is not None
@@ -258,12 +326,7 @@ async def test_both_attempts_are_recorded_even_though_one_was_suppressed(
     worker = _worker(migrated, adapter, object_store)
     await worker.run_once()
     with migrated.begin() as connection:
-        enqueue(
-            connection,
-            work_item_id=work_item_id,
-            idempotency_key=f"redelivery:{uuid.uuid4().hex}",
-            command_version="1",
-        )
+        _reenqueue(connection, campaign, work_item_id)
     await worker.run_once()
 
     with migrated.begin() as connection:
@@ -287,8 +350,26 @@ async def test_the_accepted_observation_is_recorded_as_an_event(
 
     with migrated.begin() as connection:
         stream = read_stream(connection, campaign)
-    assert [event["event_type"] for event in stream] == ["observation.accepted"]
-    assert stream[0]["sequence"] == 1
+    assert [event["event_type"] for event in stream] == [
+        "campaign.created",
+        "work_item.queued",
+        "job.enqueued",
+        "job.leased",
+        "job.started",
+        "attempt.started",
+        "observation.accepted",
+        "attempt.completed",
+        "work_item.accepted",
+        "job.succeeded",
+    ]
+    assert [event["campaign_position"] for event in stream] == list(range(1, 11))
+    assert len({event["correlation_id"] for event in stream}) == 1
+    assert stream[0]["causation_id"] is None
+    assert all(event["causation_id"] is not None for event in stream[1:])
+    positions = {event["event_id"]: event["campaign_position"] for event in stream}
+    assert all(
+        positions[event["causation_id"]] < event["campaign_position"] for event in stream[1:]
+    )
 
 
 async def test_an_empty_queue_is_a_no_op(
@@ -416,9 +497,31 @@ async def test_a_campaign_declaring_the_wrong_origin_is_refused_not_relabelled(
                 state="active",
                 declaration={},
                 declaration_hash="0" * 64,
+                event_stream_contract_version=1,
+                event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
             )
+        )
+        append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=campaign_id,
+            aggregate_type="campaign",
+            event_type="campaign.created",
+            payload={
+                "name": "declares observed, adapter reads synthetic",
+                "environment_id": "her_auirrh",
+                "adapter_version": "1",
+                "data_origin": "observed",
+                "execution_mode": "replay",
+                "declaration": {},
+                "declaration_hash": "0" * 64,
+                "state": "active",
+            },
+            expected_version=0,
+            correlation_id=uuid.uuid4(),
+            causation_id=None,
         )
     try:
         key = adapter.known_locations()[0]
@@ -488,9 +591,16 @@ async def test_an_adapter_crash_still_records_an_outcome(
         attempt_state = connection.execute(
             select(attempts.c.state).where(attempts.c.work_item_id == work_item_id)
         ).scalar_one()
+        stream = read_stream(connection, campaign)
     assert stored.failure["exception_type"] == "OSError"
     assert stored.failure["retryable"] is True
     assert attempt_state == "failed_retryable"
+    assert [event["event_type"] for event in stream[-2:]] == [
+        "attempt.completed",
+        "job.available",
+    ]
+    assert stream[-1]["payload"]["state"] == "available"
+    assert stream[-1]["causation_id"] == stream[-2]["event_id"]
 
 
 async def test_an_unavailable_location_is_not_recorded_as_an_instrument_fault(

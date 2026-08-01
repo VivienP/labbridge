@@ -137,7 +137,8 @@ or operational experiment proves it), or `deferred`.
 | Object storage with read-back checksum verification and a pending/committed lifecycle | `implemented` |
 | Durable jobs with atomic claim, leases, and lease recovery | `implemented` |
 | Worker heartbeats and retry scheduling | `planned` |
-| Event append, unique and monotonic per aggregate | `implemented` |
+| Typed, version-checked event append with aggregate and campaign ordering | `implemented` |
+| Explicit legacy/incomplete event-stream boundary and validated replay input | `implemented` |
 | Deterministic state reconstruction from the event log | `planned` |
 | Append-only budget ledger, written in the outcome transaction | `implemented` |
 | Budget reservation and hard stopping rules | `planned` |

@@ -1,8 +1,9 @@
 """The FastAPI submission path.
 
-`docs/SPEC.md` §11.1 lists the V1 endpoint set. Slice 1 needs one submission path and one read
-path, so those are what exist. A stub for an endpoint with no code behind it would be a claim
-without evidence (`AI_CONTRACT.md` invariant 10), so the rest are absent rather than returning 501.
+`docs/SPEC.md` §11.1 lists the V1 endpoint set. The runtime currently needs one submission path and
+one read path, so those are what exist. A stub for an endpoint with no code behind it would be a
+claim without evidence (`AI_CONTRACT.md` invariant 10), so the rest are absent rather than
+returning 501.
 
 **Every mutating endpoint requires an idempotency key**, and the requirement is not decoration: a
 client that retries a submission after an ambiguous timeout must get the same campaign back, not a
@@ -34,6 +35,7 @@ from labbridge.infrastructure.persistence.tables import (
     idempotency_keys,
     work_items,
 )
+from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 
 API_VERSION: Final = "1"
@@ -176,6 +178,8 @@ def create_app(engine: Engine | None = None) -> FastAPI:
                 )
 
             campaign_uuid = uuid.uuid4()
+            correlation_id = uuid.uuid4()
+            declaration = request.model_dump(mode="json")
             connection.execute(
                 campaigns.insert().values(
                     campaign_id=campaign_uuid,
@@ -185,11 +189,33 @@ def create_app(engine: Engine | None = None) -> FastAPI:
                     data_origin=request.data_origin,
                     execution_mode=request.execution_mode,
                     state="active",
-                    declaration=request.model_dump(mode="json"),
+                    declaration=declaration,
                     declaration_hash=request_hash,
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
                     created_at=func.now(),
                     updated_at=func.now(),
                 )
+            )
+            campaign_event = append_event(
+                connection,
+                campaign_id=campaign_uuid,
+                aggregate_id=campaign_uuid,
+                aggregate_type="campaign",
+                event_type="campaign.created",
+                payload={
+                    "name": request.name,
+                    "environment_id": request.environment_id,
+                    "adapter_version": request.adapter_version,
+                    "data_origin": request.data_origin,
+                    "execution_mode": request.execution_mode,
+                    "declaration": declaration,
+                    "declaration_hash": request_hash,
+                    "state": "active",
+                },
+                expected_version=0,
+                correlation_id=correlation_id,
+                causation_id=None,
             )
             for candidate in request.candidates:
                 work_item_id = uuid.uuid4()
@@ -204,11 +230,29 @@ def create_app(engine: Engine | None = None) -> FastAPI:
                         updated_at=func.now(),
                     )
                 )
+                work_item_event = append_event(
+                    connection,
+                    campaign_id=campaign_uuid,
+                    aggregate_id=work_item_id,
+                    aggregate_type="work_item",
+                    event_type="work_item.queued",
+                    payload={
+                        "candidate_id": candidate_id(candidate),
+                        "candidate": candidate.model_dump(mode="json"),
+                        "state": "queued",
+                    },
+                    expected_version=0,
+                    correlation_id=correlation_id,
+                    causation_id=campaign_event.event_id,
+                )
                 enqueue(
                     connection,
+                    campaign_id=campaign_uuid,
                     work_item_id=work_item_id,
                     idempotency_key=f"{idempotency_key}:{candidate_id(candidate)}",
                     command_version=COMMAND_VERSION,
+                    correlation_id=correlation_id,
+                    causation_id=work_item_event.event_id,
                 )
             connection.execute(
                 idempotency_keys.insert().values(

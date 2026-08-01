@@ -260,7 +260,7 @@ def test_an_event_sequence_is_unique_per_aggregate(connection: Connection) -> No
     campaign_id = _campaign(connection)
     aggregate_id = uuid.uuid4()
 
-    def append(sequence: int, aggregate: uuid.UUID = aggregate_id) -> None:
+    def append(sequence: int, position: int, aggregate: uuid.UUID = aggregate_id) -> None:
         connection.execute(
             events.insert().values(
                 event_id=uuid.uuid4(),
@@ -268,6 +268,7 @@ def test_an_event_sequence_is_unique_per_aggregate(connection: Connection) -> No
                 aggregate_id=aggregate,
                 aggregate_type="campaign",
                 sequence=sequence,
+                campaign_position=position,
                 event_type="campaign.declared",
                 schema_version=1,
                 occurred_at=NOW,
@@ -277,13 +278,16 @@ def test_an_event_sequence_is_unique_per_aggregate(connection: Connection) -> No
             )
         )
 
-    append(1)
-    append(2)
+    append(1, 1)
+    append(2, 2)
     with expect_violation(connection, "uq_events_aggregate_sequence"):
-        append(2)
+        append(2, 3)
+
+    with expect_violation(connection, "uq_events_campaign_position"):
+        append(3, 2)
 
     # A different aggregate has its own sequence space.
-    append(1, uuid.uuid4())
+    append(1, 3, uuid.uuid4())
 
 
 def test_an_object_cannot_be_committed_without_a_verified_checksum(

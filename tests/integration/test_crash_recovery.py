@@ -1,7 +1,7 @@
 """What survives a worker dying mid-flight.
 
-`docs/ROADMAP.md` Slice 1 exit criterion: *a process killed after an accepted outcome is committed
-does not lose that outcome after restart*. PO-03 states the same thing as a proof obligation.
+A process killed after an accepted outcome is committed does not lose that outcome after restart.
+PO-03 states the same thing as a proof obligation.
 
 The crash is injected where it actually hurts — between the object upload and the outcome
 transaction. That is the window the worker's step ordering exists to make survivable: bytes are in
@@ -45,10 +45,12 @@ from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
     campaigns,
+    events,
     jobs,
     storage_objects,
     work_items,
 )
+from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import claim, enqueue, expire_lease_now, recover_expired_leases
 from labbridge.runtime.worker import Worker
 
@@ -76,7 +78,16 @@ def _kill_a_worker_after_upload(fixture_root: Path, tmp_path: Path) -> None:
             str(marker),
         ],
         cwd=REPO_ROOT,
-        env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src") + os.pathsep + str(REPO_ROOT)},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(
+                (
+                    str(REPO_ROOT / ".venv" / "Lib" / "site-packages"),
+                    str(REPO_ROOT / "src"),
+                    str(REPO_ROOT),
+                )
+            ),
+        },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -130,9 +141,31 @@ def campaign(
                 state="active",
                 declaration={},
                 declaration_hash="c" * 64,
+                event_stream_contract_version=1,
+                event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
             )
+        )
+        append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=campaign_id,
+            aggregate_type="campaign",
+            event_type="campaign.created",
+            payload={
+                "name": "crash recovery",
+                "environment_id": "her_auirrh",
+                "adapter_version": "1",
+                "data_origin": "synthetic",
+                "execution_mode": "replay",
+                "declaration": {},
+                "declaration_hash": "c" * 64,
+                "state": "active",
+            },
+            expected_version=0,
+            correlation_id=uuid.uuid4(),
+            causation_id=None,
         )
     yield campaign_id
     with migrated.begin() as connection:
@@ -149,6 +182,12 @@ def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -
     )
     work_item_id = uuid.uuid4()
     with engine.begin() as connection:
+        campaign_event = connection.execute(
+            select(events.c.event_id, events.c.correlation_id).where(
+                events.c.campaign_id == campaign_id,
+                events.c.event_type == "campaign.created",
+            )
+        ).one()
         connection.execute(
             work_items.insert().values(
                 work_item_id=work_item_id,
@@ -160,11 +199,29 @@ def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -
                 updated_at=func.now(),
             )
         )
+        queued_event = append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=work_item_id,
+            aggregate_type="work_item",
+            event_type="work_item.queued",
+            payload={
+                "candidate_id": candidate_id(candidate),
+                "candidate": candidate.model_dump(mode="json"),
+                "state": "queued",
+            },
+            expected_version=0,
+            correlation_id=campaign_event.correlation_id,
+            causation_id=campaign_event.event_id,
+        )
         enqueue(
             connection,
+            campaign_id=campaign_id,
             work_item_id=work_item_id,
             idempotency_key=f"crash:{uuid.uuid4().hex}",
             command_version="1",
+            correlation_id=campaign_event.correlation_id,
+            causation_id=queued_event.event_id,
         )
     return work_item_id
 
@@ -177,7 +234,7 @@ async def test_a_crash_after_upload_loses_no_outcome_and_creates_no_duplicate(
     crash_fixture_root: Path,
     tmp_path: Path,
 ) -> None:
-    """The Slice 1 exit criterion. The first worker dies with the bytes uploaded and nothing in the
+    """The first worker dies with the bytes uploaded and nothing in the
     database referencing them; after the lease lapses a second worker completes the work, and the
     campaign ends with exactly one accepted outcome."""
     work_item_id = _submit(migrated, campaign, adapter)

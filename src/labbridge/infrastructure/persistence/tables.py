@@ -92,8 +92,14 @@ campaigns = Table(
     Column("state", String(32), nullable=False),
     Column("declaration", JSONB, nullable=False),
     Column("declaration_hash", _HASH, nullable=False),
+    Column("event_stream_contract_version", Integer, nullable=False, server_default=text("0")),
+    Column("event_stream_last_position", BigInteger, nullable=False, server_default=text("0")),
     *_timestamps("created_at", "updated_at"),
     CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="admissible_origin_mode"),
+    CheckConstraint(
+        "event_stream_contract_version IN (0, 1)", name="known_event_stream_contract_version"
+    ),
+    CheckConstraint("event_stream_last_position >= 0", name="event_stream_position_non_negative"),
     # Redundant on its own — campaign_id is already unique — but it is the target a child row's
     # composite foreign key needs. That is what forces every observation and outcome to carry the
     # *same* origin and mode as its campaign, rather than merely a separately-admissible pair.
@@ -147,6 +153,8 @@ jobs = Table(
     Column("command_version", String(32), nullable=False),
     Column("idempotency_key", String(255), nullable=False),
     Column("last_failure", JSONB, nullable=True),
+    Column("event_correlation_id", UUID(as_uuid=True), nullable=True),
+    Column("last_event_id", UUID(as_uuid=True), nullable=True),
     *_timestamps("created_at", "updated_at"),
     UniqueConstraint("idempotency_key", name="uq_jobs_idempotency_key"),
     CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
@@ -374,6 +382,7 @@ events = Table(
     Column("aggregate_id", UUID(as_uuid=True), nullable=False),
     Column("aggregate_type", String(64), nullable=False),
     Column("sequence", BigInteger, nullable=False),
+    Column("campaign_position", BigInteger, nullable=False),
     Column("event_type", String(128), nullable=False),
     Column("schema_version", Integer, nullable=False),
     *_timestamps("occurred_at", "recorded_at"),
@@ -381,15 +390,23 @@ events = Table(
     Column("causation_id", UUID(as_uuid=True), nullable=True),
     Column("idempotency_key", String(255), nullable=True),
     Column("payload", JSONB, nullable=False),
-    # §5.1: sequence unique and monotonic per aggregate. This is what makes an append with an
-    # expected version safe under concurrency — the loser of a race gets a constraint violation.
-    UniqueConstraint("aggregate_id", "sequence", name="uq_events_aggregate_sequence"),
+    # §5.1: sequence is unique per aggregate. The expected-version check and campaign row lock
+    # allocate it monotonically; this constraint prevents a bypassing writer from duplicating it.
+    UniqueConstraint(
+        "campaign_id",
+        "aggregate_type",
+        "aggregate_id",
+        "sequence",
+        name="uq_events_aggregate_sequence",
+    ),
+    UniqueConstraint("campaign_id", "campaign_position", name="uq_events_campaign_position"),
     CheckConstraint("sequence >= 1", name="sequence_starts_at_one"),
+    CheckConstraint("campaign_position >= 1", name="campaign_position_starts_at_one"),
     CheckConstraint("schema_version >= 1", name="schema_version_starts_at_one"),
 )
 
-# Replay reads a campaign's events ordered by aggregate then sequence, never by timestamp.
-Index("ix_events_replay", events.c.campaign_id, events.c.aggregate_id, events.c.sequence)
+# Complete stream loading follows the campaign-wide position, never timestamps or aggregate IDs.
+Index("ix_events_replay", events.c.campaign_id, events.c.campaign_position)
 
 storage_objects = Table(
     "storage_objects",

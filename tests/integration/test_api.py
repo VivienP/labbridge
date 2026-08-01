@@ -1,7 +1,7 @@
 """The submission path, against real PostgreSQL.
 
-The Slice 1 exit criterion names a *repeated API request*, not only a repeated job delivery, so the
-idempotency here is exercised against the database that enforces it rather than a stub.
+A repeated API request, not only a repeated job delivery, exercises idempotency against the
+database that enforces it rather than a stub.
 
 `TestClient` runs the application in-process, which is enough: what is tested is the endpoint's
 transaction and its idempotency record, not HTTP transport.
@@ -20,6 +20,7 @@ from sqlalchemy import Engine, delete, func, select
 from labbridge.api import create_app
 from labbridge.infrastructure.persistence.tables import (
     campaigns,
+    events,
     idempotency_keys,
     jobs,
     work_items,
@@ -73,6 +74,7 @@ def client(migrated: Engine) -> Iterator[TestClient]:
         for campaign_id in created:
             owned = select(work_items.c.work_item_id).where(work_items.c.campaign_id == campaign_id)
             connection.execute(delete(jobs).where(jobs.c.work_item_id.in_(owned)))
+            connection.execute(delete(events).where(events.c.campaign_id == campaign_id))
             connection.execute(delete(work_items).where(work_items.c.campaign_id == campaign_id))
             connection.execute(delete(campaigns).where(campaigns.c.campaign_id == campaign_id))
         for key in keys:

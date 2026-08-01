@@ -260,3 +260,73 @@ and storage-object metadata disagree or the object is not recorded as `committed
 objects referenced by one manifest at verification time; it does not publish the bundle, create a
 database snapshot guarantee, or make the capability `demonstrated` without a released reproducible
 artifact.
+
+---
+
+## ADR-014 — Version event-stream completeness and serialize append per campaign
+
+**Status:** accepted
+
+**Decision:** each campaign row contains an explicit event-stream contract version and the last
+allocated campaign position. Event append locks that row, requires an expected
+aggregate version, validates the registered payload schema, and allocates aggregate sequence and
+campaign position inside the caller's transaction.
+
+### Context
+
+The original event table has a per-aggregate uniqueness constraint but accepts unregistered payloads,
+makes expected version optional, and has no campaign-wide order. Existing campaigns also lack events
+for several mutable projections. Their history cannot be recovered honestly from current projection
+rows.
+
+Keeping the metadata on the campaign makes the contract version structurally unavoidable: an older
+application creates version `0`, never an apparently complete campaign without stream metadata. The
+event store is the only component that interprets version `0`. A separate aggregate-counter table
+would permit more parallel append but would add another durable state machine without evidence that
+campaign-level serialization is a bottleneck. Advisory locks would make the same guarantee less
+inspectable.
+
+### Consequences
+
+- contract version `0` means `legacy_incomplete`; contract version `1` means complete for the fields in
+  `docs/SPEC.md` section 5.4;
+- migration creates version `0` metadata for every existing campaign and never manufactures a missing
+  event from a projection;
+- new campaigns create version `1` metadata and their required initial events in the campaign-creation
+  transaction;
+- append and replay loading reject version `0` with `IncompleteEventStreamError`;
+- evidence export may preserve version `0` events only with the explicit incomplete label;
+- existing event rows receive only a deterministic technical position; this does not make their stream
+  historically complete or replayable;
+- `expected_version`, event type, schema version, payload, occurrence time, correlation identifier,
+  and causation identifier are explicit append inputs;
+- registry entries are keyed by event type and schema version and bind an exact Pydantic payload model
+  to one aggregate type;
+- jobs persist the originating correlation and their last event identifier so a worker continues the
+  same causal chain after crossing the durable queue;
+- append and stream loading reject absent or non-prior causes, cross-campaign causes, correlation
+  changes along a causal edge, repeated identity fields that disagree with the envelope, and naive
+  producer timestamps;
+- `campaign.created` is the unique root at position one; an empty purportedly complete stream is
+  invalid;
+- one transaction commits or rolls back the event, stream position, and required projection together;
+- unique aggregate sequence over the full campaign/type/identifier key and unique campaign position
+  constraints remain the database backstops;
+- the campaign metadata lock makes aggregate `MAX(sequence) + 1` safe because no append for that
+  campaign can calculate concurrently outside the lock;
+- unknown event types, unsupported schema versions, malformed payloads, aggregate-version conflicts,
+  identity or causation violations, and position gaps fail explicitly.
+
+The migration requires a write outage. API and worker writers are stopped and drained before its
+PostgreSQL transaction adds and backfills the ordering metadata without creating events. The
+contract-aware application is deployed before writes resume; an older writer cannot append after
+`campaign_position` becomes mandatory. The database default remains version `0` so an unrecognised
+direct writer cannot create an apparently complete stream. Downgrade is refused after any version `1`
+campaign exists because removing its contract metadata would make the stream's meaning ambiguous.
+
+### Limits
+
+This decision implements a complete typed stream contract and its loading preconditions. It does not
+implement a replay fold, rebuild projections, include budget state in contract version `1`, or establish
+deterministic state reconstruction. Those claims remain `planned` until persisted events are folded and
+compared with persisted projections.

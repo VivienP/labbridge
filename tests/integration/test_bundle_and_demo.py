@@ -109,6 +109,8 @@ def test_the_manifest_declares_the_origin_machine_readably(
 
     assert manifest["data_origin"] == "synthetic"
     assert manifest["execution_mode"] == "replay"
+    assert manifest["event_stream_contract_version"] == 1
+    assert manifest["event_stream_completeness"] == "complete"
 
 
 def test_editing_a_member_breaks_verification(demo: tuple[Engine, Path, uuid.UUID]) -> None:

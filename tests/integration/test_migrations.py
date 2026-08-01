@@ -14,7 +14,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import Connection, Engine, func, inspect, text
+from sqlalchemy import Connection, Engine, func, inspect, select, text
 
 from labbridge.infrastructure.persistence.tables import (
     attempts,
@@ -23,6 +23,7 @@ from labbridge.infrastructure.persistence.tables import (
     observations,
     work_items,
 )
+from labbridge.runtime.events import IncompleteEventStreamError, load_replay_stream
 
 pytestmark = pytest.mark.integration
 
@@ -109,6 +110,95 @@ def test_the_origin_mode_constraint_exists_on_every_table_that_records_a_pair(
     ).scalars()
 
     assert {"campaigns", "observations"} <= set(tables)
+
+
+def test_existing_campaigns_are_marked_legacy_without_inventing_events(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+    try:
+        command.downgrade(alembic_config, "1e6a158aabea")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO campaigns "
+                    "(campaign_id,name,environment_id,adapter_version,data_origin,execution_mode,"
+                    "state,declaration,declaration_hash,created_at,updated_at) VALUES "
+                    "(:campaign_id,'legacy','her','1','synthetic','replay','active','{}',:digest,"
+                    "now(),now())"
+                ),
+                {"campaign_id": campaign_id, "digest": "a" * 64},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO events "
+                    "(event_id,campaign_id,aggregate_id,aggregate_type,sequence,event_type,"
+                    "schema_version,occurred_at,recorded_at,correlation_id,payload) VALUES "
+                    "(:event_id,:campaign_id,:campaign_id,'campaign',1,'campaign.declared',1,"
+                    "now(),now(),:correlation_id,'{}')"
+                ),
+                {
+                    "event_id": event_id,
+                    "campaign_id": campaign_id,
+                    "correlation_id": uuid.uuid4(),
+                },
+            )
+
+        command.upgrade(alembic_config, "head")
+        with engine.begin() as connection:
+            campaign = connection.execute(
+                select(
+                    campaigns.c.event_stream_contract_version,
+                    campaigns.c.event_stream_last_position,
+                ).where(campaigns.c.campaign_id == campaign_id)
+            ).one()
+            assert campaign.event_stream_contract_version == 0
+            assert campaign.event_stream_last_position == 1
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM events WHERE campaign_id = :campaign_id"),
+                    {"campaign_id": campaign_id},
+                ).scalar_one()
+                == 1
+            )
+            with pytest.raises(IncompleteEventStreamError):
+                load_replay_stream(connection, campaign_id)
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_contract_downgrade_refuses_complete_campaigns(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                campaigns.insert().values(
+                    campaign_id=campaign_id,
+                    name="complete",
+                    environment_id="her",
+                    adapter_version="1",
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    state="active",
+                    declaration={},
+                    declaration_hash="a" * 64,
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+        with pytest.raises(RuntimeError, match="complete campaigns exist"):
+            command.downgrade(alembic_config, "1e6a158aabea")
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
 
 
 def test_the_downgrade_refuses_rather_than_dropping_a_receipt(

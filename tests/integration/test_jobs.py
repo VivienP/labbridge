@@ -14,11 +14,15 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from threading import Barrier
 
 import pytest
 from sqlalchemy import Connection, Engine, delete, func, select
 
-from labbridge.infrastructure.persistence.tables import campaigns, jobs, work_items
+from labbridge.infrastructure.persistence.tables import campaigns, events, jobs, work_items
+from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import (
     LeaseLostError,
     claim,
@@ -38,6 +42,58 @@ ATTEMPTS_ALLOWED = 3
 SECOND_ATTEMPT = 2
 
 
+def _candidate_payload() -> dict[str, object]:
+    return {
+        "kind": "her_location",
+        "library_id": "library",
+        "measurement_area_id": "area",
+        "grid_x": {"value": "0", "unit": "mm"},
+        "grid_y": {"value": "0", "unit": "mm"},
+    }
+
+
+def _seed_events(
+    connection: Connection,
+    campaign_id: uuid.UUID,
+    work_item_id: uuid.UUID,
+    declaration_hash: str,
+    *,
+    name: str,
+) -> None:
+    correlation_id = uuid.uuid4()
+    root = append_event(
+        connection,
+        campaign_id=campaign_id,
+        aggregate_id=campaign_id,
+        aggregate_type="campaign",
+        event_type="campaign.created",
+        payload={
+            "name": name,
+            "environment_id": "her",
+            "adapter_version": "1",
+            "data_origin": "synthetic",
+            "execution_mode": "replay",
+            "declaration": {},
+            "declaration_hash": declaration_hash,
+            "state": "active",
+        },
+        expected_version=0,
+        correlation_id=correlation_id,
+        causation_id=None,
+    )
+    append_event(
+        connection,
+        campaign_id=campaign_id,
+        aggregate_id=work_item_id,
+        aggregate_type="work_item",
+        event_type="work_item.queued",
+        payload={"candidate_id": "cand:test", "candidate": _candidate_payload(), "state": "queued"},
+        expected_version=0,
+        correlation_id=correlation_id,
+        causation_id=root.event_id,
+    )
+
+
 @pytest.fixture
 def work_item(connection: Connection) -> uuid.UUID:
     """A committed work item, so the other connections in this module can see it."""
@@ -54,6 +110,8 @@ def work_item(connection: Connection) -> uuid.UUID:
             state="active",
             declaration={},
             declaration_hash="d" * 64,
+            event_stream_contract_version=1,
+            event_stream_last_position=0,
             created_at=func.now(),
             updated_at=func.now(),
         )
@@ -63,12 +121,13 @@ def work_item(connection: Connection) -> uuid.UUID:
             work_item_id=work_item_id,
             campaign_id=campaign_id,
             candidate_id=f"cand:{uuid.uuid4().hex}",
-            candidate={},
+            candidate=_candidate_payload(),
             state="queued",
             created_at=func.now(),
             updated_at=func.now(),
         )
     )
+    _seed_events(connection, campaign_id, work_item_id, "d" * 64, name="job tests")
     return work_item_id
 
 
@@ -89,6 +148,8 @@ def committed_work_item(migrated: Engine) -> Iterator[uuid.UUID]:
                 state="active",
                 declaration={},
                 declaration_hash="e" * 64,
+                event_stream_contract_version=1,
+                event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
             )
@@ -98,25 +159,46 @@ def committed_work_item(migrated: Engine) -> Iterator[uuid.UUID]:
                 work_item_id=work_item_id,
                 campaign_id=campaign_id,
                 candidate_id=f"cand:{uuid.uuid4().hex}",
-                candidate={},
+                candidate=_candidate_payload(),
                 state="queued",
                 created_at=func.now(),
                 updated_at=func.now(),
             )
         )
+        _seed_events(
+            connection,
+            campaign_id,
+            work_item_id,
+            "e" * 64,
+            name="concurrent job tests",
+        )
     yield work_item_id
     with migrated.begin() as connection:
         connection.execute(delete(jobs).where(jobs.c.work_item_id == work_item_id))
+        connection.execute(delete(events).where(events.c.campaign_id == campaign_id))
         connection.execute(delete(work_items).where(work_items.c.work_item_id == work_item_id))
         connection.execute(delete(campaigns).where(campaigns.c.campaign_id == campaign_id))
 
 
 def _enqueue(connection: Connection, work_item_id: uuid.UUID, **kwargs: object) -> uuid.UUID:
+    idempotency_key = str(kwargs.pop("idempotency_key", f"key:{uuid.uuid4().hex}"))
+    context = connection.execute(
+        select(
+            work_items.c.campaign_id,
+            events.c.correlation_id,
+            events.c.event_id,
+        )
+        .select_from(work_items.join(events, events.c.aggregate_id == work_items.c.work_item_id))
+        .where(work_items.c.work_item_id == work_item_id, events.c.event_type == "work_item.queued")
+    ).one()
     job_id = enqueue(
         connection,
+        campaign_id=context.campaign_id,
         work_item_id=work_item_id,
-        idempotency_key=f"key:{uuid.uuid4().hex}",
+        idempotency_key=idempotency_key,
         command_version="1",
+        correlation_id=context.correlation_id,
+        causation_id=context.event_id,
         **kwargs,  # type: ignore[arg-type]
     )
     assert job_id is not None
@@ -128,8 +210,18 @@ def test_a_duplicate_idempotency_key_does_not_create_a_second_job(
 ) -> None:
     """F-001: a resubmitted request is the same job, not a second one."""
     key = f"key:{uuid.uuid4().hex}"
-    first = enqueue(connection, work_item_id=work_item, idempotency_key=key, command_version="1")
-    second = enqueue(connection, work_item_id=work_item, idempotency_key=key, command_version="1")
+    first = _enqueue(connection, work_item, idempotency_key=key)
+    second = enqueue(
+        connection,
+        campaign_id=connection.execute(
+            select(work_items.c.campaign_id).where(work_items.c.work_item_id == work_item)
+        ).scalar_one(),
+        work_item_id=work_item,
+        idempotency_key=key,
+        command_version="1",
+        correlation_id=uuid.uuid4(),
+        causation_id=uuid.uuid4(),
+    )
 
     assert first is not None
     assert second is None
@@ -149,6 +241,61 @@ def test_claiming_marks_the_job_leased_and_counts_the_attempt(
     assert state == "leased"
 
 
+def test_claim_skips_legacy_jobs_without_starving_complete_streams(
+    connection: Connection, work_item: uuid.UUID
+) -> None:
+    legacy_campaign_id = uuid.uuid4()
+    legacy_work_item_id = uuid.uuid4()
+    legacy_job_id = uuid.uuid4()
+    connection.execute(
+        campaigns.insert().values(
+            campaign_id=legacy_campaign_id,
+            name="legacy job",
+            environment_id="her",
+            adapter_version="1",
+            data_origin="synthetic",
+            execution_mode="replay",
+            state="active",
+            declaration={},
+            declaration_hash="0" * 64,
+            event_stream_contract_version=0,
+            event_stream_last_position=0,
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+    connection.execute(
+        work_items.insert().values(
+            work_item_id=legacy_work_item_id,
+            campaign_id=legacy_campaign_id,
+            candidate_id="cand:legacy",
+            candidate=_candidate_payload(),
+            state="queued",
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+    connection.execute(
+        jobs.insert().values(
+            job_id=legacy_job_id,
+            work_item_id=legacy_work_item_id,
+            state="available",
+            available_at=func.now(),
+            max_attempts=3,
+            command_version="1",
+            idempotency_key=f"legacy:{uuid.uuid4().hex}",
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+    complete_job_id = _enqueue(connection, work_item)
+
+    lease = claim(connection, owner="worker-a")
+
+    assert lease is not None
+    assert lease.job_id == complete_job_id
+
+
 def test_an_empty_queue_returns_none_rather_than_blocking(connection: Connection) -> None:
     """Cancelled rather than deleted: attempts reference jobs under RESTRICT, so deleting the queue
     would test the teardown rather than the claim."""
@@ -165,18 +312,12 @@ def test_two_concurrent_workers_never_claim_the_same_job(
     with migrated.begin() as setup:
         _enqueue(setup, committed_work_item)
 
-    first_connection = migrated.connect()
-    second_connection = migrated.connect()
-    try:
-        first_txn = first_connection.begin()
-        second_txn = second_connection.begin()
-        first = claim(first_connection, owner="worker-a")
-        second = claim(second_connection, owner="worker-b")
-        first_txn.rollback()
-        second_txn.rollback()
-    finally:
-        first_connection.close()
-        second_connection.close()
+    def claim_and_commit(owner: str):
+        with migrated.begin() as connection:
+            return claim(connection, owner=owner)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = pool.map(claim_and_commit, ("worker-a", "worker-b"))
 
     claimed = [lease for lease in (first, second) if lease is not None]
     assert len(claimed) == 1
@@ -338,30 +479,101 @@ def test_completing_releases_the_lease(connection: Connection, work_item: uuid.U
     assert row.lease_expires_at is None
 
 
-def test_two_concurrent_workers_each_claim_a_different_job(
+def test_two_workers_each_claim_a_different_job(
     migrated: Engine, committed_work_item: uuid.UUID
 ) -> None:
-    """The stronger property: with two jobs available, both workers make progress and take
-    *different* rows. Without SKIP LOCKED the second claim would block on the first's row lock
-    instead of moving past it, so this is what separates the pattern from a plain FOR UPDATE."""
+    """With two jobs available, two concurrent claims take different rows."""
     with migrated.begin() as setup:
         first_job = _enqueue(setup, committed_work_item)
         second_job = _enqueue(setup, committed_work_item)
+    barrier = Barrier(2)
 
-    first_connection = migrated.connect()
-    second_connection = migrated.connect()
-    try:
-        first_txn = first_connection.begin()
-        second_txn = second_connection.begin()
-        first = claim(first_connection, owner="worker-a")
-        second = claim(second_connection, owner="worker-b")
-        first_txn.rollback()
-        second_txn.rollback()
-    finally:
-        first_connection.close()
-        second_connection.close()
+    def claim_and_commit(owner: str):
+        barrier.wait()
+        connection = migrated.connect()
+        transaction = connection.begin()
+        try:
+            lease = claim(connection, owner=owner)
+            transaction.commit()
+            return lease
+        finally:
+            if transaction.is_active:
+                transaction.rollback()
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(claim_and_commit, owner) for owner in ("worker-a", "worker-b")]
+        first, second = (future.result(timeout=10) for future in futures)
 
     assert first is not None
     assert second is not None
     assert first.job_id != second.job_id
     assert {first.job_id, second.job_id} == {first_job, second_job}
+
+
+def test_recovery_ignores_legacy_jobs_and_recovers_complete_jobs(
+    connection: Connection, work_item: uuid.UUID
+) -> None:
+    legacy_campaign_id = uuid.uuid4()
+    legacy_work_item_id = uuid.uuid4()
+    legacy_job_id = uuid.uuid4()
+    connection.execute(
+        campaigns.insert().values(
+            campaign_id=legacy_campaign_id,
+            name="legacy recovery",
+            environment_id="her",
+            adapter_version="1",
+            data_origin="synthetic",
+            execution_mode="replay",
+            state="active",
+            declaration={},
+            declaration_hash="0" * 64,
+            event_stream_contract_version=0,
+            event_stream_last_position=0,
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+    connection.execute(
+        work_items.insert().values(
+            work_item_id=legacy_work_item_id,
+            campaign_id=legacy_campaign_id,
+            candidate_id="cand:legacy-recovery",
+            candidate=_candidate_payload(),
+            state="queued",
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+    connection.execute(
+        jobs.insert().values(
+            job_id=legacy_job_id,
+            work_item_id=legacy_work_item_id,
+            state="leased",
+            available_at=func.now(),
+            lease_owner="legacy-worker",
+            lease_token=uuid.uuid4(),
+            lease_expires_at=datetime(2000, 1, 1, tzinfo=UTC),
+            attempt_count=1,
+            max_attempts=3,
+            command_version="1",
+            idempotency_key=f"legacy-recovery:{uuid.uuid4().hex}",
+            created_at=func.now(),
+            updated_at=func.now(),
+        )
+    )
+    complete_job_id = _enqueue(connection, work_item)
+    lease = claim(connection, owner="complete-worker")
+    assert lease is not None
+    assert lease.job_id == complete_job_id
+    expire_lease_now(connection, complete_job_id)
+
+    assert recover_expired_leases(connection) == 1
+    states = dict(
+        connection.execute(
+            select(jobs.c.job_id, jobs.c.state).where(
+                jobs.c.job_id.in_((legacy_job_id, complete_job_id))
+            )
+        ).all()
+    )
+    assert states == {legacy_job_id: "leased", complete_job_id: "available"}

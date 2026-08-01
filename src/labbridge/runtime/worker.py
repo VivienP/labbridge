@@ -9,7 +9,7 @@ where it is because of what happens when the process dies immediately after it:
    to evidence that does not exist. The first is recoverable in principle and the second is not, so
    the upload happens before the commit (`docs/SPEC.md` §4.2, F-028). **No sweep exists yet**: the
    `pending` row records the orphan so one can find it later, and `storage_objects.state='orphaned'`
-   is declared in the schema and written by nothing. That is a Slice 2 gap, not a delivered
+   is declared in the schema and written by nothing. Reconciliation is not yet delivered, so
    reconciliation;
 3. **one transaction** for the observation, the outcome, the event, the object's committed state,
    and the job's completion. Either the result is accepted with all of its evidence, or none of it
@@ -52,12 +52,13 @@ from labbridge.infrastructure.persistence.tables import (
     budget_ledger,
     campaigns,
     derived_metrics,
+    events,
     observations,
     storage_objects,
     work_items,
 )
 from labbridge.runtime import jobs
-from labbridge.runtime.events import append_event
+from labbridge.runtime.events import append_event, current_sequence
 
 WORKER_VERSION: Final = "1"
 #: Recorded on the synthetic lineage root so a fixture-backed result names its generator.
@@ -154,6 +155,102 @@ def _candidate_of(connection: Connection, work_item_id: uuid.UUID) -> HerCandida
     return HerCandidate.model_validate(payload)
 
 
+def _latest_attempt_event(connection: Connection, attempt_id: uuid.UUID) -> uuid.UUID:
+    event_id = connection.execute(
+        select(events.c.event_id)
+        .where(events.c.aggregate_type == "attempt", events.c.aggregate_id == attempt_id)
+        .order_by(events.c.sequence.desc())
+        .limit(1)
+    ).scalar_one()
+    return uuid.UUID(str(event_id))
+
+
+def _append_attempt_completed(
+    connection: Connection,
+    *,
+    lease: jobs.Lease,
+    attempt_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+) -> uuid.UUID:
+    row = connection.execute(
+        select(
+            attempts.c.state,
+            attempts.c.started_at,
+            attempts.c.created_at,
+            attempt_outcomes.c.status,
+            attempt_outcomes.c.observation_id,
+            attempt_outcomes.c.failure,
+            attempt_outcomes.c.cost,
+            attempt_outcomes.c.data_origin,
+            attempt_outcomes.c.execution_mode,
+            attempt_outcomes.c.provenance,
+            attempt_outcomes.c.finished_at,
+        )
+        .select_from(attempts.join(attempt_outcomes))
+        .where(attempts.c.attempt_id == attempt_id)
+    ).one()
+    correlation_id, _ = jobs.event_context(connection, lease.job_id)
+    appended = append_event(
+        connection,
+        campaign_id=campaign_id,
+        aggregate_id=attempt_id,
+        aggregate_type="attempt",
+        event_type="attempt.completed",
+        payload={
+            "work_item_id": lease.work_item_id,
+            "campaign_id": campaign_id,
+            "state": row.state,
+            "status": row.status,
+            "observation_id": row.observation_id,
+            "failure": row.failure,
+            "cost": row.cost,
+            "data_origin": row.data_origin,
+            "execution_mode": row.execution_mode,
+            "provenance": row.provenance,
+            "started_at": row.started_at,
+            "finished_at": row.finished_at,
+        },
+        expected_version=current_sequence(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_type="attempt",
+            aggregate_id=attempt_id,
+        ),
+        correlation_id=correlation_id,
+        causation_id=_latest_attempt_event(connection, attempt_id),
+    )
+    return appended.event_id
+
+
+def _append_work_item_state(
+    connection: Connection,
+    *,
+    lease: jobs.Lease,
+    campaign_id: uuid.UUID,
+    state: str,
+    causation_id: uuid.UUID,
+    reason: str | None = None,
+) -> uuid.UUID:
+    correlation_id, _ = jobs.event_context(connection, lease.job_id)
+    appended = append_event(
+        connection,
+        campaign_id=campaign_id,
+        aggregate_id=lease.work_item_id,
+        aggregate_type="work_item",
+        event_type=f"work_item.{state}",
+        payload={"state": state, "reason": reason},
+        expected_version=current_sequence(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_type="work_item",
+            aggregate_id=lease.work_item_id,
+        ),
+        correlation_id=correlation_id,
+        causation_id=causation_id,
+    )
+    return appended.event_id
+
+
 class Worker:
     """One worker process. Owns no state between turns beyond its name."""
 
@@ -195,8 +292,9 @@ class Worker:
             mismatch = self._environment_mismatch(origin, mode)
             ordinal = _next_ordinal(connection, lease.work_item_id)
             attempt_id = uuid.uuid4()
-            connection.execute(
-                attempts.insert().values(
+            attempt_row = connection.execute(
+                attempts.insert()
+                .values(
                     attempt_id=attempt_id,
                     work_item_id=lease.work_item_id,
                     job_id=lease.job_id,
@@ -205,6 +303,26 @@ class Worker:
                     started_at=func.now(),
                     created_at=func.now(),
                 )
+                .returning(attempts.c.started_at, attempts.c.created_at)
+            ).one()
+            correlation_id, job_event_id = jobs.event_context(connection, lease.job_id)
+            append_event(
+                connection,
+                campaign_id=campaign_id,
+                aggregate_id=attempt_id,
+                aggregate_type="attempt",
+                event_type="attempt.started",
+                payload={
+                    "work_item_id": lease.work_item_id,
+                    "job_id": lease.job_id,
+                    "ordinal": ordinal,
+                    "state": "running",
+                    "started_at": attempt_row.started_at,
+                    "created_at": attempt_row.created_at,
+                },
+                expected_version=0,
+                correlation_id=correlation_id,
+                causation_id=job_event_id,
             )
 
         if mismatch is not None:
@@ -394,7 +512,6 @@ class Worker:
         # Step 3 and 4: one transaction for the evidence, the event, and the job.
         with self._engine.begin() as connection:
             if _already_succeeded(connection, lease.work_item_id):
-                jobs.complete(connection, lease)
                 self._write_outcome(
                     connection,
                     lease,
@@ -405,10 +522,23 @@ class Worker:
                     status="duplicate_suppressed",
                     provenance=provenance,
                 )
+                connection.execute(
+                    attempts.update()
+                    .where(attempts.c.attempt_id == attempt_id)
+                    .values(state="cancelled")
+                )
+                completed_event_id = _append_attempt_completed(
+                    connection,
+                    lease=lease,
+                    attempt_id=attempt_id,
+                    campaign_id=campaign_id,
+                )
+                jobs.complete(connection, lease, causation_id=completed_event_id)
                 return WorkOutcome(lease.job_id, "duplicate_suppressed")
 
-            connection.execute(
-                observations.insert().values(
+            observation_row = connection.execute(
+                observations.insert()
+                .values(
                     observation_id=identity,
                     campaign_id=campaign_id,
                     work_item_id=lease.work_item_id,
@@ -426,6 +556,36 @@ class Worker:
                     provenance=provenance.model_dump(mode="json"),
                     received_at=func.now(),
                 )
+                .returning(observations.c.received_at)
+            ).one()
+            correlation_id, _ = jobs.event_context(connection, lease.job_id)
+            append_event(
+                connection,
+                campaign_id=campaign_id,
+                aggregate_id=attempt_id,
+                aggregate_type="attempt",
+                event_type="observation.accepted",
+                payload={
+                    "observation_id": identity,
+                    "work_item_id": lease.work_item_id,
+                    "attempt_id": attempt_id,
+                    "media_type": result.media_type,
+                    "object_uri": stored.uri,
+                    "byte_size": stored.byte_size,
+                    "sha256": stored.sha256,
+                    "schema_version": result.schema_version,
+                    "signal_kind": result.signal_kind,
+                    "quantities": [d.model_dump(mode="json") for d in LSV_DESCRIPTORS],
+                    "status": "accepted",
+                    "status_reason": None,
+                    "data_origin": origin,
+                    "execution_mode": mode,
+                    "provenance": provenance.model_dump(mode="json"),
+                    "received_at": observation_row.received_at,
+                },
+                expected_version=1,
+                correlation_id=correlation_id,
+                causation_id=_latest_attempt_event(connection, attempt_id),
             )
             connection.execute(
                 storage_objects.update()
@@ -455,7 +615,13 @@ class Worker:
                 .where(attempts.c.attempt_id == attempt_id)
                 .values(state="succeeded")
             )
-            connection.execute(
+            completed_event_id = _append_attempt_completed(
+                connection,
+                lease=lease,
+                attempt_id=attempt_id,
+                campaign_id=campaign_id,
+            )
+            item_update = connection.execute(
                 work_items.update()
                 .where(
                     and_(
@@ -465,15 +631,16 @@ class Worker:
                 )
                 .values(state="accepted", updated_at=func.now())
             )
-            append_event(
-                connection,
-                campaign_id=campaign_id,
-                aggregate_id=lease.work_item_id,
-                aggregate_type="work_item",
-                event_type="observation.accepted",
-                payload={"observation_id": identity, "attempt_id": str(attempt_id)},
-            )
-            jobs.complete(connection, lease)
+            causal_event_id = completed_event_id
+            if item_update.rowcount == 1:
+                causal_event_id = _append_work_item_state(
+                    connection,
+                    lease=lease,
+                    campaign_id=campaign_id,
+                    state="accepted",
+                    causation_id=completed_event_id,
+                )
+            jobs.complete(connection, lease, causation_id=causal_event_id)
 
         return WorkOutcome(lease.job_id, "succeeded", observation_id=identity)
 
@@ -521,12 +688,19 @@ class Worker:
             connection.execute(
                 attempts.update().where(attempts.c.attempt_id == attempt_id).values(state=status)
             )
+            completed_event_id = _append_attempt_completed(
+                connection,
+                lease=lease,
+                attempt_id=attempt_id,
+                campaign_id=campaign_id,
+            )
+            causal_event_id = completed_event_id
             if not retryable:
                 # Guarded on the source state. An unconditional UPDATE would drive an already
                 # `accepted` item to `rejected` on a redelivery whose adapter now reports the
                 # location unavailable, and the projection would then contradict the observation
                 # it points at. `accepted` and `rejected` are terminal (docs/SPEC.md §7.2).
-                connection.execute(
+                item_update = connection.execute(
                     work_items.update()
                     .where(
                         and_(
@@ -536,23 +710,34 @@ class Worker:
                     )
                     .values(state="rejected", updated_at=func.now())
                 )
+                if item_update.rowcount == 1:
+                    causal_event_id = _append_work_item_state(
+                        connection,
+                        lease=lease,
+                        campaign_id=campaign_id,
+                        state="rejected",
+                        causation_id=completed_event_id,
+                        reason=summary,
+                    )
             # A failed attempt still consumed one, so the ledger records it. A budget that only
             # counted successes would let a campaign burn its allowance invisibly.
             _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
-            append_event(
-                connection,
-                campaign_id=campaign_id,
-                aggregate_id=lease.work_item_id,
-                aggregate_type="work_item",
-                event_type=f"attempt.{status}",
-                payload={"failure_code": failure_code, "attempt_id": str(attempt_id)},
-            )
             if retryable:
                 # Backoff applied by the database, and the attempt cap enforced there too, so a
                 # failing dependency is retried without becoming a retry storm.
-                jobs.schedule_retry(connection, lease, failure={"failure_code": failure_code})
+                jobs.schedule_retry(
+                    connection,
+                    lease,
+                    failure={"failure_code": failure_code},
+                    causation_id=causal_event_id,
+                )
             else:
-                jobs.fail_terminally(connection, lease, failure={"failure_code": failure_code})
+                jobs.fail_terminally(
+                    connection,
+                    lease,
+                    failure={"failure_code": failure_code},
+                    causation_id=causal_event_id,
+                )
         return WorkOutcome(lease.job_id, status, failure_code=failure_code)
 
     def _record_lease_lost(
@@ -595,13 +780,11 @@ class Worker:
                 .values(state="lease_lost")
             )
             _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
-            append_event(
+            _append_attempt_completed(
                 connection,
+                lease=lease,
+                attempt_id=attempt_id,
                 campaign_id=campaign_id,
-                aggregate_id=lease.work_item_id,
-                aggregate_type="work_item",
-                event_type="attempt.lease_lost",
-                payload={"attempt_id": str(attempt_id)},
             )
         return WorkOutcome(lease.job_id, "lease_lost", failure_code="lease_lost")
 

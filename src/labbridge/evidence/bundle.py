@@ -10,8 +10,9 @@ filename, would pass for a file whose contents changed.
 
 Three exports, each answering a different question:
 
-* `events.jsonl` — ordered by aggregate and sequence, never by timestamp, so the campaign's state is
-  reconstructable from the file alone (§5.2);
+* `events.jsonl` — ordered by campaign position, never by timestamp; a complete typed stream is
+  validated as reconstruction input, while this module performs no projection reconstruction
+  (§5.2);
 * `observations.json` — what was received, with origin, mode, checksum and lineage root;
 * `metrics.json` — what was derived, with the analysis name, version and parameter hash that
   produced it, and with rejected metrics included, because a bundle that showed only the accepted
@@ -425,6 +426,10 @@ def build_bundle(
         "environment_id": campaign["environment_id"],
         "data_origin": campaign["data_origin"],
         "execution_mode": campaign["execution_mode"],
+        "event_stream_contract_version": campaign["event_stream_contract_version"],
+        "event_stream_completeness": (
+            "complete" if campaign["event_stream_contract_version"] == 1 else "legacy_incomplete"
+        ),
         "generated_at": generated_at.astimezone(UTC).isoformat(),
         "files": files,
         "objects": objects,
@@ -550,6 +555,15 @@ def _verify_manifest_identity(manifest: dict[str, object]) -> None:
     environment_id = manifest.get("environment_id")
     data_origin = manifest.get("data_origin")
     execution_mode = manifest.get("execution_mode")
+    event_stream_contract_version = manifest.get("event_stream_contract_version")
+    event_stream_completeness = manifest.get("event_stream_completeness")
+    event_stream_marker_is_valid = (
+        event_stream_contract_version is None and event_stream_completeness is None
+    ) or (
+        event_stream_contract_version in (0, 1)
+        and event_stream_completeness
+        == ("complete" if event_stream_contract_version == 1 else "legacy_incomplete")
+    )
     generated_at = manifest.get("generated_at")
     try:
         canonical_campaign_id = str(uuid.UUID(campaign_id)) if isinstance(campaign_id, str) else ""
@@ -573,6 +587,7 @@ def _verify_manifest_identity(manifest: dict[str, object]) -> None:
         or not isinstance(data_origin, str)
         or not isinstance(execution_mode, str)
         or (data_origin, execution_mode) not in ADMISSIBLE_PAIRS
+        or not event_stream_marker_is_valid
         or not generated_at_is_aware
     ):
         raise _verification_error(
