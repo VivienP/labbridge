@@ -18,3 +18,23 @@ def test_source_intake_imports_no_framework_or_infrastructure_adapter() -> None:
 
     forbidden = ("fastapi", "typer", "sqlalchemy", "pathlib", "boto", "labbridge.infrastructure")
     assert not any(name.startswith(forbidden) for name in imports)
+
+
+def test_cv_domain_imports_no_application_or_infrastructure_adapter() -> None:
+    path = Path("src/labbridge/domain/cv_observations.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+
+    forbidden = (
+        "labbridge.application",
+        "labbridge.infrastructure",
+        "fastapi",
+        "typer",
+        "sqlalchemy",
+    )
+    assert not any(name.startswith(forbidden) for name in imports)

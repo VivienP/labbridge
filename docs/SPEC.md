@@ -340,6 +340,33 @@ class SourceArtifact(BaseModel):
 Source capture does not inspect columns, assign units, identify a technique, or create an
 `Observation`.
 
+### 3.9 Generic CV import profile and normalised observation
+
+Generic CSV ingestion is controlled by one immutable, content-addressed `CVImportProfile`. The
+profile declares its schema version, technique, environment identity, encoding, delimiter, decimal convention, header row,
+missing-value tokens, every source column, each mapped role, source unit, target unit, and the
+explicit state of CV metadata. A source column is either scientifically mapped or explicitly
+ignored. Header names and filenames never assign roles.
+
+The minimum CV contract requires exactly one potential axis and exactly one current or
+current-density axis. Time and cycle axes are optional but explicit when used. Reference scale,
+applied-versus-corrected potential, current basis, electrode role, geometric/contact area, scan rate,
+and cycle information each carry one of `known`, `unknown`, `unavailable`, or `not_applicable`.
+Known numeric metadata requires an explicit unit; a missing unit is rejected rather than inferred.
+
+`NormalisedCVObservation` records the source artifact and profile identities, schema version,
+origin, execution mode, environment identity, row count, typed decimal series, source columns,
+source and target units,
+metadata states, parser version, normalisation version, and transformation identities. Its content
+identity covers the exact source identity, canonical profile, normalised values, units, roles,
+metadata, parser version, normalisation version, and observation schema. Each series identity also
+covers its schema version, decimal dtype, one-dimensional shape, values, units, and role.
+
+Each transformation record names its implementation and version, input identities, ordered
+parameters, and output identities. The graph begins at the retained `SourceArtifact`, passes through
+the parsed table and mapped series, and closes at the normalised observation. Phase 2 findings cover
+only parsing, mapping, unit, structural, and lineage validity.
+
 ---
 
 ## 4. Operational persistence
@@ -357,6 +384,7 @@ PostgreSQL is authoritative for:
 - budget reservations and consumption;
 - idempotency keys;
 - source-artifact lifecycle and provenance metadata;
+- versioned import profiles, normalised CV metadata, transformation records, and structural findings;
 - state projections;
 - object and evidence-bundle metadata;
 - invalidation and supersession relations.
@@ -381,6 +409,11 @@ Source intake first persists pending metadata, then stores and reads back the ex
 then marks the source and storage metadata committed. Reconciliation classifies retained pending
 objects as committed or quarantined after an interrupted boundary. A checksum mismatch quarantines
 the source without rewriting or deleting the mismatched bytes.
+
+Normalised CV persistence follows the same publication order: it reserves content-addressed
+`pending` object metadata, uploads and reads back the canonical observation bytes, then atomically
+marks the object committed while inserting the observation and its transformation records. An
+interruption after upload remains visible to reconciliation as a retained diagnostic orphan.
 
 ### 4.3 Released artifacts
 
@@ -780,6 +813,13 @@ Minimum endpoints:
   mode, and idempotency identity;
 - `GET /source-artifacts/{id}` — retrieve source metadata;
 - `GET /source-artifacts/{id}/content` — retrieve exact bytes after checksum verification;
+- `POST /cv/source-inspections` — inspect declared CSV structure without assigning roles;
+- `POST /cv/import-profiles` and `GET /cv/import-profiles/{id}` — create and retrieve immutable
+  explicit profiles;
+- `POST /cv/normalisations` and `GET /cv/normalised-observations/{id}` — normalise a retained source
+  and retrieve its observation, graph, and structural findings;
+- `GET /cv/normalised-observations/{id}/plot-series` — retrieve backend-approved values, roles,
+  units, identity, and provenance without display transformations;
 - `POST /campaigns` — validate and create a campaign;
 - `POST /campaigns/{id}/start`;
 - `POST /campaigns/{id}/pause`;
@@ -815,6 +855,11 @@ Minimum commands:
 labbridge source intake <file> --intake-id <key> --media-type <type> \
   --data-origin <origin> --execution-mode <mode>
 labbridge source verify <source-artifact-id>
+labbridge cv inspect <source-artifact-id> --encoding <encoding> --delimiter <delimiter> \
+  --header-row <row> [--json]
+labbridge cv profile-create <profile.json> [--json]
+labbridge cv normalise <source-artifact-id> --profile-id <profile-id> [--json]
+labbridge cv plot <normalised-observation-id> [--json]
 labbridge fetch-her
 labbridge inspect-her
 labbridge demo her

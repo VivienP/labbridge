@@ -1,0 +1,30 @@
+[
+  {
+    "code": "csv.structure.valid",
+    "finding_id": "finding:f6d8b42a7b68470aad342df6dca50434",
+    "message": "CSV rows and headers are structurally valid.",
+    "status": "pass",
+    "subject_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a"
+  },
+  {
+    "code": "cv.axes.valid",
+    "finding_id": "finding:7a5a8988785ff3e997087530366821e4",
+    "message": "Required potential and current axes are mapped.",
+    "status": "pass",
+    "subject_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a"
+  },
+  {
+    "code": "unit.mapping.valid",
+    "finding_id": "finding:b9eb8fef5c53d68b7e28a0c47575c709",
+    "message": "Every scientific column has a supported explicit unit mapping.",
+    "status": "pass",
+    "subject_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a"
+  },
+  {
+    "code": "lineage.closed",
+    "finding_id": "finding:56f6c85f700105f91a4ce67b4ce2da2a",
+    "message": "Every normalised series closes to the retained source artifact.",
+    "status": "pass",
+    "subject_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a"
+  }
+]

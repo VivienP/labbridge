@@ -1,0 +1,123 @@
+{
+  "observation_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a",
+  "records": [
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.parse_cv_csv",
+      "implementation_version": "1",
+      "input_ids": [
+        "source:97fbafab40e0dde53c902a88f32e5088"
+      ],
+      "kind": "csv_parse",
+      "output_ids": [
+        "csv-table:6cbbc798c9f967e71ba7c9205031d180"
+      ],
+      "parameters": [
+        {
+          "name": "decimal_convention",
+          "value": "point"
+        },
+        {
+          "name": "delimiter",
+          "value": ","
+        },
+        {
+          "name": "encoding",
+          "value": "utf-8"
+        },
+        {
+          "name": "header_row",
+          "value": "1"
+        },
+        {
+          "name": "missing_value_tokens",
+          "value": "|NA"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:f68af4efccf1abc77ad31d818a2f4c53"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "1",
+      "input_ids": [
+        "csv-table:6cbbc798c9f967e71ba7c9205031d180"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "cv-series:15ce8989d28aefc532fbbac53614ca51"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "potential"
+        },
+        {
+          "name": "source_column",
+          "value": "channel_a"
+        },
+        {
+          "name": "source_unit",
+          "value": "V"
+        },
+        {
+          "name": "target_unit",
+          "value": "V"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:410698f3f7df9c9fa6b52ffe5066755a"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "1",
+      "input_ids": [
+        "csv-table:6cbbc798c9f967e71ba7c9205031d180"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "cv-series:8840491f4950dfd70033624a8d780622"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "current"
+        },
+        {
+          "name": "source_column",
+          "value": "channel_b"
+        },
+        {
+          "name": "source_unit",
+          "value": "A"
+        },
+        {
+          "name": "target_unit",
+          "value": "A"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:815b2e702ae1bb982ada3ea11ed5b59f"
+    },
+    {
+      "implementation": "labbridge.application.cv_ingestion.normalise_cv",
+      "implementation_version": "0.1.0",
+      "input_ids": [
+        "cv-series:15ce8989d28aefc532fbbac53614ca51",
+        "cv-series:8840491f4950dfd70033624a8d780622"
+      ],
+      "kind": "observation_assembly",
+      "output_ids": [
+        "cv-observation:6b9846ff3dfe2a38e2989984c21d450a"
+      ],
+      "parameters": [
+        {
+          "name": "observation_schema_version",
+          "value": "1"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:e5c8b9c23624b210ebbd534fc1183fe7"
+    }
+  ],
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088"
+}

@@ -48,12 +48,14 @@ opaque source bytes
   → object-store read-back verification
   → committed SourceArtifact
   → exact-byte retrieval
-  → closed integrity manifest
+  → explicit versioned CV import profile
+  → fail-closed CSV parsing and declared unit conversion
+  → normalised CV observation with closed transformation lineage
 ```
 
-This first file-facing seam deliberately stops before parsing. The retained filename and declared
-media type are descriptive metadata; no Phase 1 code assigns meaning, units, or technique validity
-to the fixture's columns.
+Phase 1 retains opaque bytes without assigning semantics. Phase 2 assigns roles and units only from
+an explicit import profile, accounts for every source column, and records each parser, mapping, unit,
+and assembly transformation. Unknown or unavailable electrochemical context remains explicit.
 
 ## Architecture
 
@@ -115,6 +117,20 @@ The reproduction command in
 closed source-capture artifact through PostgreSQL and MinIO. It demonstrates opaque retention and
 checksum verification only, not CSV interpretation.
 
+The Phase 2 profile and normalisation commands use the same application service as the HTTP API:
+
+```bash
+labbridge cv inspect <source-artifact-id> --encoding utf-8 --delimiter , --header-row 1 --json
+labbridge cv profile-create fixtures/import-profiles/synthetic-replay-cv-v1.json --json
+labbridge cv normalise <source-artifact-id> --profile-id <profile-id> --json
+labbridge cv plot <normalised-observation-id> --json
+python scripts/reproduce_cv_ingestion.py --output build/cv-ingestion
+```
+
+The committed artifact under [`artifacts/cv-ingestion`](artifacts/cv-ingestion) preserves the exact
+Phase 1 source bytes and contains the profile, normalised observation, transformation graph,
+structural findings, explicit environment identity, closed manifest, and verification record.
+
 ```bash
 labbridge fetch-her --record-id 20439519 --dry-run
 ```
@@ -173,15 +189,18 @@ or operational experiment proves it), or `deferred`.
 | Budget reservation and hard stopping rules | `planned` |
 | Evidence bundles, local bundle checks, and full stored-object verification | `implemented` |
 | Opaque source intake, exact-byte retrieval, and integrity verification | `demonstrated` |
+| Explicit generic CV CSV ingestion and closed normalisation lineage | `demonstrated` |
 | Biosensor simulator and fault injection | `planned` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `planned` |
 | Deployment, backup restore, and the seeded fault-injection experiment | `planned` |
 | Model-based selection policy beyond a seeded random baseline | `deferred` |
 
-Opaque source capture is demonstrated by the committed synthetic fixture and reproducible artifact
-under [`artifacts/source-capture`](artifacts/source-capture). No CSV semantics, normalisation, or
-scientific validity is demonstrated by that artifact.
+Opaque source capture is demonstrated under
+[`artifacts/source-capture`](artifacts/source-capture). Explicit generic CV normalisation is
+demonstrated separately under [`artifacts/cv-ingestion`](artifacts/cv-ingestion). The latter proves
+parser, mapping, unit, structural, identity, and lineage behaviour for the committed profile; it does
+not claim electrochemical validity or infer unavailable experimental context.
 
 ## Limitations
 

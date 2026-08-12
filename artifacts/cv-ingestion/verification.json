@@ -1,0 +1,28 @@
+{
+  "environment_id": "synthetic_cv_fixture",
+  "import_profile_id": "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+  "lineage_closed": true,
+  "observation_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a",
+  "schema_version": "1",
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "source_sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8",
+  "structural_findings": [
+    {
+      "code": "csv.structure.valid",
+      "status": "pass"
+    },
+    {
+      "code": "cv.axes.valid",
+      "status": "pass"
+    },
+    {
+      "code": "unit.mapping.valid",
+      "status": "pass"
+    },
+    {
+      "code": "lineage.closed",
+      "status": "pass"
+    }
+  ],
+  "verified": true
+}
