@@ -75,6 +75,15 @@ _KNOWN_ATTEMPT_STATUS = (
     "'corrupted','cancelled','lease_lost','duplicate_suppressed')"
 )
 
+#: Mirrors `labbridge.domain.objects.OBJECT_CLASSIFICATIONS`, duplicated for the same reason as the
+#: origin/mode pairs: the database must refuse an unknown verdict even when the writer is not this
+#: application. `test_constraints.py` enumerates the domain tuple against the database, so the two
+#: copies cannot drift apart.
+_KNOWN_OBJECT_CLASSIFICATION = (
+    "classification IS NULL OR classification IN "
+    "('accepted_evidence','diagnostic_duplicate','diagnostic_orphan','quarantined','missing')"
+)
+
 
 def _timestamps(*names: str) -> list[Column[datetime]]:
     """Timestamps are always timezone-aware: a naive column cannot be ordered across hosts."""
@@ -147,6 +156,12 @@ jobs = Table(
     # completing the job anyway after a pause: it must present the token the claim wrote.
     Column("lease_owner", String(128), nullable=True),
     Column("lease_token", UUID(as_uuid=True), nullable=True),
+    #: The fencing token. Monotonic per job: every claim and every reclaim increments it, and it is
+    #: never reset, so "which lease is newer" is answerable — which a random token cannot answer.
+    #: It rides alongside `lease_token` rather than replacing it because the two do different jobs:
+    #: the generation orders leases, the token proves the presenter is the holder rather than
+    #: someone who guessed the next integer. Both are checked wherever ownership decides an effect.
+    Column("lease_generation", BigInteger, nullable=False, server_default=text("0")),
     Column("lease_expires_at", DateTime(timezone=True), nullable=True),
     Column("heartbeat_at", DateTime(timezone=True), nullable=True),
     Column("attempt_count", Integer, nullable=False, server_default=text("0")),
@@ -159,9 +174,16 @@ jobs = Table(
     *_timestamps("created_at", "updated_at"),
     UniqueConstraint("idempotency_key", name="uq_jobs_idempotency_key"),
     CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
+    CheckConstraint("lease_generation >= 0", name="lease_generation_non_negative"),
     CheckConstraint(
         "(lease_owner IS NULL) = (lease_expires_at IS NULL)",
         name="lease_owner_and_expiry_together",
+    ),
+    # A held lease has all three parts. Without this a row could carry an owner and an expiry but no
+    # token, and the fencing check would compare against NULL and silently never match.
+    CheckConstraint(
+        "(lease_owner IS NULL) = (lease_token IS NULL)",
+        name="lease_owner_and_token_together",
     ),
 )
 
@@ -237,6 +259,11 @@ observations = Table(
         name="rejected_status_states_its_reason",
     ),
     CheckConstraint(_KNOWN_OBSERVATION_STATUS, name="known_status"),
+    # A rejected receipt still has to say why it was rejected, exactly as a corrupted one does.
+    CheckConstraint(
+        "status <> 'received' OR status_reason IS NOT NULL",
+        name="retained_receipt_states_its_reason",
+    ),
     # The pair must equal the campaign's, not merely be admissible on its own. Without this a
     # `synthetic + replay` observation inserts cleanly into an `observed + replay` campaign: both
     # rows pass the CHECK individually, and the conflation ADR-010 exists to prevent happens
@@ -247,6 +274,18 @@ observations = Table(
         name="fk_observations_campaign_identity",
         ondelete="RESTRICT",
     ),
+)
+
+# At most one *accepted* observation per work item, whatever the delivery or retry count. The
+# outcome index below says at most one attempt succeeded; this one says the evidence agrees, so a
+# writer that bypassed the worker cannot leave two accepted receipts pointing at one item. Receipts
+# retained as `received` are deliberately outside the predicate: that is how a refused delivery
+# keeps its bytes without competing for acceptance.
+Index(
+    "uq_observations_one_accepted_per_work_item",
+    observations.c.work_item_id,
+    unique=True,
+    postgresql_where=text("status = 'accepted'"),
 )
 
 attempt_outcomes = Table(
@@ -288,8 +327,14 @@ attempt_outcomes = Table(
         name="fk_attempt_outcomes_observation",
         ondelete="RESTRICT",
     ),
+    # An outcome may reference an observation exactly when bytes arrived. `duplicate_suppressed` and
+    # `lease_lost` are here because both can occur *after* an adapter returned and its bytes were
+    # stored: the result is refused from accepted state, but the bytes were received and invariant 2
+    # requires them retained. What they reference is a `received` observation, never an `accepted`
+    # one — the partial index below is what keeps that distinction from being a matter of care.
     CheckConstraint(
-        "observation_id IS NULL OR status IN ('succeeded','corrupted')",
+        "observation_id IS NULL "
+        "OR status IN ('succeeded','corrupted','duplicate_suppressed','lease_lost')",
         name="observation_only_when_bytes_arrived",
     ),
     CheckConstraint(
@@ -417,9 +462,32 @@ storage_objects = Table(
     Column("object_key", Text, nullable=False),
     Column("byte_size", BigInteger, nullable=True),
     Column("sha256", _HASH, nullable=True),
+    Column("media_type", String(128), nullable=True),
+    # Which execution put these bytes here. Without it a reconciler can say an object is
+    # unreferenced but not which attempt to attribute it to, and an orphan becomes anonymous the
+    # moment the process that wrote it is gone — precisely when reconciliation has to run.
+    Column(
+        "attempt_id",
+        UUID(as_uuid=True),
+        ForeignKey("attempts.attempt_id", ondelete="RESTRICT"),
+        nullable=True,
+    ),
+    Column(
+        "work_item_id",
+        UUID(as_uuid=True),
+        ForeignKey("work_items.work_item_id", ondelete="RESTRICT"),
+        nullable=True,
+    ),
     # §4.2: a record must not declare an artifact committed before the object exists and its
     # checksum has been verified, so the checksum is required exactly in that state.
     Column("state", String(16), nullable=False),
+    #: What reconciliation concluded about this object, and why. Separate from `state` on purpose:
+    #: `state` is the write lifecycle the worker drives, `classification` is the verdict a later
+    #: pass reaches by comparing the row against the store. Keeping them apart means a
+    #: reconciliation verdict never silently rewrites the history of how the object was written.
+    Column("classification", String(32), nullable=True),
+    Column("classification_reason", Text, nullable=True),
+    Column("reconciled_at", DateTime(timezone=True), nullable=True),
     *_timestamps("created_at"),
     Column("committed_at", DateTime(timezone=True), nullable=True),
     CheckConstraint("state IN ('pending','committed','orphaned')", name="known_object_state"),
@@ -427,6 +495,16 @@ storage_objects = Table(
         "state <> 'committed' OR (sha256 IS NOT NULL AND byte_size IS NOT NULL "
         "AND committed_at IS NOT NULL)",
         name="committed_object_is_verified",
+    ),
+    CheckConstraint(_KNOWN_OBJECT_CLASSIFICATION, name="known_classification"),
+    # A verdict and the evidence for it arrive together, or the classification is unauditable.
+    CheckConstraint(
+        "(classification IS NULL) = (reconciled_at IS NULL)",
+        name="classification_records_when_it_was_reached",
+    ),
+    CheckConstraint(
+        "classification IS NULL OR classification_reason IS NOT NULL",
+        name="classification_states_its_reason",
     ),
 )
 

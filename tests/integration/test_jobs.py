@@ -493,7 +493,7 @@ def test_an_expired_lease_returns_the_job_to_the_queue(
 
     recovered = recover_expired_leases(connection)
 
-    assert recovered == 1
+    assert len(recovered) == ONE_JOB
     reclaimed = claim(connection, owner="worker-b")
     assert reclaimed is not None
     assert reclaimed.job_id == job_id
@@ -505,7 +505,7 @@ def test_a_live_lease_is_not_recovered(connection: Connection, work_item: uuid.U
     _enqueue(connection, work_item)
     claim(connection, owner="worker-a", lease_seconds=300)
 
-    assert recover_expired_leases(connection) == 0
+    assert recover_expired_leases(connection) == []
 
 
 def test_recovery_fails_a_job_that_has_exhausted_its_attempts(
@@ -681,7 +681,7 @@ def test_recovery_ignores_legacy_jobs_and_recovers_complete_jobs(
     assert lease.job_id == complete_job_id
     expire_lease_now(connection, complete_job_id)
 
-    assert recover_expired_leases(connection) == 1
+    assert len(recover_expired_leases(connection)) == ONE_JOB
     states = dict(
         connection.execute(
             select(jobs.c.job_id, jobs.c.state).where(

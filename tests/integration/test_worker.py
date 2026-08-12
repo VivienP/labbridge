@@ -403,6 +403,25 @@ def _acceptance_tally(connection: Connection, campaign_id: uuid.UUID, work_item_
             .select_from(observations)
             .where(observations.c.work_item_id == work_item_id)
         ).scalar_one(),
+        # Split, because "how many observations" is now the wrong question: a refused delivery
+        # retains its bytes as a `received` receipt, and only the accepted count is the one the
+        # duplicate-suppression guarantee is about.
+        "accepted_observations": connection.execute(
+            select(func.count())
+            .select_from(observations)
+            .where(
+                observations.c.work_item_id == work_item_id,
+                observations.c.status == "accepted",
+            )
+        ).scalar_one(),
+        "received_observations": connection.execute(
+            select(func.count())
+            .select_from(observations)
+            .where(
+                observations.c.work_item_id == work_item_id,
+                observations.c.status == "received",
+            )
+        ).scalar_one(),
         "metrics": connection.execute(
             select(func.count())
             .select_from(derived_metrics)
@@ -494,7 +513,11 @@ async def test_two_concurrent_deliveries_yield_at_most_one_accepted_outcome(
         "attempts": TWO_OUTCOMES,
         "succeeded": ONE_OUTCOME,
         "duplicate_suppressed": ONE_OUTCOME,
-        "observations": ONE_OBSERVATION,
+        # Two receipts, one acceptance: the refused delivery keeps the bytes it received under its
+        # own attempt, and only one of them is the campaign's result (invariant 2, PO-02).
+        "observations": TWO_OUTCOMES,
+        "accepted_observations": ONE_OBSERVATION,
+        "received_observations": ONE_OBSERVATION,
         "metrics": TWO_METRICS,
         "consumed": ONE_LEDGER_ENTRY,
         "observation.accepted": ONE_EVENT,
@@ -564,7 +587,11 @@ async def test_a_redelivery_after_the_commit_does_not_repeat_the_accepted_effect
         "attempts": TWO_OUTCOMES,
         "succeeded": ONE_OUTCOME,
         "duplicate_suppressed": ONE_OUTCOME,
-        "observations": ONE_OBSERVATION,
+        # Two receipts, one acceptance: the refused delivery keeps the bytes it received under its
+        # own attempt, and only one of them is the campaign's result (invariant 2, PO-02).
+        "observations": TWO_OUTCOMES,
+        "accepted_observations": ONE_OBSERVATION,
+        "received_observations": ONE_OBSERVATION,
         "metrics": TWO_METRICS,
         "consumed": ONE_LEDGER_ENTRY,
         "observation.accepted": ONE_EVENT,

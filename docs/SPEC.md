@@ -523,7 +523,11 @@ AVAILABLE → LEASED → RUNNING → SUCCEEDED
       └── campaign cancelled ──▶ CANCELLED
 ```
 
-A job records availability, lease owner, lease expiry, heartbeat, attempt count, command version, and idempotency key.
+A job records availability, lease owner, lease expiry, heartbeat, attempt count, command version, idempotency key, and a **lease generation**.
+
+The lease generation is the fencing token. It is monotonic per job and never reset: every claim and every reclaim increments it. Ownership means job identity, lease token, lease generation, and an unexpired lease, all evaluated by the database. A worker MUST NOT treat a process-local timer as evidence of ownership.
+
+Reclaiming an expired lease increments the generation at the reclaim, not at the next claim, so the previous holder is fenced out immediately whether or not the job is claimed again (ADR-016).
 
 The job's idempotency key is a **logical instruction identity**, derived from the work item and the command version rather than from a client-supplied token. Enqueueing the same instruction again resolves to the existing job and creates no second unit of executable work. The decision belongs to a uniqueness constraint reached through a conflict-safe insert, never to a prior read (ADR-015).
 
@@ -543,11 +547,58 @@ A worker:
 
 If the process dies between stages, lease recovery and idempotency constraints restore progress without accepting duplicate results.
 
-Step 7 begins by claiming the work item's single accepted outcome through the partial unique index. The claim is a conflict-safe insert rather than a "has this already succeeded?" query, because that query answers the same way for two concurrent executions.
+Step 7 begins by verifying the fencing token against a locked job row. The check MUST happen inside the finalisation transaction; a check made before opening it proves nothing, because the lease can lapse and be reclaimed in the gap.
+
+Step 3 runs under a heartbeat on an independent database connection. The heartbeat interval and the lease duration MUST be configurable. A heartbeat MUST update only a lease still held by the same owner, token and generation, MUST fail explicitly when it is not, and that failure MUST reach the worker so a stale execution cannot proceed to finalisation.
+
+Step 7 then claims the work item's single accepted outcome through the partial unique index. The claim is a conflict-safe insert rather than a "has this already succeeded?" query, because that query answers the same way for two concurrent executions.
 
 An execution that reaches finalisation and loses that claim records a `duplicate_suppressed` outcome for its own attempt, and writes no derived metric, no budget entry, and no acceptance event.
 
-It also writes no `Observation`, which is sound only under a premise the runtime does not currently verify: that its bytes are identical to the accepted delivery's, and therefore already retained at the same content-addressed key that the accepted observation references. That premise holds while the adapter is deterministic and the source root is unchanged between the two deliveries. Where it fails, bytes were received and no `Observation` describes them, which is short of invariant 2 in `AI_CONTRACT.md`. Closing the gap requires recording the received payload digest on the suppressed outcome so the divergence is detectable; until then this limitation MUST be stated wherever the suppression behaviour is described, and MUST NOT be presented as full compliance with invariant 2.
+It retains any bytes already received as an observation with status `received`, linked to its own
+attempt and digest. An identical read therefore records the same content-derived observation identity
+under a different attempt; a divergent read records a different identity. Neither receipt becomes an
+accepted observation, derived metric, budget entry, or acceptance event.
+
+### 6.3 Reconciliation
+
+Reconciliation is one function with two entry points: it runs once when a worker starts, before it takes any new work, and behind `labbridge reconcile`. There is no reconciliation daemon.
+
+One pass, in this order:
+
+1. reclaim expired leases, incrementing each job's lease generation;
+2. close attempts left `running` whose job holds no live lease, as `lease_lost`;
+3. classify every stored object.
+
+The order matters: reclaiming first fences out a stale worker, and closing attempts next means the outcome statuses the object verdicts depend on are already settled.
+
+**No known failure may leave an attempt indefinitely in `running`.** Where an attempt cannot complete normally it takes the most accurate terminal state available. `cancelled` means a campaign or an operator asked for the work to stop, and MUST NOT be used to describe duplicate suppression or lease loss in documentation or metrics.
+
+#### Object classification
+
+Every stored object records at least bucket, object key, byte size, SHA-256, media type, staging attempt, work item, a classification, and the reason for it. The classifications are:
+
+| Classification | Meaning |
+|---|---|
+| `accepted_evidence` | referenced by an accepted observation, bytes present and matching the recorded digest |
+| `diagnostic_duplicate` | staged by an execution refused as a duplicate, and its bytes differ from the accepted object |
+| `diagnostic_orphan` | bytes present, no accepted observation references them |
+| `quarantined` | ambiguous — the store and the database disagree about the digest |
+| `missing` | the row promises bytes the store does not have |
+
+Rules:
+
+- **deletion is never a recovery action.** Every verdict retains the bytes;
+- released evidence is immutable: reconciliation may label it and MUST NOT otherwise modify or remove it;
+- a checksum disagreement is quarantined; neither side is trusted, the recorded digest is not refreshed, and the object is not removed;
+- an object whose store cannot be reached is left unclassified, so an outage is never recorded as a fact about the bytes;
+- classification MUST be reproducible: the same facts always yield the same verdict, and the verdict states the fact that produced it.
+
+#### Retained receipts
+
+A result refused *after* its bytes reached storage — because it lost the acceptance race, or because it lost its lease — retains those bytes as an observation with status `received` under its own attempt, carrying its digest, size and the reason it was refused. This is invariant 2 applied to refusal: what is denied is acceptance, not receipt.
+
+Because `observation_id` is content-derived, an identical read produces the same identity under a different attempt, recording the match as a fact; a divergent read produces a different identity and is visible. At most one *accepted* observation may exist per work item, enforced by a partial unique index.
 
 ---
 

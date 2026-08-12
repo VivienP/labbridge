@@ -51,6 +51,8 @@ def _clear_all(engine: Engine) -> None:
         "derived_metrics",
         "attempt_outcomes",
         "observations",
+        # Before `attempts` and `work_items`: a staged object references both under `RESTRICT`.
+        "storage_objects",
         "attempts",
         "jobs",
         "events",
@@ -60,7 +62,6 @@ def _clear_all(engine: Engine) -> None:
         # `RESTRICT`, which PostgreSQL checks at the delete rather than at commit.
         "idempotency_keys",
         "campaigns",
-        "storage_objects",
         "record_relations",
     )
     with engine.begin() as connection:

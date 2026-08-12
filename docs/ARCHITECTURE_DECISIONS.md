@@ -403,3 +403,83 @@ strictly, that is short of invariant 1's companion retention rule in `AI_CONTRAC
 The behaviour predates this decision; what is new is that it is now written down. Closing it needs
 the received payload digest recorded on the suppressed outcome, and MUST NOT be described as
 satisfied until that exists.
+
+---
+
+## ADR-016 — Fence leases with a monotonic generation, and reconcile rather than delete
+
+**Status:** accepted
+
+**Decision:** every claim and every reclaim increments a per-job `lease_generation`. Ownership is
+proven by job identity, lease token, generation, and a live expiry evaluated by the database, and it
+is checked **inside** the transaction that writes an accepted effect. A heartbeat on an independent
+connection extends the lease while work runs and surfaces its own refusal to the worker. One
+reconciliation function reclaims expired leases, closes abandoned attempts, and classifies stored
+objects; it runs at worker startup and behind `labbridge reconcile`. Reconciliation never deletes.
+
+### Context
+
+A lease token alone answers "are you the holder?" but not "is your answer current?". Two holders can
+present valid-looking tokens across a reclaim, and nothing orders them. A monotonic generation makes
+staleness decidable by comparison rather than by trusting a clock, and incrementing it *at the
+reclaim* closes the window in which a fenced-out holder still looks current.
+
+Checking ownership before opening the finalisation transaction proves nothing: the lease can lapse
+and be reclaimed in the gap. `jobs.complete` re-checked at the end, but by then the observation, the
+metrics and the events had been written, and the only remedy was a rollback that discarded the record
+of what happened.
+
+A killed worker leaves three kinds of debris — a lease nobody holds, an attempt stuck `running`, and
+bytes with nothing pointing at them. Deleting the third is the tempting recovery action and the wrong
+one: the unexplained object is the evidence that the failure happened.
+
+### Consequences
+
+- `jobs.lease_generation` is monotonic per job, never reset, and returned by `claim`; `_held` checks
+  job, token, generation, and expiry together;
+- `jobs.assert_held` runs as the first statement of the finalisation transaction, holding the job row
+  with `FOR UPDATE` so the answer cannot change before the commit that depends on it;
+- a heartbeat runs on its own connection, at a configurable interval, and updates only a row still
+  matching owner, token and generation; a refusal is latched and re-raised on the worker's thread, so
+  a stale execution cannot proceed to finalisation;
+- reclaiming an expired lease increments the generation immediately, so the stale holder is fenced
+  out whether or not anyone claims the job next;
+- an attempt left `running` by a process that no longer holds its job becomes `lease_lost` — never
+  `cancelled`, which means a campaign or an operator asked for the work to stop;
+- **late-result policy**: a result returned after ownership is lost is refused from accepted
+  scientific state. Its bytes, if already stored, are retained as a `received` observation under its
+  own attempt; the outcome is `lease_lost` and its failure summary names the fencing-token mismatch.
+  No accepted observation, no acceptance event, no metric. Any earlier accepted state stays
+  authoritative;
+- a duplicate-suppressed execution likewise retains its bytes as a `received` observation. Because
+  `observation_id` is content-derived, an identical read lands the same identity under a different
+  attempt — the match is a fact in the table rather than an assumption — and a divergent read lands a
+  different identity and is visible;
+- `uq_observations_one_accepted_per_work_item` makes at most one *accepted* receipt per work item a
+  database guarantee; retained receipts sit outside the predicate;
+- `storage_objects` records media type, staging attempt, work item, a classification and its reason;
+  the five verdicts are `accepted_evidence`, `diagnostic_duplicate`, `diagnostic_orphan`,
+  `quarantined`, and `missing`, decided by a pure function over gathered facts so the verdict is
+  reproducible and states the evidence that produced it;
+- a checksum disagreement is quarantined and neither side is trusted: the recorded digest is not
+  refreshed and the object is not removed;
+- an object the store cannot be asked about is left unclassified rather than judged, so an outage is
+  never recorded as a fact about the bytes;
+- reconciliation runs once at worker startup and behind `labbridge reconcile`, sharing one
+  implementation. There is no reconciliation daemon.
+
+### Limits
+
+This decision covers ownership, liveness, recovery, and object classification. It does not deliver
+budget reservation or accounting, retry backoff policy, retry caps, campaign pause, resume or
+cancellation, deterministic replay, or event upcasting.
+
+Execution-boundary information is preserved so that later budget accounting can distinguish work that
+never began execution (an attempt with no staged object), work that began it, work that uploaded
+bytes (a `storage_objects` row naming the attempt), and work that committed an accepted effect (a
+`succeeded` outcome). The ledger itself is unchanged and still under-counts: a suppressed duplicate
+consumed a real adapter call and appends no entry.
+
+The attempt lifecycle has no `duplicate_suppressed` state, so a suppressed attempt is recorded as
+`cancelled` while its outcome carries the real meaning. That is a temporary compromise, recorded as
+one: no documentation or metric may read those attempt rows as user-requested cancellations.

@@ -36,6 +36,7 @@ from labbridge.infrastructure.persistence.tables import (
     idempotency_keys,
     jobs,
     observations,
+    storage_objects,
     work_items,
 )
 
@@ -117,6 +118,10 @@ _PURGE_ORDER: Final = (
     (derived_metrics, "observation"),
     (attempt_outcomes, "campaign"),
     (observations, "campaign"),
+    # Before `attempts`: a staged object names the attempt that wrote it, under `RESTRICT`, so the
+    # attempt cannot go first. That reference is the whole point — it is what lets reconciliation
+    # attribute an orphan to an execution.
+    (storage_objects, "work_item"),
     (attempts, "work_item"),
     (jobs, "work_item"),
     (budget_ledger, "campaign"),

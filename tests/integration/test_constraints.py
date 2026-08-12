@@ -220,6 +220,9 @@ def _observation(
         "signal_kind": "lsv",
         "quantities": [],
         "status": "received",
+        # `received` means bytes arrived but were not accepted, and the schema requires that a
+        # retained receipt says why — the same rule `corrupted` has always carried.
+        "status_reason": "retained for constraint tests",
         "data_origin": "synthetic",
         "execution_mode": "replay",
         "provenance": {},
@@ -252,6 +255,7 @@ def test_a_corrupted_observation_is_storable_and_must_state_why(connection: Conn
             work_item_id,
             _attempt(connection, work_item_id, 2),
             status="corrupted",
+            status_reason=None,
         )
 
 

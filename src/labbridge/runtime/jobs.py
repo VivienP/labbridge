@@ -84,6 +84,9 @@ class Lease:
     job_id: uuid.UUID
     work_item_id: uuid.UUID
     lease_token: uuid.UUID
+    #: The fencing token this claim was issued under. Every reclaim increments it, so a lease held
+    #: across an expiry is recognisable as stale by comparison rather than by trusting a clock.
+    lease_generation: int
     lease_expires_at: datetime
     attempt_count: int
     max_attempts: int
@@ -290,6 +293,10 @@ def claim(
             state="leased",
             lease_owner=owner,
             lease_token=token,
+            # Incremented, never reset: the generation is what makes a stale holder detectable
+            # after its lease was reclaimed, including when the reclaimer handed the job back to
+            # the same owner name.
+            lease_generation=jobs.c.lease_generation + 1,
             lease_expires_at=func.now() + _interval(lease_seconds),
             heartbeat_at=func.now(),
             attempt_count=jobs.c.attempt_count + 1,
@@ -298,6 +305,7 @@ def claim(
         .returning(
             jobs.c.job_id,
             jobs.c.work_item_id,
+            jobs.c.lease_generation,
             jobs.c.lease_expires_at,
             jobs.c.attempt_count,
             jobs.c.max_attempts,
@@ -313,6 +321,7 @@ def claim(
         job_id=row.job_id,
         work_item_id=row.work_item_id,
         lease_token=token,
+        lease_generation=int(row.lease_generation),
         lease_expires_at=row.lease_expires_at,
         attempt_count=row.attempt_count,
         max_attempts=row.max_attempts,
@@ -328,12 +337,38 @@ def _interval(seconds: int) -> ColumnElement[timedelta]:
 
 
 def _held(lease: Lease) -> ColumnElement[bool]:
-    """The predicate that says this lease still owns this job, evaluated by the database."""
+    """The predicate that says this lease still owns this job, evaluated by the database.
+
+    Three conditions, and each rules out a different way of being wrong: the generation rules out a
+    holder whose lease was reclaimed and reissued, the token rules out one that guessed the
+    generation, and the expiry rules out one whose lease simply ran out. The clock is the
+    database's, never the worker's.
+    """
     return and_(
         jobs.c.job_id == lease.job_id,
         jobs.c.lease_token == lease.lease_token,
+        jobs.c.lease_generation == lease.lease_generation,
         jobs.c.lease_expires_at > func.now(),
     )
+
+
+def assert_held(connection: Connection, lease: Lease) -> None:
+    """Raise unless this lease still owns this job, right now, on this connection.
+
+    Called as the first statement of any transaction that is about to write an accepted effect. A
+    check performed *before* opening that transaction proves nothing: the lease can expire and be
+    reclaimed in the gap, and the writer would then commit on behalf of a job it no longer holds.
+    Inside the transaction the row is locked, so the answer cannot change before the commit that
+    depends on it.
+
+    `FOR UPDATE` rather than a plain read for exactly that reason — it holds the row against a
+    concurrent reclaim until this transaction ends, one way or the other.
+    """
+    held = connection.execute(
+        select(jobs.c.job_id).where(_held(lease)).with_for_update()
+    ).one_or_none()
+    if held is None:
+        raise LeaseLostError(lease.job_id)
 
 
 def heartbeat(
@@ -471,12 +506,33 @@ def fail_terminally(
     )
 
 
-def recover_expired_leases(connection: Connection) -> int:
-    """Return every job whose lease has expired to the queue, and report how many.
+@dataclass(frozen=True)
+class ReclaimedLease:
+    """One job taken back from a holder that stopped proving it was alive."""
 
-    This is what *would* make a killed worker recoverable — but **nothing calls it in production**.
-    There is no sweeper and no worker loop, so today a killed worker strands its job until an
-    operator runs recovery by hand. The mechanism is here and tested; the schedule is not (F-005).
+    job_id: uuid.UUID
+    work_item_id: uuid.UUID
+    #: The generation the stale holder was using. Recorded so the reclaim is auditable: it says
+    #: which lease was fenced out, not merely that one was.
+    fenced_generation: int
+    lease_generation: int
+    previous_owner: str | None
+    exhausted: bool
+
+
+def recover_expired_leases(connection: Connection) -> list[ReclaimedLease]:
+    """Return every job whose lease has expired to the queue, and describe each reclaim.
+
+    Called by `runtime.reconciliation.reconcile`, which runs once at worker startup and behind
+    `labbridge reconcile`. There is deliberately no sweeper process: a reclaim is cheap and belongs
+    where a worker is about to look for work anyway, and a second daemon would be another thing to
+    supervise (F-003, F-005).
+
+    **The generation is incremented here, not only on the next claim.** Bumping it at reclaim time
+    is what fences the stale holder out immediately: from this commit onwards its `_held` predicate
+    cannot match, so it can neither heartbeat nor finalise, whether or not anyone claims the job
+    next. Waiting for the next claim would leave a window in which the old holder still looked
+    current.
 
     A job that has already used its attempts is failed terminally instead of looping forever.
     """
@@ -485,17 +541,26 @@ def recover_expired_leases(connection: Connection) -> int:
         jobs.c.lease_expires_at <= func.now(),
     )
     recoverable = connection.execute(
-        select(jobs.c.job_id, jobs.c.attempt_count, jobs.c.max_attempts)
+        select(
+            jobs.c.job_id,
+            jobs.c.work_item_id,
+            jobs.c.lease_owner,
+            jobs.c.lease_generation,
+            jobs.c.attempt_count,
+            jobs.c.max_attempts,
+        )
         .select_from(jobs.join(work_items).join(campaigns))
         .where(expired, campaigns.c.event_stream_contract_version == 1)
         .with_for_update(skip_locked=True, of=jobs)
     ).all()
+    reclaimed: list[ReclaimedLease] = []
     for row in recoverable:
         exhausted = row.attempt_count >= row.max_attempts
         values: dict[str, object] = {
             "state": "failed_terminal" if exhausted else "available",
             "lease_owner": None,
             "lease_token": None,
+            "lease_generation": jobs.c.lease_generation + 1,
             "lease_expires_at": None,
             "updated_at": func.now(),
         }
@@ -503,13 +568,28 @@ def recover_expired_leases(connection: Connection) -> int:
             values["last_failure"] = {"failure_code": "lease_expired"}
         else:
             values["available_at"] = func.now()
-        connection.execute(update(jobs).where(jobs.c.job_id == row.job_id).values(**values))
+        bumped = connection.execute(
+            update(jobs)
+            .where(jobs.c.job_id == row.job_id)
+            .values(**values)
+            .returning(jobs.c.lease_generation)
+        ).one()
         _append_job_event(
             connection,
             row.job_id,
             event_type="job.failed_terminal" if exhausted else "job.available",
         )
-    return len(recoverable)
+        reclaimed.append(
+            ReclaimedLease(
+                job_id=row.job_id,
+                work_item_id=row.work_item_id,
+                fenced_generation=int(row.lease_generation),
+                lease_generation=int(bumped.lease_generation),
+                previous_owner=row.lease_owner,
+                exhausted=exhausted,
+            )
+        )
+    return reclaimed
 
 
 def expire_lease_now(connection: Connection, job_id: uuid.UUID) -> None:

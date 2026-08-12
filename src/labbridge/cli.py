@@ -22,6 +22,7 @@ from botocore.config import Config as BotoConfig
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
+from sqlalchemy import create_engine
 
 from labbridge import __version__
 from labbridge.demo import engine_from_settings, run_demo
@@ -55,7 +56,8 @@ from labbridge.infrastructure.her_ingestion.provenance import (
 from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
 from labbridge.infrastructure.objectstore import ObjectStore, S3ObjectStore
-from labbridge.infrastructure.persistence.config import ObjectStoreSettings
+from labbridge.infrastructure.persistence.config import DatabaseSettings, ObjectStoreSettings
+from labbridge.runtime.reconciliation import reconcile
 
 EXPECTED_DOI: Final = PINNED_DOI
 #: Beside the landing root and git-ignored with it. The fixture is regenerable from its seed, so
@@ -398,3 +400,48 @@ def inspect_her(
             "[yellow]no provenance.json found: the inventory is not tied to an acquisition[/yellow]"
         )
     console.print(f"dataset inventory written to {destination}")
+
+
+@app.command("reconcile")
+def reconcile_command() -> None:
+    """Reclaim expired leases, close abandoned attempts, and classify stored objects.
+
+    The same function a worker runs at startup (`labbridge.runtime.reconciliation.reconcile`), so an
+    operator investigating a stuck queue and a worker recovering from a crash reach identical
+    conclusions. There is deliberately no reconciliation daemon: one implementation, two entry
+    points, nothing extra to supervise.
+
+    Nothing here deletes bytes. An object that cannot be explained is quarantined and reported, and
+    a released evidence object is never touched.
+    """
+    engine = create_engine(DatabaseSettings().dsn, future=True)
+    store = _build_object_store()
+    with engine.begin() as connection:
+        report = reconcile(connection, store)
+
+    table = Table("what", "count", title="reconciliation")
+    table.add_row("leases reclaimed", str(len(report.reclaimed)))
+    table.add_row("attempts closed", str(len(report.closed_attempts)))
+    for classification, count in sorted(report.counts.items()):
+        table.add_row(f"objects {classification}", str(count))
+    if report.unreachable:
+        table.add_row("objects unreachable", str(len(report.unreachable)))
+    console.print(table)
+
+    for reclaimed in report.reclaimed:
+        console.print(
+            f"  job {reclaimed.job_id} reclaimed from {reclaimed.previous_owner or 'nobody'}: "
+            f"generation {reclaimed.fenced_generation} fenced out, now "
+            f"{reclaimed.lease_generation}"
+        )
+    for entry in report.classified:
+        if entry.classification != "accepted_evidence":
+            console.print(f"  [yellow]{entry.classification}[/yellow] {entry.object_uri}")
+            console.print(f"    {entry.reason}")
+    if report.unreachable:
+        # Not a verdict: a classification reached while storage was down would record an outage as
+        # a fact about the bytes.
+        console.print(
+            f"[yellow]{len(report.unreachable)} object(s) could not be read and were left "
+            "unclassified[/yellow]"
+        )

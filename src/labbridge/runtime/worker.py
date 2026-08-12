@@ -6,11 +6,10 @@ where it is because of what happens when the process dies immediately after it:
 1. **claim** — atomic, leased, attempt counted;
 2. **stage the object first, outside the outcome transaction.** An object written but never
    referenced is an orphan; a row referencing an object that was never written is a dangling pointer
-   to evidence that does not exist. The first is recoverable in principle and the second is not, so
-   the upload happens before the commit (`docs/SPEC.md` §4.2, F-028). **No sweep exists yet**: the
-   `pending` row records the orphan so one can find it later, and `storage_objects.state='orphaned'`
-   is declared in the schema and written by nothing. Reconciliation is not yet delivered, so
-   reconciliation;
+   to evidence that does not exist. The first is recoverable and the second is not, so the upload
+   happens before the commit (`docs/SPEC.md` §4.2, F-028). The `pending` row carries the staging
+   attempt and work item, which is what lets `runtime.reconciliation` classify the bytes later
+   rather than find them anonymous;
 3. **one transaction** for the observation, the outcome, the event, the object's committed state,
    and the job's completion. Either the result is accepted with all of its evidence, or none of it
    is and the job is retried — never a budget spent with no outcome, nor an outcome with no event
@@ -18,12 +17,19 @@ where it is because of what happens when the process dies immediately after it:
 4. **the job completes inside that same transaction.** Marking the job done in a separate commit
    would leave a window where the job is finished but the outcome is not recorded.
 
-Delivery is at least once. Acceptance is not: the first write inside that transaction is a claim on
-the work item's single accepted outcome, and the partial unique index decides it. A delivery that
-loses the claim records `duplicate_suppressed` and writes no observation, no metric, no budget
-entry, and no acceptance event. The index is the arbiter and this code only reads its answer — a
-"has it already succeeded?" query would let two concurrent deliveries past together (PO-02,
-ADR-015).
+**Ownership is checked inside the finalisation transaction, before anything is accepted.** The
+fencing token is verified against a locked job row, so a lease that lapsed while the adapter ran
+cannot produce an accepted result; `jobs.complete` re-checks at the end, but by then the evidence
+would already be written (ADR-016, F-008).
+
+Delivery is at least once. Acceptance is not: the first write after the fence is a claim on the work
+item's single accepted outcome, and the partial unique index decides it. The index is the arbiter
+and this code only reads its answer — a "has it already succeeded?" query would let two concurrent
+deliveries past together (PO-02, ADR-015).
+
+A result refused after its bytes were stored — because it lost the acceptance race, or because it
+lost its lease — keeps those bytes as a `received` observation under its own attempt. Refused is not
+discarded (invariant 2).
 """
 
 from __future__ import annotations
@@ -48,7 +54,7 @@ from labbridge.environments.her_replay import (
     HerReplayAdapter,
     UnsupportedSchemaError,
 )
-from labbridge.infrastructure.objectstore import ObjectStore
+from labbridge.infrastructure.objectstore import ObjectStore, StoredObject
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
@@ -62,6 +68,8 @@ from labbridge.infrastructure.persistence.tables import (
 )
 from labbridge.runtime import jobs
 from labbridge.runtime.events import append_event, current_sequence
+from labbridge.runtime.heartbeat import DEFAULT_HEARTBEAT_SECONDS, Heartbeat
+from labbridge.runtime.reconciliation import ReconciliationReport, reconcile
 
 WORKER_VERSION: Final = "1"
 #: Recorded on the synthetic lineage root so a fixture-backed result names its generator.
@@ -72,6 +80,19 @@ LSV_DESCRIPTORS: Final = (
     QuantityDescriptor(name="current_density", unit="A/cm^2", axis=1),
     QuantityDescriptor(name="current_density_standard_deviation", unit="A/cm^2", axis=2),
 )
+
+
+@dataclass(frozen=True)
+class _LateResult:
+    """A result whose bytes reached storage before the worker discovered it had lost the job.
+
+    Carried so the refusal can still retain them. Without it the late path knows only that the
+    lease is gone, and the bytes it had already stored become an anonymous orphan.
+    """
+
+    identity: str
+    stored: StoredObject
+    result: AdapterSuccess
 
 
 @dataclass(frozen=True)
@@ -256,6 +277,8 @@ class Worker:
         name: str,
         fixture_seed: int = 0,
         clock: Callable[[], datetime] = _utc_now,
+        lease_seconds: int = jobs.DEFAULT_LEASE_SECONDS,
+        heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
     ) -> None:
         self._engine = engine
         self._adapter = adapter
@@ -263,6 +286,28 @@ class Worker:
         self.name = name
         self._fixture_seed = fixture_seed
         self._clock = clock
+        # Both configurable so a test can compress a lease that would otherwise take a minute to
+        # lapse. Defaults are the production values; nothing here reads a process-local timer as
+        # the source of truth about ownership, which stays the database's answer.
+        self._lease_seconds = lease_seconds
+        self._heartbeat_seconds = heartbeat_seconds
+        self._started = False
+
+    def start(self) -> ReconciliationReport:
+        """Run one reconciliation pass, before this worker takes any new work.
+
+        Startup is the right moment and the only one that needs no supervision: a worker is about to
+        look at the queue anyway, and whatever the last process left behind — a lease nobody holds,
+        an attempt stuck `running`, bytes with nothing pointing at them — is exactly what would
+        otherwise be inherited silently. `labbridge reconcile` runs the same function (ADR-016).
+
+        Idempotent, and called automatically by the first `run_once`, so a caller that forgets it
+        still gets the pass rather than skipping recovery.
+        """
+        with self._engine.begin() as connection:
+            report = reconcile(connection, self._store)
+        self._started = True
+        return report
 
     async def run_once(self) -> WorkOutcome | None:  # noqa: PLR0911
         """Claim and process one job, or return None when the queue is empty.
@@ -275,8 +320,10 @@ class Worker:
         writes a different record, and collapsing them would be collapsing the distinctions the
         evidence depends on.
         """
+        if not self._started:
+            self.start()
         with self._engine.begin() as connection:
-            lease = jobs.claim(connection, owner=self.name)
+            lease = jobs.claim(connection, owner=self.name, lease_seconds=self._lease_seconds)
             if lease is None:
                 return None
             jobs.mark_running(connection, lease)
@@ -346,10 +393,35 @@ class Worker:
         origin = self._adapter.environment.data_origin
         mode = self._adapter.environment.execution_mode
 
+        # The heartbeat runs on its own connection and covers everything slow: the adapter call and
+        # the object upload. Its refusal is latched and re-raised here rather than left on the
+        # thread, because a worker that kept going after losing its lease would arrive at
+        # finalisation believing it still owned the job — the failure the fence exists to catch and
+        # the heartbeat exists to catch earlier.
+        #
+        # It deliberately stops *before* the finalisation transaction. That transaction holds the
+        # job row with `FOR UPDATE`, so a beat issued from another connection would block on it
+        # until the commit; the heartbeat thread would stall and then report a loss for work that
+        # had just succeeded. Inside that transaction the fence is what proves ownership, and it
+        # does so against the row it is already holding.
+        beating = Heartbeat(
+            self._engine,
+            lease,
+            interval_seconds=self._heartbeat_seconds,
+            lease_seconds=self._lease_seconds,
+        )
+        beating.start()
         try:
             result = await self._adapter.execute(candidate)
+            beating.raise_if_lost()
+        except jobs.LeaseLostError:
+            beating.stop()
+            # Nothing was stored: the refusal arrived during or before the adapter call, so there
+            # are no bytes to retain and the attempt simply ends where it stands (F-008).
+            return self._record_lease_lost(lease, attempt_id, campaign_id, origin, mode)
         except UnsupportedSchemaError as error:
             # F-019: an unrecognised schema will not parse on the next attempt either.
+            beating.stop()
             return self._record_failure(
                 lease,
                 attempt_id,
@@ -361,6 +433,7 @@ class Worker:
                 retryable=False,
             )
         except Exception as error:
+            beating.stop()
             # Every other failure. Catching broadly is deliberate: an exception that escapes here
             # leaves the attempt `running`, the job leased by a process that is about to move on,
             # and no record of why — which is the evidence loss invariant 2 forbids. The failure is
@@ -380,6 +453,7 @@ class Worker:
             )
 
         if isinstance(result, AdapterUnavailable):
+            beating.stop()
             # F-017: the location was never measured. Terminal, not retryable — trying again will
             # not make an unmeasured location measured.
             return self._record_failure(
@@ -398,13 +472,13 @@ class Worker:
             )
 
         try:
-            return self._record_success(lease, attempt_id, campaign_id, origin, mode, result)
-        except jobs.LeaseLostError:
-            # The lease lapsed while the adapter ran and another worker owns the job now. The
-            # result is correctly rejected — but the rejection must leave a record, or the attempt
-            # vanishes from the campaign's history (F-008). Written on its own connection, because
-            # the transaction that failed has already rolled back.
-            return self._record_lease_lost(lease, attempt_id, campaign_id, origin, mode)
+            # Lease loss is handled inside `_record_success`: it is the only place that still holds
+            # the stored bytes when ownership is refused, and therefore the only place that can
+            # retain them instead of stranding them (F-008). The heartbeat is handed over so it can
+            # cover the upload and stop before the finalisation transaction.
+            return self._record_success(
+                lease, attempt_id, campaign_id, origin, mode, result, beating
+            )
         except Exception as error:
             return self._record_failure(
                 lease,
@@ -485,8 +559,8 @@ class Worker:
         the same transaction; the column is nullable exactly for this window, and the schema's
         `observation_only_when_bytes_arrived` check permits it.
 
-        The losing delivery writes its own `duplicate_suppressed` outcome here rather than nothing:
-        an attempt that reached finalisation and was refused is a durable fact (invariant 2).
+        Only the claim happens here. What a losing delivery records is the caller's business,
+        because it has to retain its bytes before it can point an outcome at them.
         """
         claimed = connection.execute(
             pg_insert(attempt_outcomes)
@@ -509,19 +583,56 @@ class Worker:
             )
             .returning(attempt_outcomes.c.attempt_id)
         ).one_or_none()
-        if claimed is not None:
-            return True
-        self._write_outcome(
-            connection,
-            lease,
-            attempt_id,
-            campaign_id,
-            origin,
-            mode,
-            status="duplicate_suppressed",
-            provenance=provenance,
+        return claimed is not None
+
+    def _retain_receipt(
+        self,
+        connection: Connection,
+        lease: jobs.Lease,
+        attempt_id: uuid.UUID,
+        campaign_id: uuid.UUID,
+        origin: str,
+        mode: str,
+        *,
+        identity: str,
+        stored: StoredObject,
+        result: AdapterSuccess,
+        provenance: Provenance,
+        reason: str,
+    ) -> None:
+        """Keep bytes that arrived but will not be accepted, and say why they were refused.
+
+        `received`, never `accepted`: the observation records that these bytes exist and where, and
+        the partial unique index on accepted observations is what guarantees it cannot be mistaken
+        for the campaign's result. No `observation.accepted` event is emitted and no metric is
+        derived from it.
+
+        This is the retention invariant 2 requires — *"if bytes were received, the corresponding
+        Observation MUST be retained and content-addressed even when corrupted"* — applied to the
+        two ways a result can be refused after the bytes have already landed: it lost the acceptance
+        race, or it lost its lease.
+        """
+        connection.execute(
+            observations.insert().values(
+                observation_id=identity,
+                campaign_id=campaign_id,
+                work_item_id=lease.work_item_id,
+                attempt_id=attempt_id,
+                media_type=result.media_type,
+                object_uri=stored.uri,
+                byte_size=stored.byte_size,
+                sha256=stored.sha256,
+                schema_version=result.schema_version,
+                signal_kind=result.signal_kind,
+                quantities=[d.model_dump(mode="json") for d in LSV_DESCRIPTORS],
+                status="received",
+                status_reason=reason,
+                data_origin=origin,
+                execution_mode=mode,
+                provenance=provenance.model_dump(mode="json"),
+                received_at=func.now(),
+            )
         )
-        return False
 
     def _record_success(
         self,
@@ -531,6 +642,7 @@ class Worker:
         origin: str,
         mode: str,
         result: AdapterSuccess,
+        beating: Heartbeat,
     ) -> WorkOutcome:
         provenance = self._provenance(result)
         identity = observation_id(
@@ -556,35 +668,113 @@ class Worker:
                     object_uri=uri,
                     bucket=self._store.bucket,
                     object_key=key,
+                    media_type=result.media_type,
+                    # The staging attempt is recorded now, while the process that knows it is still
+                    # alive. Reconciliation cannot attribute an orphan afterwards otherwise.
+                    attempt_id=attempt_id,
+                    work_item_id=lease.work_item_id,
                     state="pending",
                     created_at=func.now(),
                 )
                 .on_conflict_do_nothing(index_elements=["object_uri"])
             )
-        stored = self._store.put_and_verify(key, result.payload, media_type=result.media_type)
+        try:
+            stored = self._store.put_and_verify(key, result.payload, media_type=result.media_type)
+        finally:
+            # Stopped whatever happened, and always before the finalisation transaction: that
+            # transaction locks the job row, and a beat waiting on it would stall the heartbeat
+            # thread until the commit it is supposed to be protecting had already happened.
+            beating.stop()
 
-        # Step 3 and 4: one transaction for the evidence, the event, and the job.
+        # Step 3 and 4: one transaction for the evidence, the event, and the job. A refusal of
+        # ownership anywhere inside it becomes the late-result path, which still has `stored` in
+        # hand and can therefore keep the bytes rather than stranding them.
+        try:
+            # A loss the heartbeat noticed during the upload is raised here so it takes the same
+            # route as one the fence catches: refused, with the bytes retained.
+            beating.raise_if_lost()
+            return self._finalise(
+                lease, attempt_id, campaign_id, origin, mode, result, provenance, identity, stored
+            )
+        except jobs.LeaseLostError:
+            return self._record_lease_lost(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                late=_LateResult(identity=identity, stored=stored, result=result),
+            )
+
+    def _finalise(
+        self,
+        lease: jobs.Lease,
+        attempt_id: uuid.UUID,
+        campaign_id: uuid.UUID,
+        origin: str,
+        mode: str,
+        result: AdapterSuccess,
+        provenance: Provenance,
+        identity: str,
+        stored: StoredObject,
+    ) -> WorkOutcome:
+        """The finalisation transaction itself, extracted so the late-result path can wrap it."""
         with self._engine.begin() as connection:
-            # The acceptance claim is the first write, and the partial unique index decides it. A
+            # **The fence comes first.** Ownership is checked inside this transaction, holding the
+            # job row, because a check made before opening it proves nothing: the lease can lapse
+            # and be reclaimed in the gap, and this worker would then commit an accepted result for
+            # a job another worker now owns. `jobs.complete` re-checks at the end, but by then the
+            # evidence has been written and the only remedy is a rollback that discards the record
+            # of what happened (F-008).
+            jobs.assert_held(connection, lease)
+            # The acceptance claim is the next write, and the partial unique index decides it. A
             # prior "has this work item succeeded?" read would let two deliveries past together:
             # both would find nothing, both would write an observation, and the loser would surface
             # as an integrity error after the evidence had already been written (ADR-015, PO-02).
             if not self._claim_acceptance(
                 connection, lease, attempt_id, campaign_id, origin, mode, provenance
             ):
-                # No observation, no metric, no budget entry, no `observation.accepted` event. What
-                # it does leave is its own attempt and outcome, so the second delivery is visible
-                # rather than erased.
+                # No metric, no budget entry, no `observation.accepted` event — but the bytes this
+                # delivery received are retained under *its own* attempt, as a `received`
+                # observation. Invariant 2 asks for exactly that: bytes arrived, so an observation
+                # describes them, whether or not any metric is accepted from them.
                 #
-                # The bytes this delivery received are retained only insofar as they are the same
-                # bytes the accepted delivery received: `_object_key` is content-addressed, so
-                # identical bytes land at the identical key the accepted observation already
-                # references. That premise holds while the adapter is deterministic and the source
-                # root is unchanged, and **the runtime does not verify it** — this row records no
-                # digest of its own. Bytes that diverged between two reads of one location would
-                # sit behind a `pending` object row with nothing pointing at them, which is short
-                # of what invariant 2 asks for. Stated rather than implied; closing it needs the
-                # received digest recorded here, which is not part of this change.
+                # Recording it under this attempt is what makes the comparison possible rather than
+                # assumed. `observation_id` is content-derived, so an identical read lands the same
+                # identity as the accepted observation under a different attempt — the match is a
+                # fact in the table. A divergent read lands a different identity, and the difference
+                # is visible instead of being silently attributed to the accepted bytes.
+                self._retain_receipt(
+                    connection,
+                    lease,
+                    attempt_id,
+                    campaign_id,
+                    origin,
+                    mode,
+                    identity=identity,
+                    stored=stored,
+                    result=result,
+                    provenance=provenance,
+                    reason=(
+                        "another execution had already been accepted for this work item; these "
+                        "bytes are retained as diagnostic evidence and no metric is derived"
+                    ),
+                )
+                self._write_outcome(
+                    connection,
+                    lease,
+                    attempt_id,
+                    campaign_id,
+                    origin,
+                    mode,
+                    status="duplicate_suppressed",
+                    provenance=provenance,
+                    observation=identity,
+                )
+                # `cancelled` is the closest terminal attempt state the lifecycle offers. It is a
+                # compromise, recorded as one: nobody cancelled this attempt. The outcome status
+                # `duplicate_suppressed` carries the real meaning, and no documentation or metric
+                # may read this row as a user-requested cancellation.
                 connection.execute(
                     attempts.update()
                     .where(attempts.c.attempt_id == attempt_id)
@@ -816,15 +1006,39 @@ class Worker:
         campaign_id: uuid.UUID,
         origin: str,
         mode: str,
+        *,
+        late: _LateResult | None = None,
     ) -> WorkOutcome:
         """F-008. The lease lapsed while the adapter ran, so this result is rejected — but the
         rejection has to leave a record, or the attempt disappears from the campaign's history.
 
+        This is the late-result policy in full: the result is refused from accepted scientific
+        state, and if bytes had already been stored they are kept as diagnostic evidence under this
+        attempt. Refused is not the same as discarded — a late result is the strongest evidence
+        there is that a worker was still running when its lease was taken away.
+
         The job is deliberately not touched: it belongs to another worker now, and this one has no
         standing to change its state.
         """
-        provenance = self._provenance(None)
+        provenance = self._provenance(late.result if late else None)
         with self._engine.begin() as connection:
+            if late is not None:
+                self._retain_receipt(
+                    connection,
+                    lease,
+                    attempt_id,
+                    campaign_id,
+                    origin,
+                    mode,
+                    identity=late.identity,
+                    stored=late.stored,
+                    result=late.result,
+                    provenance=provenance,
+                    reason=(
+                        "this execution no longer held the job when it reached finalisation, so "
+                        "its result was refused; the bytes are retained as diagnostic evidence"
+                    ),
+                )
             self._write_outcome(
                 connection,
                 lease,
@@ -834,12 +1048,14 @@ class Worker:
                 mode,
                 status="lease_lost",
                 provenance=provenance,
+                observation=late.identity if late else None,
                 failure={
                     "failure_code": "lease_lost",
                     "category": "worker",
                     "retryable": False,
-                    "summary": "the lease expired during the adapter call and another worker "
-                    "claimed the job; this result was not accepted",
+                    "summary": "the lease expired or was reclaimed before this execution reached "
+                    "finalisation, and the fencing token no longer matched; this result was not "
+                    "accepted",
                     "exception_type": None,
                 },
             )
