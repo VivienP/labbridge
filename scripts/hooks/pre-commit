@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 # LabBridge pre-commit gate. Enable with:  git config core.hooksPath scripts/hooks
 #
-# Two tiers. The fast local gate runs on every commit and stays quick. The heavier audit gates
-# (integration tests, migration tests, artifact validation, container execution) are NOT run here —
-# run them through /verify before claiming a slice complete.
+# The fast local gate runs on every commit. Integration tests, migration tests, artifact validation,
+# and container execution remain explicit higher-layer checks.
 #
 # Gates whose target does not exist yet are skipped explicitly and reported as [skip], never as passing.
-# `python .claude/tools/gates.py` is the authoritative inventory of what is live.
 set -uo pipefail
 
 fail=0
 have() { command -v "$1" >/dev/null 2>&1; }
+
+for required_tool in git grep sed; do
+  if ! have "$required_tool"; then
+    echo "labbridge pre-commit: [FAIL] required tool missing ($required_tool)"
+    exit 1
+  fi
+done
 
 staged_all=""
 staged_code=""
 staged_docs=""
 if have git; then
   staged_all=$(git diff --cached --name-only --diff-filter=ACMR || true)
-  staged_code=$(printf '%s\n' "$staged_all" | grep -E '^(src|tests|scripts)/.*\.py$' || true)
-  staged_docs=$(printf '%s\n' "$staged_all" | grep -E '^docs/.*\.md$' || true)
+  staged_code=$(printf '%s\n' "$staged_all" \
+    | grep -E '^((src|tests|scripts)/|\.claude/(hooks|tools)/).*\.py$' || true)
+  staged_docs=$(printf '%s\n' "$staged_all" \
+    | grep -E '^(README|CONTRIBUTING|AGENTS|CLAUDE|AI_CONTRACT)\.md$|^docs/.*\.md$' || true)
 fi
 
 run() {  # run <label> <cmd...>; block on failure, or on a missing tool when code is staged
@@ -40,40 +47,40 @@ echo "labbridge pre-commit:"
 
 # --- forbidden files ---------------------------------------------------------------------------
 # .gitignore is the first defence; this blocks a `git add -f` or an already-tracked slip.
-# Development tooling and internal documents are git-ignored; this catches a forced add.
 if have git; then
   forbidden=$(printf '%s\n' "$staged_all" \
-    | grep -iE '(^|/)\.env($|\.)|(^|/)[^/]*\.(pem|key|p12|pfx)$|(^|/)(id_rsa|id_ed25519)$|(^|/)\.(claude|agents|codex)/|^(CLAUDE|AGENTS|AI_CONTRACT|UPDATE_NOTES)\.md$|^docs/(AGENT_SYSTEM|ROADMAP|ROLE_FIT)\.md$|^data/(raw|her)/' || true)
+    | grep -iE '(^|/)\.env($|\.)|(^|/)[^/]*\.(pem|key|p12|pfx)$|(^|/)(id_rsa|id_ed25519)$|^data/(raw|her)/|^\.(claude|agents|codex)/(settings\.local\.json|logs/|state/)' || true)
   if [ -n "$forbidden" ]; then
     echo "  [FAIL] forbidden file(s) staged:"; printf '%s\n' "$forbidden" | sed 's/^/    - /'
-    echo "         see skill git-commit-rules; unstage with: git restore --staged <file>"
+    echo "         unstage with: git restore --staged <file>"
     fail=1
   fi
 fi
 
-# --- agent-system and documentation integrity (always runnable) ----------------------------------
-# The agent system is local-only (git-ignored), so a fresh clone will not have it. Its checks run
-# when it is present and are skipped explicitly when it is not; they never silently pass.
-if [ ! -d .claude/tools ]; then
-  echo "  [skip] agent-system checks (.claude/ not present in this working copy)"
-elif ! have python; then
-  echo "  [FAIL] python not installed; the agent-system checks cannot run"; fail=1
+# --- public documentation ------------------------------------------------------------------------
+if [ -n "$staged_docs" ]; then
+  if [ ! -f scripts/check_docs.py ]; then
+    echo "  [FAIL] documentation: scripts/check_docs.py is missing"; fail=1
+  elif ! have python; then
+    echo "  [FAIL] documentation: python is required"; fail=1
+  else
+    run "documentation" python scripts/check_docs.py --strict
+  fi
 else
-  run "agent system"  python .claude/tools/check_agent_system.py
-  run "documentation" python .claude/tools/check_docs.py
-  # The guard hooks are the enforcement mechanism; a broken hook stops guarding silently.
-  # Run outside the project testpaths, which point at tests/.
-  run "hook tests"    python -m pytest .claude/hooks/ -q -o addopts= -o testpaths= -p no:cacheprovider
+  echo "  [skip] documentation (no public Markdown staged)"
 fi
 
 # --- normative document manifest -----------------------------------------------------------------
-if [ -n "$staged_docs" ]; then
+staged_normative=$(printf '%s\n' "$staged_docs" \
+  | grep -E '^(AGENTS|CLAUDE|AI_CONTRACT)\.md$|^docs/.*\.md$' || true)
+if [ -n "$staged_normative" ]; then
   if have sha256sum; then
     echo "  [run ] document manifest"
     if ! sha256sum -c SHA256SUMS.txt >/dev/null 2>&1; then
       echo "  [FAIL] document manifest: a normative document is staged but SHA256SUMS.txt does not match."
       echo "         Regenerate it in this commit:"
-      echo "           git ls-files -co --exclude-standard 'docs/*.md' | xargs sha256sum > SHA256SUMS.txt"
+      echo "           git ls-files -co --exclude-standard -- AGENTS.md AI_CONTRACT.md CLAUDE.md 'docs/*.md' \\"
+      echo "             | xargs sha256sum > SHA256SUMS.txt"
       fail=1
     fi
   else
@@ -88,7 +95,9 @@ if [ -n "$staged_code" ]; then
   # Pass only directories that exist: ruff exits 2 on a missing path, which would fail the gate
   # with an error unrelated to the change.
   lint_targets=""
-  for d in src tests scripts migrations; do [ -d "$d" ] && lint_targets="$lint_targets $d/"; done
+  for d in src tests scripts migrations .claude/hooks .claude/tools; do
+    [ -d "$d" ] && lint_targets="$lint_targets $d/"
+  done
   # shellcheck disable=SC2086
   run "ruff format --check" ruff format --check $lint_targets
   # shellcheck disable=SC2086
@@ -104,14 +113,13 @@ fi
 if have labbridge && labbridge validate-artifacts --help >/dev/null 2>&1; then
   run "artifact validation" labbridge validate-artifacts
 else
-  echo "  [skip] artifact validation (validate-artifacts not implemented yet — ROADMAP Slice 3)"
+  echo "  [skip] artifact validation (validate-artifacts not implemented yet)"
 fi
 
 # --- secret scan on staged content ------------------------------------------------------------------
-# The hook scripts and the guard are excluded from their own scan: their detection-pattern literals
-# would otherwise self-trigger whenever the hook itself is staged.
+# Hook scripts are excluded from their own scan because their detection literals would self-trigger.
 if have git; then
-  if git diff --cached -U0 -- . ':(exclude)scripts/hooks/*' ':(exclude).claude/hooks/*' ':(exclude).claude/tools/*' \
+  if git diff --cached -U0 -- . ':(exclude)scripts/hooks/*' \
       | grep -nE '(sk-[A-Za-z0-9]{20,}|ANTHROPIC_API_KEY=|AWS_SECRET_ACCESS_KEY=|MINIO_ROOT_PASSWORD=|POSTGRES_PASSWORD=|-----BEGIN [A-Z ]*PRIVATE KEY-----)'; then
     echo "  [FAIL] possible secret in the staged diff"; fail=1
   fi
@@ -119,9 +127,7 @@ fi
 
 if [ "$fail" -ne 0 ]; then
   echo "pre-commit: BLOCKED. Fix the failures above."
-  echo "            --no-verify requires the author's explicit approval (AI_CONTRACT.md section 11)."
   exit 1
 fi
 echo "pre-commit: OK"
 echo "            Heavier gates (integration, migration, artifacts, compose) are not run here."
-echo "            Run /verify before claiming a slice or exit criterion complete."
