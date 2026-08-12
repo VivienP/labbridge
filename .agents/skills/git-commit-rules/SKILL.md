@@ -34,6 +34,38 @@ transaction boundary, a constraint, a failure classification, or a claim-status 
 Never mention an AI product, vendor, model, generated-by statement, or co-author trailer. No emojis
 unless requested.
 
+## Branch, commit, and PR naming
+
+Name the durable product or engineering outcome, not its temporary planning coordinate. Branch names,
+commit subjects, and pull-request titles MUST NOT contain roadmap labels such as `phase-1`, `slice-2`,
+`gate-0`, sprint numbers, or milestone ordinals unless the user explicitly requires that literal name.
+
+Examples:
+
+- use `feat/source-artifact-integrity`, not `feat/phase-1-file-integrity`;
+- use `feat(evidence): add opaque source capture`, not `feat: implement Phase 1`;
+- use `Add checksum-verified source capture`, not `Phase 1 — Minimum File-Integrity Seam`.
+
+## Per-commit title approval
+
+Every commit requires a final, commit-specific user decision after the staged diff has been reviewed.
+Immediately before requesting authorisation for a commit:
+
+1. propose three distinct compliant commit titles and mark one as recommended;
+2. show the proposed body, or state explicitly that the commit will have no body;
+3. ask the user to select or approve the exact title and authorise that one commit in the same
+   message;
+4. wait for the user's response before running `git commit`.
+
+Earlier or blanket authorisation does not replace this checkpoint. This includes invoking
+`finish-worktree`, approving a previous commit, or authorising staging, push, or pull-request work.
+Even when the user supplied a title earlier, present it alongside alternatives after reviewing the
+final staged scope. Treat a response selecting one proposed title as commit authorisation only when
+the preceding request explicitly said that selection would authorise creation of that one commit.
+
+If the staged scope or proposed body changes materially after approval, present fresh title options
+and request authorisation again. Never add an unapproved commit body.
+
 ## Pull request
 
 Use a precise, professional title that describes the change rather than the work session. The

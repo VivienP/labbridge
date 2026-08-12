@@ -93,6 +93,9 @@ completed task.
 
 Infer a concise branch name from the task when possible.
 
+Name the durable outcome or capability. Do not use roadmap phase, slice, gate, sprint, or milestone
+coordinates in the branch name unless the user explicitly requires that literal name.
+
 Use conventional prefixes where appropriate:
 
 - `feat/`
@@ -111,6 +114,9 @@ If a suitable non-`main` task branch already exists, use it.
 Stage only the intended task changes.
 
 Create a clear commit message describing the repository change, not the agent that produced it.
+
+The subject describes the durable outcome and does not use roadmap phase, slice, gate, sprint, or
+milestone coordinates unless explicitly required by the user.
 
 Prefer conventional commit messages where appropriate.
 
@@ -153,6 +159,7 @@ The PR should concisely include:
 Do not include internal chain-of-thought, agent conversation history, temporary planning notes, or irrelevant implementation narration.
 
 Use a clear PR title describing the outcome.
+Do not use a roadmap phase, slice, gate, sprint, or milestone coordinate as the title.
 
 ## 9. Do not merge
 
