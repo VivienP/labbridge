@@ -1,7 +1,7 @@
 """add source artifacts
 
 Revision ID: f1206c4b9a01
-Revises: 1e6a158aabea
+Revises: c7a41f8d5b02
 Create Date: 2026-08-12 10:00:00+00:00
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "f1206c4b9a01"
-down_revision: str | None = "1e6a158aabea"
+down_revision: str | None = "c7a41f8d5b02"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

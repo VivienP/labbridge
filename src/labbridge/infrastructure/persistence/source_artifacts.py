@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Engine, RowMapping, select, update
+from sqlalchemy import Engine, RowMapping, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from labbridge.application.source_intake import IntakeConflictError
@@ -55,7 +55,8 @@ class PostgresSourceArtifactRepository:
             existing = (
                 connection.execute(
                     select(idempotency_keys.c.request_hash, idempotency_keys.c.response).where(
-                        idempotency_keys.c.idempotency_key == key
+                        idempotency_keys.c.scope == _SCOPE,
+                        idempotency_keys.c.idempotency_key == key,
                     )
                 )
                 .mappings()
@@ -120,12 +121,15 @@ class PostgresSourceArtifactRepository:
                     response={"source_artifact_id": pending.source_artifact_id},
                     created_at=pending.created_at,
                 )
-                .on_conflict_do_nothing(index_elements=[idempotency_keys.c.idempotency_key])
+                .on_conflict_do_nothing(
+                    index_elements=[idempotency_keys.c.scope, idempotency_keys.c.idempotency_key]
+                )
             )
             if idempotency_result.rowcount == 0:
                 winner = connection.execute(
                     select(idempotency_keys.c.request_hash).where(
-                        idempotency_keys.c.idempotency_key == key
+                        idempotency_keys.c.scope == _SCOPE,
+                        idempotency_keys.c.idempotency_key == key,
                     )
                 ).scalar_one()
                 if winner != request_hash:
@@ -165,6 +169,12 @@ class PostgresSourceArtifactRepository:
                     byte_size=artifact.byte_size,
                     sha256=artifact.sha256,
                     committed_at=committed_at,
+                    classification="accepted_evidence",
+                    classification_reason=(
+                        "referenced by a committed source artifact, and read-back size and SHA-256 "
+                        "match the retained bytes"
+                    ),
+                    reconciled_at=committed_at,
                 )
             )
             connection.execute(
@@ -192,7 +202,15 @@ class PostgresSourceArtifactRepository:
                 connection.execute(
                     update(storage_objects)
                     .where(storage_objects.c.object_uri == row.object_uri)
-                    .values(state="orphaned")
+                    .values(
+                        state="orphaned",
+                        classification="quarantined",
+                        classification_reason=(
+                            "source-artifact read-back size or SHA-256 differs from its committed "
+                            "metadata"
+                        ),
+                        reconciled_at=func.now(),
+                    )
                 )
         quarantined = self.get(source_artifact_id)
         assert quarantined is not None

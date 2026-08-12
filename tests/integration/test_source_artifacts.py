@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, select
 
 from labbridge.application.source_intake import (
     IntakeConflictError,
@@ -23,6 +23,7 @@ from labbridge.infrastructure.persistence.tables import (
     source_artifacts,
     storage_objects,
 )
+from labbridge.runtime.reconciliation import reconcile
 
 pytestmark = pytest.mark.integration
 
@@ -103,6 +104,28 @@ def test_same_intake_is_idempotent_and_changed_bytes_conflict(
     assert second.artifact.source_artifact_id == first.artifact.source_artifact_id
     with pytest.raises(IntakeConflictError):
         service.intake(command.model_copy(update={"data": command.data + b"changed"}))
+
+
+def test_global_reconciliation_recognises_committed_source_evidence(
+    source_service: tuple[SourceArtifactService, str],
+    migrated: Engine,
+    object_store: S3ObjectStore,
+) -> None:
+    service, marker = source_service
+    result = service.intake(_command(marker, f"retained,{marker}".encode()))
+
+    with migrated.begin() as connection:
+        report = reconcile(connection, object_store)
+        stored = connection.execute(
+            select(storage_objects).where(
+                storage_objects.c.object_uri == result.artifact.object_uri
+            )
+        ).one()
+
+    classification = {item.object_uri: item.classification for item in report.classified}
+    assert classification[result.artifact.object_uri] == "accepted_evidence"
+    assert stored.classification == "accepted_evidence"
+    assert stored.state == "committed"
 
 
 def test_reconciliation_commits_an_object_uploaded_after_pending_metadata(

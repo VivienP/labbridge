@@ -7,16 +7,52 @@ about durability across a process or a network — that claim belongs to
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from labbridge.infrastructure.objectstore import (
     InMemoryObjectStore,
     ObjectAlreadyExistsError,
     ObjectNotFoundError,
+    ObjectStoreError,
+    S3ObjectStore,
     digest,
 )
 
 PAYLOAD = b"Potential vs. RHE [V],Current density [A/cm^2]\n-0.1,-1.5\n"
+
+
+def test_s3_access_failure_is_not_misreported_as_a_missing_object() -> None:
+    class AccessDeniedClient:
+        def get_object(self, **kwargs: object) -> object:
+            del kwargs
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+                "GetObject",
+            )
+
+    store = S3ObjectStore(cast(Any, AccessDeniedClient()), bucket="labbridge")
+
+    with pytest.raises(ObjectStoreError) as caught:
+        store.get("observations/one.bin")
+
+    assert not isinstance(caught.value, ObjectNotFoundError)
+
+
+def test_s3_transport_failure_remains_a_typed_store_error() -> None:
+    class UnreachableClient:
+        def get_object(self, **kwargs: object) -> object:
+            del kwargs
+            raise EndpointConnectionError(endpoint_url="http://minio.invalid")
+
+    store = S3ObjectStore(cast(Any, UnreachableClient()), bucket="labbridge")
+
+    with pytest.raises(ObjectStoreError) as caught:
+        store.get("observations/one.bin")
+
+    assert caught.value.code == "object_access_failed"
 
 
 def test_a_stored_object_reports_the_digest_of_what_was_stored() -> None:

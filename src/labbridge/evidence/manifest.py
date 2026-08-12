@@ -17,17 +17,14 @@ class ArtifactVerificationError(Exception):
 
 
 def canonical_json(payload: object) -> bytes:
-    return (
-        json.dumps(
-            payload,
-            sort_keys=True,
-            indent=2,
-            ensure_ascii=False,
-            allow_nan=False,
-            default=str,
-        ).encode("utf-8")
-        + b"\n"
-    )
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        indent=2,
+        ensure_ascii=False,
+        allow_nan=False,
+        default=str,
+    ).encode("utf-8")
 
 
 def digest(data: bytes) -> str:

@@ -11,8 +11,10 @@ decided by what the landing root contains: a `fixture_manifest.json` means gener
 `provenance.json` means acquired bytes. A root holding both is ambiguous and fails, because guessing
 here is precisely the origin conflation invariant 1 forbids.
 
-The member grammar below was read from the recorded inventory
-(`docs/specs/gate0-her-source-acquisition.md` §13), never from memory. A member that does not match
+The member grammar below was read from the versioned dataset inventory that `labbridge inspect-her`
+writes into the landing root, never from memory. That inventory records the actual member paths and
+column shapes; it is git-ignored along with the archive it describes, so regenerate it rather than
+trusting this docstring when the grammar is in question. A member that does not match
 is *reported*, not silently skipped: an unrecognised archive layout is F-019, and coercing it would
 hide a source change.
 """

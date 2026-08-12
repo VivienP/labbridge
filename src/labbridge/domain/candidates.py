@@ -3,9 +3,9 @@
 `docs/SPEC.md` §3.2 requires a discriminated union rather than one universal mapping, and a
 `candidate_id` computed from canonical serialisation including schema version and units.
 
-Only the HER candidate exists here. The biosensor candidate belongs to Slice 4 and adding it now
-would be a claim without code behind it (`AI_CONTRACT.md` invariant 10). The union is written so a
-second member costs one line.
+Only the HER candidate exists here. The biosensor candidate arrives with the simulator, and adding
+it now would be a claim without code behind it (`AI_CONTRACT.md` invariant 10). The union is written
+so a second member costs one line.
 """
 
 from __future__ import annotations

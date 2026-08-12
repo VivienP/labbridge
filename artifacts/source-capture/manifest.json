@@ -15,9 +15,9 @@
       "sha256": "22135f632eb09805f3d467ca31fef129b29ca6918c0fcce8d4baa6776ab07584"
     },
     {
-      "byte_size": 478,
+      "byte_size": 477,
       "name": "source-artifact.json",
-      "sha256": "7a26eda626351f3d3ea77b044ccf2ed7c18aab50f941af486e926d7c1c7e9487"
+      "sha256": "7550e5263f9c629f97312257e790024c4c027136f6c9c65c0119339db9c097a9"
     },
     {
       "byte_size": 105,
@@ -25,12 +25,12 @@
       "sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8"
     },
     {
-      "byte_size": 358,
+      "byte_size": 357,
       "name": "verification.json",
-      "sha256": "2faa9c9040679c349107a3e6dd1000b898e0dfe7bfc3f92ecb7cc49f2f256fb1"
+      "sha256": "71167239d658b40b93d1f7b762142087488ae9f2be79b76768a8258eb51a91e0"
     }
   ],
-  "files_digest": "c5efec9e94d889b65d4f439fce8cb94364253afaa043da7bb36bb923361ca879",
+  "files_digest": "849fe248c80c54feb3717cf30b5beb2a05ac962023826c9c756d750c752d5d91",
   "producing_versions": {
     "labbridge": "0.1.0"
   },

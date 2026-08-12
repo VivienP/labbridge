@@ -1,14 +1,21 @@
 """The FastAPI submission path.
 
-`docs/SPEC.md` §11.1 lists the V1 endpoint set. Slice 1 needs one submission path and one read
-path, so those are what exist. A stub for an endpoint with no code behind it would be a claim
-without evidence (`AI_CONTRACT.md` invariant 10), so the rest are absent rather than returning 501.
+`docs/SPEC.md` §11.1 lists the V1 endpoint set. The runtime currently needs one submission path and
+one read path, so those are what exist. A stub for an endpoint with no code behind it would be a
+claim without evidence (`AI_CONTRACT.md` invariant 10), so the rest are absent rather than
+returning 501.
 
 **Every mutating endpoint requires an idempotency key**, and the requirement is not decoration: a
 client that retries a submission after an ambiguous timeout must get the same campaign back, not a
-second one. The key is stored with a hash of the request body, so a key reused with a *different*
-body is a client bug and is reported as a conflict rather than silently returning the first result
-(F-001, F-002).
+second one. The key is stored with a canonical fingerprint of the request, so a key reused with a
+*different* body is a client bug and is reported as a conflict rather than silently returning the
+first result (F-001, F-002).
+
+**The key reservation is the first statement of the submission transaction**, written with
+`INSERT ... ON CONFLICT DO NOTHING`. That is what makes the uniqueness constraint decide which of
+two concurrent identical requests creates the campaign. A prior `SELECT` would let both through:
+each would find no record, each would create a campaign, and the loser would surface as a
+constraint violation the caller sees as a 500 (ADR-015).
 
 Errors use typed shapes with machine-readable codes, so a caller can branch on `code` rather than
 parsing prose.
@@ -16,17 +23,25 @@ parsing prose.
 
 from __future__ import annotations
 
-import hashlib
 import uuid
+from collections.abc import Callable
 from typing import Annotated, Any, Final
 
 from fastapi import FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy import Connection, Engine, create_engine, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from labbridge.application.source_intake import SourceArtifactService
 from labbridge.domain.candidates import HerCandidate, candidate_id
-from labbridge.domain.canonical import canonical_bytes
+from labbridge.domain.idempotency import (
+    IdempotencyConflictError,
+    IdempotencyKeyError,
+    check_request_fingerprint,
+    normalise_idempotency_key,
+    request_fingerprint,
+    work_item_instruction_key,
+)
 from labbridge.domain.identity import ADMISSIBLE_PAIRS, DataOrigin, ExecutionMode
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import (
@@ -36,6 +51,7 @@ from labbridge.infrastructure.persistence.tables import (
     work_items,
 )
 from labbridge.infrastructure.source_wiring import build_source_service
+from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 
 from .source_artifacts import register_source_routes
@@ -88,6 +104,70 @@ def _error(code: str, message: str, http_status: int) -> HTTPException:
     )
 
 
+def _source_service_provider(
+    engine_provider: Callable[[], Engine], configured: SourceArtifactService | None
+) -> Callable[[], SourceArtifactService]:
+    bound = configured
+
+    def provide() -> SourceArtifactService:
+        nonlocal bound
+        if bound is None:
+            bound = build_source_service(engine_provider())
+        return bound
+
+    return provide
+
+
+def _replay(
+    connection: Connection, response: Response, *, key: str, request_hash: str
+) -> CampaignCreated:
+    """Answer a request whose key was already reserved, or refuse it as a conflict.
+
+    Reached only when the reservation above inserted nothing, which means a committed record holds
+    the key. `.one()` rather than `.one_or_none()` for that reason: had the holding transaction
+    rolled back, `ON CONFLICT DO NOTHING` would have inserted instead of returning nothing, so an
+    absent row here is a broken invariant and must fail loudly rather than be papered over. This
+    rests on READ COMMITTED, where each statement takes a fresh snapshot; under a stricter isolation
+    level PostgreSQL raises a serialisation failure rather than hiding the committed row.
+
+    A record that names no campaign is refused rather than dereferenced. The column is nullable for
+    records written before it existed, and the migration backfills it only where the campaign
+    survives — so the one reachable case is a replay of a key whose campaign is gone, which is a
+    typed conflict rather than a 500 from a null.
+    """
+    stored = connection.execute(
+        select(
+            idempotency_keys.c.request_hash,
+            idempotency_keys.c.campaign_id,
+            idempotency_keys.c.response,
+        ).where(
+            idempotency_keys.c.scope == SUBMIT_SCOPE,
+            idempotency_keys.c.idempotency_key == key,
+        )
+    ).one()
+    try:
+        check_request_fingerprint(key=key, stored=stored.request_hash, offered=request_hash)
+    except IdempotencyConflictError as error:
+        raise _error(
+            error.code,
+            "this Idempotency-Key was used with a different request body",
+            status.HTTP_409_CONFLICT,
+        ) from error
+    body: dict[str, Any] = stored.response or {}
+    if stored.campaign_id is None or "work_items" not in body:
+        raise _error(
+            "idempotency_record_unresolvable",
+            f"the record for Idempotency-Key {key!r} no longer names a campaign",
+            status.HTTP_409_CONFLICT,
+        )
+    response.status_code = status.HTTP_200_OK
+    return CampaignCreated(
+        campaign_id=stored.campaign_id,
+        work_items=int(body["work_items"]),
+        replayed=True,
+    )
+
+
 def create_app(
     engine: Engine | None = None, source_service: SourceArtifactService | None = None
 ) -> FastAPI:
@@ -100,7 +180,6 @@ def create_app(
     it directly cannot fail that way.
     """
     bound = engine
-    bound_source = source_service
 
     def _engine() -> Engine:
         nonlocal bound
@@ -108,14 +187,8 @@ def create_app(
             bound = create_engine(DatabaseSettings().dsn, future=True)
         return bound
 
-    def _source_service() -> SourceArtifactService:
-        nonlocal bound_source
-        if bound_source is None:
-            bound_source = build_source_service(_engine())
-        return bound_source
-
     app = FastAPI(title="LabBridge", version=API_VERSION)
-    register_source_routes(app, _source_service)
+    register_source_routes(app, _source_service_provider(_engine, source_service))
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -150,12 +223,10 @@ def create_app(
         the campaign never recorded — would leave jobs referencing a campaign that does not exist,
         and no retry could repair it.
         """
-        if not idempotency_key:
-            raise _error(
-                "idempotency_key_required",
-                "every mutating request requires an Idempotency-Key header",
-                status.HTTP_400_BAD_REQUEST,
-            )
+        try:
+            key = normalise_idempotency_key(idempotency_key)
+        except IdempotencyKeyError as error:
+            raise _error(error.code, str(error), status.HTTP_400_BAD_REQUEST) from error
         if (request.data_origin, request.execution_mode) not in ADMISSIBLE_PAIRS:
             raise _error(
                 "inadmissible_origin_mode",
@@ -164,32 +235,35 @@ def create_app(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
 
-        request_hash = hashlib.sha256(canonical_bytes(request.model_dump(mode="json"))).hexdigest()
+        declaration = request.model_dump(mode="json")
+        request_hash = request_fingerprint(declaration)
+        campaign_uuid = uuid.uuid4()
+        stored_response = {
+            "campaign_id": str(campaign_uuid),
+            "work_items": len(request.candidates),
+        }
 
         with _engine().begin() as connection:
-            existing = connection.execute(
-                select(idempotency_keys.c.request_hash, idempotency_keys.c.response).where(
-                    idempotency_keys.c.idempotency_key == idempotency_key
+            # First statement, deliberately. The unique key is the arbiter: a concurrent identical
+            # request blocks here until this transaction settles and then reads what it committed,
+            # rather than both requests finding nothing and both creating a campaign.
+            reserved = connection.execute(
+                pg_insert(idempotency_keys)
+                .values(
+                    scope=SUBMIT_SCOPE,
+                    idempotency_key=key,
+                    request_hash=request_hash,
+                    campaign_id=campaign_uuid,
+                    response=stored_response,
+                    created_at=func.now(),
                 )
+                .on_conflict_do_nothing(index_elements=["scope", "idempotency_key"])
+                .returning(idempotency_keys.c.idempotency_key)
             ).one_or_none()
-            if existing is not None:
-                if existing.request_hash != request_hash:
-                    # Same key, different body. Returning the first result would silently discard
-                    # this request; creating a second campaign would break the key's promise.
-                    raise _error(
-                        "idempotency_key_reused",
-                        "this Idempotency-Key was used with a different request body",
-                        status.HTTP_409_CONFLICT,
-                    )
-                response.status_code = status.HTTP_200_OK
-                stored: dict[str, Any] = existing.response or {}
-                return CampaignCreated(
-                    campaign_id=uuid.UUID(stored["campaign_id"]),
-                    work_items=int(stored["work_items"]),
-                    replayed=True,
-                )
+            if reserved is None:
+                return _replay(connection, response, key=key, request_hash=request_hash)
 
-            campaign_uuid = uuid.uuid4()
+            correlation_id = uuid.uuid4()
             connection.execute(
                 campaigns.insert().values(
                     campaign_id=campaign_uuid,
@@ -199,11 +273,33 @@ def create_app(
                     data_origin=request.data_origin,
                     execution_mode=request.execution_mode,
                     state="active",
-                    declaration=request.model_dump(mode="json"),
+                    declaration=declaration,
                     declaration_hash=request_hash,
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
                     created_at=func.now(),
                     updated_at=func.now(),
                 )
+            )
+            campaign_event = append_event(
+                connection,
+                campaign_id=campaign_uuid,
+                aggregate_id=campaign_uuid,
+                aggregate_type="campaign",
+                event_type="campaign.created",
+                payload={
+                    "name": request.name,
+                    "environment_id": request.environment_id,
+                    "adapter_version": request.adapter_version,
+                    "data_origin": request.data_origin,
+                    "execution_mode": request.execution_mode,
+                    "declaration": declaration,
+                    "declaration_hash": request_hash,
+                    "state": "active",
+                },
+                expected_version=0,
+                correlation_id=correlation_id,
+                causation_id=None,
             )
             for candidate in request.candidates:
                 work_item_id = uuid.uuid4()
@@ -218,24 +314,35 @@ def create_app(
                         updated_at=func.now(),
                     )
                 )
+                work_item_event = append_event(
+                    connection,
+                    campaign_id=campaign_uuid,
+                    aggregate_id=work_item_id,
+                    aggregate_type="work_item",
+                    event_type="work_item.queued",
+                    payload={
+                        "candidate_id": candidate_id(candidate),
+                        "candidate": candidate.model_dump(mode="json"),
+                        "state": "queued",
+                    },
+                    expected_version=0,
+                    correlation_id=correlation_id,
+                    causation_id=campaign_event.event_id,
+                )
                 enqueue(
                     connection,
+                    campaign_id=campaign_uuid,
                     work_item_id=work_item_id,
-                    idempotency_key=f"{idempotency_key}:{candidate_id(candidate)}",
+                    # The instruction identity is the work item, not this request's token. A
+                    # redelivery of the same instruction is then recognisable as the same work
+                    # whatever delivery carries it.
+                    instruction_key=work_item_instruction_key(
+                        work_item_id=work_item_id, command_version=COMMAND_VERSION
+                    ),
                     command_version=COMMAND_VERSION,
+                    correlation_id=correlation_id,
+                    causation_id=work_item_event.event_id,
                 )
-            connection.execute(
-                idempotency_keys.insert().values(
-                    idempotency_key=idempotency_key,
-                    scope=SUBMIT_SCOPE,
-                    request_hash=request_hash,
-                    response={
-                        "campaign_id": str(campaign_uuid),
-                        "work_items": len(request.candidates),
-                    },
-                    created_at=func.now(),
-                )
-            )
 
         return CampaignCreated(
             campaign_id=campaign_uuid, work_items=len(request.candidates), replayed=False

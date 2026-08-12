@@ -20,7 +20,9 @@ import boto3
 import typer
 from botocore.config import Config as BotoConfig
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
+from sqlalchemy import create_engine
 
 from labbridge import __version__
 from labbridge.application.source_intake import (
@@ -31,7 +33,12 @@ from labbridge.application.source_intake import (
 from labbridge.demo import engine_from_settings, run_demo
 from labbridge.domain.identity import DataOrigin, ExecutionMode
 from labbridge.environments.her_replay import HerReplayAdapter
-from labbridge.evidence.bundle import BundleVerificationError, verify_bundle
+from labbridge.evidence.bundle import (
+    BundleVerificationError,
+    VerificationMode,
+    VerificationStatus,
+    verify_bundle,
+)
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
 from labbridge.infrastructure.her_ingestion.fetch import (
     DEFAULT_LANDING_ROOT,
@@ -54,9 +61,10 @@ from labbridge.infrastructure.her_ingestion.provenance import (
 )
 from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
-from labbridge.infrastructure.objectstore import S3ObjectStore
-from labbridge.infrastructure.persistence.config import ObjectStoreSettings
+from labbridge.infrastructure.objectstore import ObjectStore, S3ObjectStore
+from labbridge.infrastructure.persistence.config import DatabaseSettings, ObjectStoreSettings
 from labbridge.infrastructure.source_wiring import build_source_service
+from labbridge.runtime.reconciliation import reconcile
 
 EXPECTED_DOI: Final = PINNED_DOI
 #: Beside the landing root and git-ignored with it. The fixture is regenerable from its seed, so
@@ -90,6 +98,19 @@ def main() -> None:
 def _build_transport() -> ZenodoTransport:
     """The single place the real network transport is constructed; monkeypatched in tests."""
     return HttpxTransport()
+
+
+def _build_object_store() -> ObjectStore:
+    settings = ObjectStoreSettings()
+    client = boto3.client(
+        "s3",
+        endpoint_url=settings.endpoint_url,
+        aws_access_key_id=settings.access_key,
+        aws_secret_access_key=settings.secret_key,
+        config=BotoConfig(signature_version="s3v4"),
+        region_name=settings.region,
+    )
+    return S3ObjectStore(client, bucket=settings.bucket)
 
 
 def _utc_now() -> datetime:
@@ -267,6 +288,10 @@ def build_her_fixture(
 @evidence_app.command("verify")
 @app.command("validate-artifacts")
 def validate_artifacts(
+    mode: Annotated[
+        VerificationMode,
+        typer.Option("--mode", help="Verification scope: bundle-only or full."),
+    ] = VerificationMode.BUNDLE_ONLY,
     bundle: Annotated[
         Path | None,
         typer.Option("--bundle", help="One bundle to verify. Omit to verify every bundle found."),
@@ -289,8 +314,9 @@ def validate_artifacts(
     Both resolve here rather than one being silently preferred; the contradiction is recorded in
     `docs/AGENT_SYSTEM.md`.
     """
+    object_store = _build_object_store() if mode is VerificationMode.FULL else None
     if bundle is not None:
-        _verify_one(bundle)
+        _verify_one(bundle, mode, object_store)
         return
 
     candidates = sorted(p for p in bundle_root.glob("*") if (p / "manifest.json").exists())
@@ -298,34 +324,58 @@ def validate_artifacts(
         console.print(f"[yellow]no bundle found under {bundle_root}[/yellow] — nothing verified")
         return
     for candidate in candidates:
-        _verify_one(candidate)
+        _verify_one(candidate, mode, object_store)
     console.print(f"[green]{len(candidates)} bundle(s) verified[/green]")
 
 
-def _verify_one(bundle: Path) -> None:
+def _verify_one(bundle: Path, mode: VerificationMode, object_store: ObjectStore | None) -> None:
     try:
-        manifest = verify_bundle(bundle)
+        result = verify_bundle(bundle, mode=mode, object_store=object_store)
     except BundleVerificationError as error:
-        console.print(f"[red]bundle verification failed[/red] ({len(error.problems)} problem(s)):")
-        for problem in error.problems:
-            console.print(f"  - {problem}")
+        failure = error.to_dict()
+        console.print(
+            f"[red]{escape(str(failure['code']))}[/red]: {escape(str(failure['message']))}"
+        )
+        details = failure["details"]
+        if isinstance(details, dict):
+            for key in sorted(details):
+                console.print(f"  {escape(str(key))}: {escape(str(details[key]))}")
         raise typer.Exit(code=1) from error
 
+    manifest = result.manifest
     files = manifest["files"]
     assert isinstance(files, list)
     artifact_kind = str(manifest.get("artifact_kind", "campaign_bundle"))
     artifact_id = manifest.get("campaign_id", manifest.get("source_artifact_id", bundle.name))
-    table = Table(title=f"{artifact_kind} {artifact_id}")
+    table = Table(title=f"{escape(artifact_kind)} {escape(str(artifact_id))}")
     table.add_column("file")
     table.add_column("bytes", justify="right")
     table.add_column("sha256")
     for entry in files:
-        table.add_row(entry["name"], str(entry["byte_size"]), f"{entry['sha256'][:16]}...")
+        table.add_row(
+            escape(str(entry["name"])),
+            str(entry["byte_size"]),
+            f"{escape(str(entry['sha256'][:16]))}...",
+        )
     console.print(table)
     origin = manifest["data_origin"]
     colour = "yellow" if origin == "synthetic" else "green"
-    console.print(f"data_origin: [{colour}]{origin}[/{colour}]  mode: {manifest['execution_mode']}")
-    console.print("[green]every checksum matches[/green]")
+    console.print(
+        f"data_origin: [{colour}]{escape(str(origin))}[/{colour}]  execution_mode: "
+        f"{escape(str(manifest['execution_mode']))}"
+    )
+    console.print(f"mode: {result.mode.value}  status: {result.status.value}")
+    console.print(
+        f"bundle files verified: {result.bundle_files_verified}  "
+        f"objects referenced: {result.objects_referenced}  "
+        f"objects verified: {result.objects_verified}"
+    )
+    if result.limitations:
+        console.print("limitations:")
+        for limitation in result.limitations:
+            console.print(f"  - {limitation}")
+    elif result.status is VerificationStatus.COMPLETE:
+        console.print("[green]bundle members and recorded object bytes match[/green]")
 
 
 @demo_app.command("her")
@@ -416,3 +466,48 @@ def inspect_her(
             "[yellow]no provenance.json found: the inventory is not tied to an acquisition[/yellow]"
         )
     console.print(f"dataset inventory written to {destination}")
+
+
+@app.command("reconcile")
+def reconcile_command() -> None:
+    """Reclaim expired leases, close abandoned attempts, and classify stored objects.
+
+    The same function a worker runs at startup (`labbridge.runtime.reconciliation.reconcile`), so an
+    operator investigating a stuck queue and a worker recovering from a crash reach identical
+    conclusions. There is deliberately no reconciliation daemon: one implementation, two entry
+    points, nothing extra to supervise.
+
+    Nothing here deletes bytes. An object that cannot be explained is quarantined and reported, and
+    a released evidence object is never touched.
+    """
+    engine = create_engine(DatabaseSettings().dsn, future=True)
+    store = _build_object_store()
+    with engine.begin() as connection:
+        report = reconcile(connection, store)
+
+    table = Table("what", "count", title="reconciliation")
+    table.add_row("leases reclaimed", str(len(report.reclaimed)))
+    table.add_row("attempts closed", str(len(report.closed_attempts)))
+    for classification, count in sorted(report.counts.items()):
+        table.add_row(f"objects {classification}", str(count))
+    if report.unreachable:
+        table.add_row("objects unreachable", str(len(report.unreachable)))
+    console.print(table)
+
+    for reclaimed in report.reclaimed:
+        console.print(
+            f"  job {reclaimed.job_id} reclaimed from {reclaimed.previous_owner or 'nobody'}: "
+            f"generation {reclaimed.fenced_generation} fenced out, now "
+            f"{reclaimed.lease_generation}"
+        )
+    for entry in report.classified:
+        if entry.classification != "accepted_evidence":
+            console.print(f"  [yellow]{entry.classification}[/yellow] {entry.object_uri}")
+            console.print(f"    {entry.reason}")
+    if report.unreachable:
+        # Not a verdict: a classification reached while storage was down would record an outage as
+        # a fact about the bytes.
+        console.print(
+            f"[yellow]{len(report.unreachable)} object(s) could not be read and were left "
+            "unclassified[/yellow]"
+        )

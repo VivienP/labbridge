@@ -8,10 +8,11 @@ exact SQL, atomic claims, and partial indexes. An identity map would add a layer
 and the guarantees it is trying to make.
 
 **The constraints are the point.** A rule enforced only in Python holds until the next writer — a
-migration, a repair script, an admin session. Three are therefore also enforced here:
+migration, a repair script, an admin session. Four are therefore also enforced here:
 
 * the admissible origin/mode pairs (ADR-010, invariant 1);
 * at most one accepted outcome per work item, by partial unique index (PO-02);
+* one campaign per scoped idempotency key, and one job per instruction key (ADR-015, PO-02);
 * event sequences unique and per aggregate (§5.1).
 
 A naming convention is declared so Alembic emits stable, comparable constraint names instead of
@@ -74,6 +75,15 @@ _KNOWN_ATTEMPT_STATUS = (
     "'corrupted','cancelled','lease_lost','duplicate_suppressed')"
 )
 
+#: Mirrors `labbridge.domain.objects.OBJECT_CLASSIFICATIONS`, duplicated for the same reason as the
+#: origin/mode pairs: the database must refuse an unknown verdict even when the writer is not this
+#: application. `test_constraints.py` enumerates the domain tuple against the database, so the two
+#: copies cannot drift apart.
+_KNOWN_OBJECT_CLASSIFICATION = (
+    "classification IS NULL OR classification IN "
+    "('accepted_evidence','diagnostic_duplicate','diagnostic_orphan','quarantined','missing')"
+)
+
 
 def _timestamps(*names: str) -> list[Column[datetime]]:
     """Timestamps are always timezone-aware: a naive column cannot be ordered across hosts."""
@@ -92,8 +102,14 @@ campaigns = Table(
     Column("state", String(32), nullable=False),
     Column("declaration", JSONB, nullable=False),
     Column("declaration_hash", _HASH, nullable=False),
+    Column("event_stream_contract_version", Integer, nullable=False, server_default=text("0")),
+    Column("event_stream_last_position", BigInteger, nullable=False, server_default=text("0")),
     *_timestamps("created_at", "updated_at"),
     CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="admissible_origin_mode"),
+    CheckConstraint(
+        "event_stream_contract_version IN (0, 1)", name="known_event_stream_contract_version"
+    ),
+    CheckConstraint("event_stream_last_position >= 0", name="event_stream_position_non_negative"),
     # Redundant on its own — campaign_id is already unique — but it is the target a child row's
     # composite foreign key needs. That is what forces every observation and outcome to carry the
     # *same* origin and mode as its campaign, rather than merely a separately-admissible pair.
@@ -140,6 +156,12 @@ jobs = Table(
     # completing the job anyway after a pause: it must present the token the claim wrote.
     Column("lease_owner", String(128), nullable=True),
     Column("lease_token", UUID(as_uuid=True), nullable=True),
+    #: The fencing token. Monotonic per job: every claim and every reclaim increments it, and it is
+    #: never reset, so "which lease is newer" is answerable — which a random token cannot answer.
+    #: It rides alongside `lease_token` rather than replacing it because the two do different jobs:
+    #: the generation orders leases, the token proves the presenter is the holder rather than
+    #: someone who guessed the next integer. Both are checked wherever ownership decides an effect.
+    Column("lease_generation", BigInteger, nullable=False, server_default=text("0")),
     Column("lease_expires_at", DateTime(timezone=True), nullable=True),
     Column("heartbeat_at", DateTime(timezone=True), nullable=True),
     Column("attempt_count", Integer, nullable=False, server_default=text("0")),
@@ -147,12 +169,21 @@ jobs = Table(
     Column("command_version", String(32), nullable=False),
     Column("idempotency_key", String(255), nullable=False),
     Column("last_failure", JSONB, nullable=True),
+    Column("event_correlation_id", UUID(as_uuid=True), nullable=True),
+    Column("last_event_id", UUID(as_uuid=True), nullable=True),
     *_timestamps("created_at", "updated_at"),
     UniqueConstraint("idempotency_key", name="uq_jobs_idempotency_key"),
     CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
+    CheckConstraint("lease_generation >= 0", name="lease_generation_non_negative"),
     CheckConstraint(
         "(lease_owner IS NULL) = (lease_expires_at IS NULL)",
         name="lease_owner_and_expiry_together",
+    ),
+    # A held lease has all three parts. Without this a row could carry an owner and an expiry but no
+    # token, and the fencing check would compare against NULL and silently never match.
+    CheckConstraint(
+        "(lease_owner IS NULL) = (lease_token IS NULL)",
+        name="lease_owner_and_token_together",
     ),
 )
 
@@ -228,6 +259,11 @@ observations = Table(
         name="rejected_status_states_its_reason",
     ),
     CheckConstraint(_KNOWN_OBSERVATION_STATUS, name="known_status"),
+    # A rejected receipt still has to say why it was rejected, exactly as a corrupted one does.
+    CheckConstraint(
+        "status <> 'received' OR status_reason IS NOT NULL",
+        name="retained_receipt_states_its_reason",
+    ),
     # The pair must equal the campaign's, not merely be admissible on its own. Without this a
     # `synthetic + replay` observation inserts cleanly into an `observed + replay` campaign: both
     # rows pass the CHECK individually, and the conflation ADR-010 exists to prevent happens
@@ -238,6 +274,18 @@ observations = Table(
         name="fk_observations_campaign_identity",
         ondelete="RESTRICT",
     ),
+)
+
+# At most one *accepted* observation per work item, whatever the delivery or retry count. The
+# outcome index below says at most one attempt succeeded; this one says the evidence agrees, so a
+# writer that bypassed the worker cannot leave two accepted receipts pointing at one item. Receipts
+# retained as `received` are deliberately outside the predicate: that is how a refused delivery
+# keeps its bytes without competing for acceptance.
+Index(
+    "uq_observations_one_accepted_per_work_item",
+    observations.c.work_item_id,
+    unique=True,
+    postgresql_where=text("status = 'accepted'"),
 )
 
 attempt_outcomes = Table(
@@ -279,8 +327,14 @@ attempt_outcomes = Table(
         name="fk_attempt_outcomes_observation",
         ondelete="RESTRICT",
     ),
+    # An outcome may reference an observation exactly when bytes arrived. `duplicate_suppressed` and
+    # `lease_lost` are here because both can occur *after* an adapter returned and its bytes were
+    # stored: the result is refused from accepted state, but the bytes were received and invariant 2
+    # requires them retained. What they reference is a `received` observation, never an `accepted`
+    # one — the partial index below is what keeps that distinction from being a matter of care.
     CheckConstraint(
-        "observation_id IS NULL OR status IN ('succeeded','corrupted')",
+        "observation_id IS NULL "
+        "OR status IN ('succeeded','corrupted','duplicate_suppressed','lease_lost')",
         name="observation_only_when_bytes_arrived",
     ),
     CheckConstraint(
@@ -374,6 +428,7 @@ events = Table(
     Column("aggregate_id", UUID(as_uuid=True), nullable=False),
     Column("aggregate_type", String(64), nullable=False),
     Column("sequence", BigInteger, nullable=False),
+    Column("campaign_position", BigInteger, nullable=False),
     Column("event_type", String(128), nullable=False),
     Column("schema_version", Integer, nullable=False),
     *_timestamps("occurred_at", "recorded_at"),
@@ -381,15 +436,23 @@ events = Table(
     Column("causation_id", UUID(as_uuid=True), nullable=True),
     Column("idempotency_key", String(255), nullable=True),
     Column("payload", JSONB, nullable=False),
-    # §5.1: sequence unique and monotonic per aggregate. This is what makes an append with an
-    # expected version safe under concurrency — the loser of a race gets a constraint violation.
-    UniqueConstraint("aggregate_id", "sequence", name="uq_events_aggregate_sequence"),
+    # §5.1: sequence is unique per aggregate. The expected-version check and campaign row lock
+    # allocate it monotonically; this constraint prevents a bypassing writer from duplicating it.
+    UniqueConstraint(
+        "campaign_id",
+        "aggregate_type",
+        "aggregate_id",
+        "sequence",
+        name="uq_events_aggregate_sequence",
+    ),
+    UniqueConstraint("campaign_id", "campaign_position", name="uq_events_campaign_position"),
     CheckConstraint("sequence >= 1", name="sequence_starts_at_one"),
+    CheckConstraint("campaign_position >= 1", name="campaign_position_starts_at_one"),
     CheckConstraint("schema_version >= 1", name="schema_version_starts_at_one"),
 )
 
-# Replay reads a campaign's events ordered by aggregate then sequence, never by timestamp.
-Index("ix_events_replay", events.c.campaign_id, events.c.aggregate_id, events.c.sequence)
+# Complete stream loading follows the campaign-wide position, never timestamps or aggregate IDs.
+Index("ix_events_replay", events.c.campaign_id, events.c.campaign_position)
 
 storage_objects = Table(
     "storage_objects",
@@ -399,9 +462,32 @@ storage_objects = Table(
     Column("object_key", Text, nullable=False),
     Column("byte_size", BigInteger, nullable=True),
     Column("sha256", _HASH, nullable=True),
+    Column("media_type", String(128), nullable=True),
+    # Which execution put these bytes here. Without it a reconciler can say an object is
+    # unreferenced but not which attempt to attribute it to, and an orphan becomes anonymous the
+    # moment the process that wrote it is gone — precisely when reconciliation has to run.
+    Column(
+        "attempt_id",
+        UUID(as_uuid=True),
+        ForeignKey("attempts.attempt_id", ondelete="RESTRICT"),
+        nullable=True,
+    ),
+    Column(
+        "work_item_id",
+        UUID(as_uuid=True),
+        ForeignKey("work_items.work_item_id", ondelete="RESTRICT"),
+        nullable=True,
+    ),
     # §4.2: a record must not declare an artifact committed before the object exists and its
     # checksum has been verified, so the checksum is required exactly in that state.
     Column("state", String(16), nullable=False),
+    #: What reconciliation concluded about this object, and why. Separate from `state` on purpose:
+    #: `state` is the write lifecycle the worker drives, `classification` is the verdict a later
+    #: pass reaches by comparing the row against the store. Keeping them apart means a
+    #: reconciliation verdict never silently rewrites the history of how the object was written.
+    Column("classification", String(32), nullable=True),
+    Column("classification_reason", Text, nullable=True),
+    Column("reconciled_at", DateTime(timezone=True), nullable=True),
     *_timestamps("created_at"),
     Column("committed_at", DateTime(timezone=True), nullable=True),
     CheckConstraint("state IN ('pending','committed','orphaned')", name="known_object_state"),
@@ -409,6 +495,16 @@ storage_objects = Table(
         "state <> 'committed' OR (sha256 IS NOT NULL AND byte_size IS NOT NULL "
         "AND committed_at IS NOT NULL)",
         name="committed_object_is_verified",
+    ),
+    CheckConstraint(_KNOWN_OBJECT_CLASSIFICATION, name="known_classification"),
+    # A verdict and the evidence for it arrive together, or the classification is unauditable.
+    CheckConstraint(
+        "(classification IS NULL) = (reconciled_at IS NULL)",
+        name="classification_records_when_it_was_reached",
+    ),
+    CheckConstraint(
+        "classification IS NULL OR classification_reason IS NOT NULL",
+        name="classification_states_its_reason",
     ),
 )
 
@@ -448,11 +544,33 @@ source_artifacts = Table(
 idempotency_keys = Table(
     "idempotency_keys",
     metadata,
+    # The scope is part of the key, not decoration beside it. Two operations that each accept a
+    # caller-chosen token would otherwise collide on a token neither of them chose, and the second
+    # would be answered with the first one's response.
+    Column("scope", String(64), primary_key=True),
     Column("idempotency_key", String(255), primary_key=True),
-    Column("scope", String(64), nullable=False),
+    #: The canonical request fingerprint (`domain.idempotency.request_fingerprint`). Without it a
+    #: key is only a promise: the runtime could not tell a genuine retry from a key reused with a
+    #: different body, and would have to guess which of the two the caller meant.
     Column("request_hash", _HASH, nullable=False),
+    #: The aggregate the key produced. A column rather than a field inside `response`, so the
+    #: reference is typed, indexable, and checkable — the foreign key below is what stops a stored
+    #: response from naming a campaign that does not exist.
+    Column("campaign_id", UUID(as_uuid=True), nullable=True),
     Column("response", JSONB, nullable=True),
     *_timestamps("created_at"),
+    # Deferred on purpose. The reservation is the *first* statement of the submission transaction —
+    # that is what makes the uniqueness constraint, rather than a prior read, decide which of two
+    # concurrent identical requests creates the campaign. At that point the campaign row does not
+    # exist yet, so the reference can only be checked at commit.
+    ForeignKeyConstraint(
+        ["campaign_id"],
+        ["campaigns.campaign_id"],
+        name="fk_idempotency_keys_campaign_id_campaigns",
+        ondelete="RESTRICT",
+        deferrable=True,
+        initially="DEFERRED",
+    ),
 )
 
 budget_ledger = Table(
