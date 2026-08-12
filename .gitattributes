@@ -16,6 +16,7 @@ SHA256SUMS.txt text eol=lf
 # Released integrity artifacts and their source fixtures are exact bytes. Do not let checkout
 # line-ending conversion invalidate their recorded hashes.
 artifacts/source-capture/** -text
+artifacts/experiment-passport/** -text
 fixtures/source/synthetic-replay-cv-opaque.csv -text
 
 # Binary payloads: never transformed, never diffed as text.

@@ -1,0 +1,27 @@
+{
+  "initial": {
+    "archive_sha256": "7d9ea1be6736ec42b4d220bd4b1036a84dbc10a9705af6f1ca0a7266f19addaf",
+    "data_origin": "synthetic",
+    "environment_id": "synthetic_cv_fixture",
+    "execution_mode": "replay",
+    "experiment_id": "experiment:597a22bdb8f545691500910a01e36aa1",
+    "experiment_version": 1,
+    "lineage_closed": true,
+    "package_id": "experiment-package:54d5a232d20e0390930d0f7ea74b9821",
+    "passport_id": "passport:dec55e3c9f20d3811be385173bbf79c7",
+    "verified": true
+  },
+  "schema_version": "1",
+  "superseding": {
+    "archive_sha256": "0e006a95d462174e7d7222b28c7e84ad5bce577234c9a31e1d4ae788808b3bfd",
+    "data_origin": "synthetic",
+    "environment_id": "synthetic_cv_fixture",
+    "execution_mode": "replay",
+    "experiment_id": "experiment:597a22bdb8f545691500910a01e36aa1",
+    "experiment_version": 2,
+    "lineage_closed": true,
+    "package_id": "experiment-package:38d6f31e93e9a35ab9e28660c5890fde",
+    "passport_id": "passport:08b7122ed54928ee9e4214aee1e521d3",
+    "verified": true
+  }
+}

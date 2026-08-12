@@ -37,14 +37,21 @@ EXPECTED_TABLES = {
     "cv_transformation_records",
     "derived_metrics",
     "events",
+    "experiment_packages",
+    "experiment_passports",
+    "experiment_versions",
+    "experiments",
     "idempotency_keys",
     "import_profiles",
     "jobs",
     "observations",
     "normalised_cv_observations",
+    "metadata_assertions",
     "record_relations",
     "source_artifacts",
     "storage_objects",
+    "validation_findings",
+    "validation_runs",
     "work_items",
 }
 
@@ -54,6 +61,13 @@ def _clear_all(engine: Engine) -> None:
     this deletes children first rather than cascading."""
     present = set(inspect(engine).get_table_names())
     order = (
+        "experiment_packages",
+        "experiment_passports",
+        "validation_findings",
+        "validation_runs",
+        "metadata_assertions",
+        "experiment_versions",
+        "experiments",
         "cv_transformation_records",
         "cv_structural_findings",
         "derived_metrics",

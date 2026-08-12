@@ -33,6 +33,7 @@ from sqlalchemy import Connection, Engine, create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from labbridge.application.cv_ingestion import CVIngestionService
+from labbridge.application.experiments import ExperimentService
 from labbridge.application.source_intake import SourceArtifactService
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.idempotency import (
@@ -45,6 +46,7 @@ from labbridge.domain.idempotency import (
 )
 from labbridge.domain.identity import ADMISSIBLE_PAIRS, DataOrigin, ExecutionMode
 from labbridge.infrastructure.cv_wiring import build_cv_service
+from labbridge.infrastructure.experiment_wiring import build_experiment_service
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
@@ -57,6 +59,7 @@ from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 
 from .cv import register_cv_routes
+from .experiments import register_experiment_routes
 from .source_artifacts import register_source_routes
 
 API_VERSION: Final = "1"
@@ -137,6 +140,23 @@ def _cv_service_provider(
     return provide
 
 
+def _experiment_service_provider(
+    engine_provider: Callable[[], Engine],
+    source_provider: Callable[[], SourceArtifactService],
+    cv_provider: Callable[[], CVIngestionService],
+    configured: ExperimentService | None,
+) -> Callable[[], ExperimentService]:
+    bound = configured
+
+    def provide() -> ExperimentService:
+        nonlocal bound
+        if bound is None:
+            bound = build_experiment_service(source_provider(), cv_provider(), engine_provider())
+        return bound
+
+    return provide
+
+
 def _replay(
     connection: Connection, response: Response, *, key: str, request_hash: str
 ) -> CampaignCreated:
@@ -187,10 +207,11 @@ def _replay(
     )
 
 
-def create_app(
+def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP adapters
     engine: Engine | None = None,
     source_service: SourceArtifactService | None = None,
     cv_service: CVIngestionService | None = None,
+    experiment_service: ExperimentService | None = None,
 ) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
@@ -212,7 +233,17 @@ def create_app(
     source_provider = _source_service_provider(_engine, source_service)
     register_source_routes(app, source_provider)
 
-    register_cv_routes(app, _cv_service_provider(_engine, source_provider, cv_service))
+    cv_provider = _cv_service_provider(_engine, source_provider, cv_service)
+    register_cv_routes(app, cv_provider)
+    register_experiment_routes(
+        app,
+        _experiment_service_provider(
+            _engine,
+            source_provider,
+            cv_provider,
+            experiment_service,
+        ),
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -1,0 +1,3 @@
+python scripts/reproduce_experiment_passport.py --output build/experiment-passport
+labbridge package verify build/experiment-passport/initial-package.zip --json
+labbridge package verify build/experiment-passport/superseding-package.zip --json

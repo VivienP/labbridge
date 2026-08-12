@@ -13,6 +13,7 @@ from labbridge.evidence.bundle import (
     BundleFailure,
     BundleVerificationError,
 )
+from labbridge.evidence.manifest import build_manifest
 
 runner = CliRunner()
 
@@ -102,6 +103,26 @@ def test_bare_validate_artifacts_defaults_to_bundle_only_and_partial(
     assert result.exit_code == 0, result.output
     assert "mode: bundle-only" in result.output
     assert "status: partial" in result.output
+
+
+def test_validate_artifacts_verifies_a_closed_result_manifest(tmp_path: Path) -> None:
+    artifact = tmp_path / "result"
+    artifact.mkdir()
+    (artifact / "result.json").write_text("{}", encoding="utf-8")
+    build_manifest(
+        artifact,
+        metadata={
+            "artifact_kind": "test_result",
+            "schema_version": "1",
+            "producing_versions": {"labbridge": "test"},
+        },
+    )
+
+    result = runner.invoke(cli.app, ["validate-artifacts", "--bundle", str(artifact)])
+
+    assert result.exit_code == 0, result.output
+    assert "test_result" in result.output
+    assert "status: complete" in result.output
 
 
 def test_structured_failure_details_escape_rich_markup(

@@ -42,9 +42,9 @@ verification.
 | Campaign evidence bundle verification | `implemented` | Current bundle schema is campaign-specific |
 | Opaque source capture and exact-byte integrity verification | `demonstrated` | Reproducible `synthetic + replay` artifact under `artifacts/source-capture` |
 | Generic CV CSV ingestion | `demonstrated` | Reproducible artifact under `artifacts/cv-ingestion` |
-| Experiment metadata origin/transformation model | `planned` | Concepts specified; no schema or persistence implementation |
-| Deterministic validation report and Experiment Passport | `planned` | No generator or report schema |
-| Experiment Package | `planned` | Existing evidence bundle does not satisfy this contract |
+| Experiment metadata origin/transformation model | `implemented` | Versioned append-only schema, migration, application service, and tests |
+| Deterministic validation report and Experiment Passport | `implemented` | JSON/HTML reports and reproducible candidate artifact under `artifacts/experiment-passport` |
+| Experiment Package | `implemented` | Closed ZIP manifest, independent CLI verifier, tamper tests, and candidate artifact |
 | Single-user interactive CV demo | `planned` | No frontend, demo API, browser proof, screenshot, or demo asset |
 | Gamry DTA ingestion | `planned` | Existing converter ecosystem must be evaluated first |
 | Galvanostatic electrolysis support | `planned` | Technique contract not implemented |
@@ -234,7 +234,9 @@ iR correction, campaign orchestration, and UI.
 
 ## Phase 3 — Experiment Passport and verified package
 
-**Status:** `planned`.
+**Status:** `implemented`. The reproducible candidate artifact is under
+[`../artifacts/experiment-passport`](../artifacts/experiment-passport); promotion to `demonstrated`
+requires that artifact to be committed and verified from the resulting clean checkout.
 
 ### Objective
 
@@ -287,7 +289,8 @@ distinguish available evidence, transformations, missing context, and release-bl
 
 Versioned machine-readable and HTML Passports for the Phase 2 fixture, the initial and superseding
 Experiment Packages, their manifests, independent CLI verification output, and evidence that adding
-one user-supplied assertion did not mutate the source assertion or prior release.
+one user-supplied assertion did not mutate the source assertion or prior release are generated under
+[`../artifacts/experiment-passport`](../artifacts/experiment-passport).
 
 ### Out of scope
 

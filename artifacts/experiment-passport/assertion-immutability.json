@@ -1,0 +1,51 @@
+{
+  "initial_package_sha256_after_supplement": "7d9ea1be6736ec42b4d220bd4b1036a84dbc10a9705af6f1ca0a7266f19addaf",
+  "initial_package_sha256_before_supplement": "7d9ea1be6736ec42b4d220bd4b1036a84dbc10a9705af6f1ca0a7266f19addaf",
+  "initial_package_unchanged_after_supplement": true,
+  "schema_version": "1",
+  "source_assertion_after": {
+    "assertion_id": "assertion:36b696aef3ac558c4e07ae80a2f30ee1",
+    "evidence_ids": [
+      "source:97fbafab40e0dde53c902a88f32e5088"
+    ],
+    "evidence_note": "Exact Phase 1 source bytes are retained under this identity.",
+    "experiment_id": "experiment:597a22bdb8f545691500910a01e36aa1",
+    "field_name": "source_artifact",
+    "inference": null,
+    "origin": "source_file",
+    "requirement_class": "required",
+    "schema_version": "1",
+    "supersedes_assertion_id": null,
+    "supplements_assertion_id": null,
+    "transformation": "none",
+    "value": {
+      "state": "known",
+      "unit": null,
+      "value": "source:97fbafab40e0dde53c902a88f32e5088"
+    }
+  },
+  "source_assertion_before": {
+    "assertion_id": "assertion:36b696aef3ac558c4e07ae80a2f30ee1",
+    "evidence_ids": [
+      "source:97fbafab40e0dde53c902a88f32e5088"
+    ],
+    "evidence_note": "Exact Phase 1 source bytes are retained under this identity.",
+    "experiment_id": "experiment:597a22bdb8f545691500910a01e36aa1",
+    "field_name": "source_artifact",
+    "inference": null,
+    "origin": "source_file",
+    "requirement_class": "required",
+    "schema_version": "1",
+    "supersedes_assertion_id": null,
+    "supplements_assertion_id": null,
+    "transformation": "none",
+    "value": {
+      "state": "known",
+      "unit": null,
+      "value": "source:97fbafab40e0dde53c902a88f32e5088"
+    }
+  },
+  "source_assertion_id": "assertion:36b696aef3ac558c4e07ae80a2f30ee1",
+  "source_assertion_unchanged": true,
+  "user_assertion_id": "assertion:0194e6a6bef2629c9a8ac33acd667ef0"
+}

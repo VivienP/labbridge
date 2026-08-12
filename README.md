@@ -51,11 +51,16 @@ opaque source bytes
   → explicit versioned CV import profile
   → fail-closed CSV parsing and declared unit conversion
   → normalised CV observation with closed transformation lineage
+  → append-only versioned experiment assertions and deterministic validation
+  → immutable JSON/HTML Experiment Passport
+  → independently verified Experiment Package
 ```
 
 Phase 1 retains opaque bytes without assigning semantics. Phase 2 assigns roles and units only from
 an explicit import profile, accounts for every source column, and records each parser, mapping, unit,
-and assembly transformation. Unknown or unavailable electrochemical context remains explicit.
+and assembly transformation. Phase 3 keeps assertion origin, transformation, requirement class, and
+value state independent; user supplements create new experiment and release versions without
+rewriting source assertions. Unknown or unavailable electrochemical context remains explicit.
 
 ## Architecture
 
@@ -131,6 +136,29 @@ The committed artifact under [`artifacts/cv-ingestion`](artifacts/cv-ingestion) 
 Phase 1 source bytes and contains the profile, normalised observation, transformation graph,
 structural findings, explicit environment identity, closed manifest, and verification record.
 
+The Phase 3 service, HTTP API, and CLI share the same validation, Passport, and Package operations:
+
+```bash
+labbridge experiment create <normalised-observation-id> \
+  --expected-version 0 --idempotency-key <key> --json
+labbridge experiment validate <experiment-id> \
+  --expected-version <version> --idempotency-key <key> --json
+labbridge experiment passport-release <experiment-id> \
+  --expected-version <version> --idempotency-key <key> --json
+labbridge package create <experiment-id> --passport-id <passport-id> \
+  --expected-version <version> --idempotency-key <key> --json
+labbridge package download <package-id> --output experiment-package.zip
+labbridge package verify experiment-package.zip --json
+python scripts/reproduce_experiment_passport.py --output build/experiment-passport
+```
+
+The candidate artifact under
+[`artifacts/experiment-passport`](artifacts/experiment-passport) contains initial and superseding
+Passports and Packages, independent CLI verification output, and byte-level proof that one
+user-supplied assertion changes neither the source assertion nor the prior release. Its reports
+describe completeness and retained evidence; they do not score scientific quality or claim
+reproducibility.
+
 ```bash
 labbridge fetch-her --record-id 20439519 --dry-run
 ```
@@ -190,6 +218,8 @@ or operational experiment proves it), or `deferred`.
 | Evidence bundles, local bundle checks, and full stored-object verification | `implemented` |
 | Opaque source intake, exact-byte retrieval, and integrity verification | `demonstrated` |
 | Explicit generic CV CSV ingestion and closed normalisation lineage | `demonstrated` |
+| Append-only Experiment assertions and deterministic release validation | `implemented` |
+| JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
 | Biosensor simulator and fault injection | `planned` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `planned` |
@@ -200,7 +230,9 @@ Opaque source capture is demonstrated under
 [`artifacts/source-capture`](artifacts/source-capture). Explicit generic CV normalisation is
 demonstrated separately under [`artifacts/cv-ingestion`](artifacts/cv-ingestion). The latter proves
 parser, mapping, unit, structural, identity, and lineage behaviour for the committed profile; it does
-not claim electrochemical validity or infer unavailable experimental context.
+not claim electrochemical validity or infer unavailable experimental context. The Phase 3 candidate
+artifact is under [`artifacts/experiment-passport`](artifacts/experiment-passport); its status remains
+`implemented` until the artifact is committed and verified from the resulting clean checkout.
 
 ## Limitations
 
@@ -228,6 +260,9 @@ not claim electrochemical validity or infer unavailable experimental context.
   until `labbridge fetch-her` or `labbridge build-her-fixture` produces it.
 - The integration suite requires the PostgreSQL and MinIO services from `docker-compose.yml`, and
   skips loudly when they are absent rather than passing vacuously.
+- Experiment Passport validation reports declared evidence completeness. A released Package may
+  retain warnings and unknowns; release does not assert scientific validity, data quality, or
+  reproducibility.
 - No number in this repository comes from a released measurement run. The reliability targets in
   [`docs/FAILURE_MATRIX.md`](docs/FAILURE_MATRIX.md) are acceptance targets, not results.
 

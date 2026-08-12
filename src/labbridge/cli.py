@@ -27,6 +27,11 @@ from sqlalchemy import create_engine
 
 from labbridge import __version__
 from labbridge.application.cv_ingestion import CVIngestionError, CVIngestionService
+from labbridge.application.experiments import (
+    ExperimentApplicationError,
+    ExperimentService,
+    UserAssertionCommand,
+)
 from labbridge.application.source_intake import (
     IntakeSource,
     SourceArtifactService,
@@ -42,8 +47,14 @@ from labbridge.evidence.bundle import (
     VerificationStatus,
     verify_bundle,
 )
+from labbridge.evidence.experiment_package import (
+    ExperimentPackageVerificationError,
+    verify_experiment_package,
+)
+from labbridge.evidence.manifest import ArtifactVerificationError, verify_manifest
 from labbridge.infrastructure.cv_csv import CsvParseError
 from labbridge.infrastructure.cv_wiring import build_cv_service
+from labbridge.infrastructure.experiment_wiring import build_experiment_service
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
 from labbridge.infrastructure.her_ingestion.fetch import (
     DEFAULT_LANDING_ROOT,
@@ -87,10 +98,18 @@ source_app = typer.Typer(no_args_is_help=True, help="Retain and verify opaque so
 cv_app = typer.Typer(
     no_args_is_help=True, help="Inspect and normalise explicitly mapped CV CSV files."
 )
+experiment_app = typer.Typer(
+    no_args_is_help=True, help="Version experiments and release Experiment Passports."
+)
+package_app = typer.Typer(
+    no_args_is_help=True, help="Create, download, and independently verify Experiment Packages."
+)
 app.add_typer(demo_app, name="demo")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(source_app, name="source")
 app.add_typer(cv_app, name="cv")
+app.add_typer(experiment_app, name="experiment")
+app.add_typer(package_app, name="package")
 console = Console()
 
 
@@ -132,6 +151,18 @@ def _build_source_service() -> SourceArtifactService:
 
 def _build_cv_service() -> CVIngestionService:
     return build_cv_service(_build_source_service())
+
+
+def _build_experiment_service() -> ExperimentService:
+    source_service = _build_source_service()
+    cv_service = build_cv_service(source_service)
+    return build_experiment_service(source_service, cv_service)
+
+
+def _experiment_failure(error: Exception) -> None:
+    code = getattr(error, "code", "experiment_request_invalid")
+    console.print(f"[red]{escape(str(code))}[/red]: {escape(str(error))}")
+    raise typer.Exit(code=1) from error
 
 
 def _cv_failure(error: Exception) -> None:
@@ -242,6 +273,205 @@ def cv_plot(
         typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
     else:
         console.print(plot.observation_id)
+
+
+@experiment_app.command("create")
+def experiment_create(
+    observation_id: Annotated[str, typer.Argument(help="Retained Phase 2 observation identity.")],
+    expected_version: Annotated[
+        int,
+        typer.Option("--expected-version", help="Expected experiment version; use 0 to create."),
+    ],
+    idempotency_key: Annotated[
+        str, typer.Option("--idempotency-key", help="Stable request identity.")
+    ],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create the initial immutable experiment version from one normalised observation."""
+    try:
+        stored = _build_experiment_service().create_experiment(
+            observation_id,
+            expected_version=expected_version,
+            idempotency_key=idempotency_key,
+        )
+    except (ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    payload = {"experiment": stored.experiment.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.experiment.experiment_id)
+
+
+@experiment_app.command("show")
+def experiment_show(
+    experiment_id: Annotated[str, typer.Argument(help="Experiment identity.")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Read the current immutable experiment version."""
+    try:
+        stored = _build_experiment_service().get_experiment(experiment_id)
+    except ExperimentApplicationError as error:
+        _experiment_failure(error)
+    payload = {"experiment": stored.experiment.model_dump(mode="json"), "replayed": True}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(f"{stored.experiment.experiment_id} v{stored.experiment.version}")
+
+
+@experiment_app.command("assert")
+def experiment_assert(
+    experiment_id: Annotated[str, typer.Argument(help="Experiment identity.")],
+    assertion_file: Annotated[
+        Path, typer.Argument(help="User assertion JSON; origin is always user_supplied.")
+    ],
+    expected_version: Annotated[int, typer.Option("--expected-version")],
+    idempotency_key: Annotated[str, typer.Option("--idempotency-key")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Append one user supplement or correction without rewriting earlier assertions."""
+    try:
+        command = UserAssertionCommand.model_validate_json(
+            assertion_file.read_text(encoding="utf-8")
+        )
+        stored = _build_experiment_service().add_user_assertion(
+            experiment_id,
+            expected_version=expected_version,
+            idempotency_key=idempotency_key,
+            command=command,
+        )
+    except (OSError, ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    payload = {"experiment": stored.experiment.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(f"{stored.experiment.experiment_id} v{stored.experiment.version}")
+
+
+@experiment_app.command("validate")
+def experiment_validate(
+    experiment_id: Annotated[str, typer.Argument(help="Experiment identity.")],
+    expected_version: Annotated[int, typer.Option("--expected-version")],
+    idempotency_key: Annotated[str, typer.Option("--idempotency-key")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Persist the deterministic validation findings and release decision."""
+    try:
+        stored = _build_experiment_service().run_validation(
+            experiment_id,
+            expected_version=expected_version,
+            idempotency_key=idempotency_key,
+        )
+    except (ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    payload = {"validation": stored.validation.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(
+            f"{stored.validation.validation_id}: {stored.validation.release_decision.status}"
+        )
+
+
+@experiment_app.command("passport-preview")
+def experiment_passport_preview(
+    experiment_id: Annotated[str, typer.Argument(help="Experiment identity.")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Render an unpersisted Passport preview, including blockers."""
+    try:
+        passport = _build_experiment_service().preview_passport(experiment_id)
+    except (ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    payload = {"passport": passport.model_dump(mode="json"), "replayed": False}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(f"{passport.passport_id}: {passport.release_decision.status}")
+
+
+@experiment_app.command("passport-release")
+def experiment_passport_release(
+    experiment_id: Annotated[str, typer.Argument(help="Experiment identity.")],
+    expected_version: Annotated[int, typer.Option("--expected-version")],
+    idempotency_key: Annotated[str, typer.Option("--idempotency-key")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Release an immutable Passport when no blocking finding exists."""
+    try:
+        stored = _build_experiment_service().release_passport(
+            experiment_id,
+            expected_version=expected_version,
+            idempotency_key=idempotency_key,
+        )
+    except (ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    payload = {"passport": stored.passport.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.passport.passport_id)
+
+
+@package_app.command("create")
+def experiment_package_create(
+    experiment_id: Annotated[str, typer.Argument(help="Experiment identity.")],
+    passport_id: Annotated[str, typer.Option("--passport-id")],
+    expected_version: Annotated[int, typer.Option("--expected-version")],
+    idempotency_key: Annotated[str, typer.Option("--idempotency-key")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create one manifest-verified immutable Experiment Package."""
+    try:
+        stored = _build_experiment_service().create_package(
+            experiment_id,
+            passport_id=passport_id,
+            expected_version=expected_version,
+            idempotency_key=idempotency_key,
+        )
+    except (ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    payload = {"package": stored.package.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.package.package_id)
+
+
+@package_app.command("download")
+def experiment_package_download(
+    package_id: Annotated[str, typer.Argument(help="Experiment Package identity.")],
+    output: Annotated[Path, typer.Option("--output", help="New ZIP destination.")],
+) -> None:
+    """Download exact package bytes after checksum and internal verification."""
+    if output.exists():
+        _experiment_failure(FileExistsError(f"refusing to replace existing path: {output}"))
+    try:
+        archive_bytes = _build_experiment_service().download_package(package_id)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(archive_bytes)
+    except (OSError, ExperimentApplicationError, ValueError) as error:
+        _experiment_failure(error)
+    console.print(output)
+
+
+@package_app.command("verify")
+def experiment_package_verify(
+    package_file: Annotated[Path, typer.Argument(help="Downloaded Experiment Package ZIP.")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Verify a downloaded Package independently of PostgreSQL and object storage."""
+    try:
+        verification = verify_experiment_package(package_file.read_bytes())
+    except (OSError, ExperimentPackageVerificationError) as error:
+        _experiment_failure(error)
+    payload = verification.model_dump(mode="json")
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(f"[green]verified[/green] {verification.package_id}")
 
 
 @source_app.command("intake")
@@ -453,6 +683,13 @@ def validate_artifacts(
 
 def _verify_one(bundle: Path, mode: VerificationMode, object_store: ObjectStore | None) -> None:
     try:
+        raw_manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raw_manifest = None
+    if isinstance(raw_manifest, dict) and "campaign_id" not in raw_manifest:
+        _verify_flat_artifact(bundle)
+        return
+    try:
         result = verify_bundle(bundle, mode=mode, object_store=object_store)
     except BundleVerificationError as error:
         failure = error.to_dict()
@@ -499,6 +736,30 @@ def _verify_one(bundle: Path, mode: VerificationMode, object_store: ObjectStore 
             console.print(f"  - {limitation}")
     elif result.status is VerificationStatus.COMPLETE:
         console.print("[green]bundle members and recorded object bytes match[/green]")
+
+
+def _verify_flat_artifact(destination: Path) -> None:
+    try:
+        manifest = verify_manifest(destination)
+    except ArtifactVerificationError as error:
+        console.print(f"[red]artifact_verification_failed[/red]: {escape(str(error))}")
+        raise typer.Exit(code=1) from error
+    files = manifest["files"]
+    assert isinstance(files, list)
+    artifact_kind = str(manifest.get("artifact_kind", destination.name))
+    table = Table(title=escape(artifact_kind))
+    table.add_column("file")
+    table.add_column("bytes", justify="right")
+    table.add_column("sha256")
+    for entry in files:
+        assert isinstance(entry, dict)
+        table.add_row(
+            escape(str(entry["name"])),
+            str(entry["byte_size"]),
+            f"{escape(str(entry['sha256'][:16]))}...",
+        )
+    console.print(table)
+    console.print("mode: closed-manifest  status: complete")
 
 
 @demo_app.command("her")
