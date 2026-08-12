@@ -3,7 +3,7 @@
 #
 # Two tiers. The fast local gate runs on every commit and stays quick. The heavier audit gates
 # (integration tests, migration tests, artifact validation, container execution) are NOT run here —
-# run them through /verify before claiming a capability complete.
+# run them through /verify before claiming a slice complete.
 #
 # Gates whose target does not exist yet are skipped explicitly and reported as [skip], never as passing.
 # `python .claude/tools/gates.py` is the authoritative inventory of what is live.
@@ -104,7 +104,7 @@ fi
 if have labbridge && labbridge validate-artifacts --help >/dev/null 2>&1; then
   run "artifact validation" labbridge validate-artifacts
 else
-  echo "  [skip] artifact validation (validate-artifacts not implemented yet)"
+  echo "  [skip] artifact validation (validate-artifacts not implemented yet — ROADMAP Slice 3)"
 fi
 
 # --- secret scan on staged content ------------------------------------------------------------------
@@ -124,4 +124,4 @@ if [ "$fail" -ne 0 ]; then
 fi
 echo "pre-commit: OK"
 echo "            Heavier gates (integration, migration, artifacts, compose) are not run here."
-echo "            Run /verify before claiming a capability complete."
+echo "            Run /verify before claiming a slice or exit criterion complete."
