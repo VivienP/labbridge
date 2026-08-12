@@ -40,6 +40,7 @@ verification.
 | Typed observations, provenance, canonical identity, and object checksums | `implemented` | Existing domain and storage tests |
 | Durable campaign jobs, lease fencing, heartbeats, and reconciliation | `implemented` | Existing local/integration tests; no released fault report |
 | Campaign evidence bundle verification | `implemented` | Current bundle schema is campaign-specific |
+| Opaque source capture and exact-byte integrity verification | `demonstrated` | Reproducible `synthetic + replay` artifact under `artifacts/source-capture` |
 | Generic CV CSV ingestion | `planned` | No parser, import profile, command, or acceptance artifact |
 | Experiment metadata origin/transformation model | `planned` | Concepts specified; no schema or persistence implementation |
 | Deterministic validation report and Experiment Passport | `planned` | No generator or report schema |
@@ -50,8 +51,8 @@ verification.
 | EchemDB-compatible export | `planned` | Mapping and validation proof do not exist |
 | Enzymatic-biosensor simulator | `deferred` | Scientific contract retained in `SIMULATOR_MODEL.md` |
 
-No capability is currently `demonstrated` because the repository contains no committed artifact that
-satisfies a capability's release proof.
+The source-capture capability is `demonstrated` only at the opaque byte-retention boundary. The
+artifact assigns no CSV semantics and does not demonstrate generic CV ingestion.
 
 ---
 
@@ -104,7 +105,7 @@ Product code, schema migrations, parser code, UI, deployment, commit, and push.
 
 ## Phase 1 — minimum file-integrity seam
 
-**Status:** `planned`. This is the first recommended implementation milestone.
+**Status:** `demonstrated` by the reproducible `synthetic + replay` source-capture artifact.
 
 ### Objective
 
@@ -157,7 +158,8 @@ dataset-specific parser.
 ### Artifact
 
 The synthetic source fixture, its source-artifact record, integrity manifest, verification output, and
-a reproduction command. This artifact demonstrates source capture only, not CSV interpretation.
+a reproduction command are committed under [`../artifacts/source-capture`](../artifacts/source-capture).
+This artifact demonstrates source capture only, not CSV interpretation.
 
 ### Out of scope
 

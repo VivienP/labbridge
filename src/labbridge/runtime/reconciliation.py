@@ -36,6 +36,7 @@ from labbridge.infrastructure.persistence.tables import (
     events,
     jobs,
     observations,
+    source_artifacts,
     storage_objects,
     work_items,
 )
@@ -215,7 +216,7 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
     except ObjectStoreError:
         return None
 
-    referenced = (
+    referenced_by_observation = (
         connection.execute(
             select(func.count())
             .select_from(observations)
@@ -224,6 +225,17 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
                     observations.c.object_uri == row.object_uri,
                     observations.c.status == "accepted",
                 )
+            )
+        ).scalar_one()
+        > 0
+    )
+    referenced_by_source = (
+        connection.execute(
+            select(func.count())
+            .select_from(source_artifacts)
+            .where(
+                source_artifacts.c.object_uri == row.object_uri,
+                source_artifacts.c.state == "committed",
             )
         ).scalar_one()
         > 0
@@ -239,7 +251,7 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
         exists=exists,
         recorded_sha256=row.sha256,
         actual_sha256=actual,
-        referenced_by_accepted=referenced,
+        referenced_by_accepted=referenced_by_observation or referenced_by_source,
         outcome_status=outcome_status,
     )
 

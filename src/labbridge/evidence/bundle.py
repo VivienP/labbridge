@@ -24,7 +24,6 @@ caller, so building one is testable without a store.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import uuid
@@ -48,8 +47,9 @@ from labbridge.infrastructure.persistence.tables import (
 )
 from labbridge.runtime.events import read_stream
 
+from .manifest import MANIFEST_FILENAME, canonical_json, digest
+
 BUNDLE_SCHEMA_VERSION: Final = "2"
-MANIFEST_FILENAME: Final = "manifest.json"
 EVENTS_FILENAME: Final = "events.jsonl"
 OBSERVATIONS_FILENAME: Final = "observations.json"
 METRICS_FILENAME: Final = "metrics.json"
@@ -175,15 +175,8 @@ _OBJECT_FIELDS: Final = {
 }
 
 
-def _canonical_json(payload: object) -> bytes:
-    """Sorted, compact, UTF-8, no NaN. The same rules identity uses, for the same reason."""
-    return json.dumps(
-        payload, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False, default=str
-    ).encode("utf-8")
-
-
-def _digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+_canonical_json = canonical_json
+_digest = digest
 
 
 def _failure(code: BundleErrorCode, message: str, **details: object) -> BundleFailure:

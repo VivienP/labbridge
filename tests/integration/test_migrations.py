@@ -39,6 +39,7 @@ EXPECTED_TABLES = {
     "jobs",
     "observations",
     "record_relations",
+    "source_artifacts",
     "storage_objects",
     "work_items",
 }
@@ -47,10 +48,12 @@ EXPECTED_TABLES = {
 def _clear_all(engine: Engine) -> None:
     """Empty every table in foreign-key order. The schema's RESTRICT constraints are deliberate, so
     this deletes children first rather than cascading."""
+    present = set(inspect(engine).get_table_names())
     order = (
         "derived_metrics",
         "attempt_outcomes",
         "observations",
+        "source_artifacts",
         # Before `attempts` and `work_items`: a staged object references both under `RESTRICT`.
         "storage_objects",
         "attempts",
@@ -66,7 +69,8 @@ def _clear_all(engine: Engine) -> None:
     )
     with engine.begin() as connection:
         for table in order:
-            connection.execute(text(f"DELETE FROM {table}"))
+            if table in present:
+                connection.execute(text(f"DELETE FROM {table}"))
 
 
 def test_head_creates_every_declared_table(migrated: Engine) -> None:

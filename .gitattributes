@@ -1,6 +1,7 @@
 # Normalize line endings. Shell hooks and Python must stay LF: CRLF breaks the shebang and several
 # tools, and `core.autocrlf=true` is common on Windows checkouts.
 * text=auto
+.gitattributes text eol=lf
 *.py text eol=lf
 *.sh text eol=lf
 scripts/hooks/* text eol=lf
@@ -11,6 +12,11 @@ scripts/hooks/* text eol=lf
 *.md text eol=lf
 *.toml text eol=lf
 SHA256SUMS.txt text eol=lf
+
+# Released integrity artifacts and their source fixtures are exact bytes. Do not let checkout
+# line-ending conversion invalidate their recorded hashes.
+artifacts/source-capture/** -text
+fixtures/source/synthetic-replay-cv-opaque.csv -text
 
 # Binary payloads: never transformed, never diffed as text.
 *.parquet binary

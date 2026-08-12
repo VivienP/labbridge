@@ -72,6 +72,13 @@ The durable classification produced for every attempt, whether or not any measur
 
 The content-addressed raw or minimally normalised data received from an environment adapter. An observation may be accepted, corrupted, invalidated, or superseded.
 
+### Source artifact
+
+Opaque source bytes retained before any parser or campaign assigns scientific meaning. Its content
+identity includes the exact-byte SHA-256, byte size, and declared media type. Filename is descriptive
+metadata only. Origin and execution mode are explicit declarations and are never inferred from the
+filename or contents.
+
 ### Derived metric
 
 A value computed from an explicitly referenced observation by a versioned analysis procedure.
@@ -311,6 +318,28 @@ class RecordRelation(BaseModel):
 
 Corrections never mutate the original raw observation.
 
+### 3.8 Source artifact
+
+```python
+SourceArtifactState = Literal["pending", "committed", "quarantined"]
+
+class SourceArtifact(BaseModel):
+    source_artifact_id: str
+    filename: str
+    media_type: str
+    byte_size: int
+    sha256: str
+    data_origin: DataOrigin
+    execution_mode: ExecutionMode
+    state: SourceArtifactState
+    object_uri: str
+    quarantine_reason: str | None
+```
+
+`source_artifact_id` is derived from the exact-byte SHA-256, byte size, and declared media type.
+Source capture does not inspect columns, assign units, identify a technique, or create an
+`Observation`.
+
 ---
 
 ## 4. Operational persistence
@@ -327,6 +356,7 @@ PostgreSQL is authoritative for:
 - approval gates;
 - budget reservations and consumption;
 - idempotency keys;
+- source-artifact lifecycle and provenance metadata;
 - state projections;
 - object and evidence-bundle metadata;
 - invalidation and supersession relations.
@@ -338,6 +368,7 @@ Schema changes use Alembic migrations. Migration tests MUST cover upgrade paths 
 S3-compatible object storage holds:
 
 - untouched downloaded source archives;
+- opaque source artifacts;
 - raw or minimally normalised observations;
 - Parquet dataset releases;
 - manifests;
@@ -345,6 +376,11 @@ S3-compatible object storage holds:
 - self-contained HTML reports.
 
 Objects progress through explicit states such as `pending`, `committed`, and `orphaned`. A database record MUST NOT declare an artifact committed until the expected object exists and its checksum has been verified.
+
+Source intake first persists pending metadata, then stores and reads back the exact bytes, and only
+then marks the source and storage metadata committed. Reconciliation classifies retained pending
+objects as committed or quarantined after an interrupted boundary. A checksum mismatch quarantines
+the source without rewriting or deleting the mismatched bytes.
 
 ### 4.3 Released artifacts
 
@@ -740,6 +776,10 @@ Repeat, stop, quarantine, approval, and retry are runtime actions, not acquisiti
 
 Minimum endpoints:
 
+- `POST /source-artifacts` — retain opaque request bytes with explicit filename, media type, origin,
+  mode, and idempotency identity;
+- `GET /source-artifacts/{id}` — retrieve source metadata;
+- `GET /source-artifacts/{id}/content` — retrieve exact bytes after checksum verification;
 - `POST /campaigns` — validate and create a campaign;
 - `POST /campaigns/{id}/start`;
 - `POST /campaigns/{id}/pause`;
@@ -772,6 +812,9 @@ The reservation of the key MUST be the first write of the submission transaction
 Minimum commands:
 
 ```bash
+labbridge source intake <file> --intake-id <key> --media-type <type> \
+  --data-origin <origin> --execution-mode <mode>
+labbridge source verify <source-artifact-id>
 labbridge fetch-her
 labbridge inspect-her
 labbridge demo her

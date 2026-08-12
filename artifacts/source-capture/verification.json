@@ -1,0 +1,10 @@
+{
+  "byte_size": 105,
+  "data_origin": "synthetic",
+  "execution_mode": "replay",
+  "schema_version": "1",
+  "sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8",
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "verification_method": "object-store read-back sha256 and byte-size comparison",
+  "verified": true
+}

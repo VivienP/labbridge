@@ -24,6 +24,7 @@ parsing prose.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from typing import Annotated, Any, Final
 
 from fastapi import FastAPI, Header, HTTPException, Response, status
@@ -31,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Connection, Engine, create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from labbridge.application.source_intake import SourceArtifactService
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.idempotency import (
     IdempotencyConflictError,
@@ -48,8 +50,11 @@ from labbridge.infrastructure.persistence.tables import (
     idempotency_keys,
     work_items,
 )
+from labbridge.infrastructure.source_wiring import build_source_service
 from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
+
+from .source_artifacts import register_source_routes
 
 API_VERSION: Final = "1"
 COMMAND_VERSION: Final = "1"
@@ -97,6 +102,20 @@ def _error(code: str, message: str, http_status: int) -> HTTPException:
     return HTTPException(
         status_code=http_status, detail=ErrorBody(code=code, message=message).model_dump()
     )
+
+
+def _source_service_provider(
+    engine_provider: Callable[[], Engine], configured: SourceArtifactService | None
+) -> Callable[[], SourceArtifactService]:
+    bound = configured
+
+    def provide() -> SourceArtifactService:
+        nonlocal bound
+        if bound is None:
+            bound = build_source_service(engine_provider())
+        return bound
+
+    return provide
 
 
 def _replay(
@@ -149,7 +168,9 @@ def _replay(
     )
 
 
-def create_app(engine: Engine | None = None) -> FastAPI:
+def create_app(
+    engine: Engine | None = None, source_service: SourceArtifactService | None = None
+) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
     The handlers close over `_engine()` rather than taking it through `Depends`. With
@@ -167,6 +188,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         return bound
 
     app = FastAPI(title="LabBridge", version=API_VERSION)
+    register_source_routes(app, _source_service_provider(_engine, source_service))
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -43,15 +43,17 @@ lack literature support, is in [`docs/SIMULATOR_MODEL.md`](docs/SIMULATOR_MODEL.
 One complete vertical path is the first objective, ahead of surface coverage:
 
 ```text
-campaign declaration
-  → durable job
-  → HER replay
-  → retained observation
-  → derived metric
-  → manifest
-  → evidence bundle
-  → crash and restart without a lost or duplicated accepted outcome
+opaque source bytes
+  → pending source metadata
+  → object-store read-back verification
+  → committed SourceArtifact
+  → exact-byte retrieval
+  → closed integrity manifest
 ```
+
+This first file-facing seam deliberately stops before parsing. The retained filename and declared
+media type are descriptive metadata; no Phase 1 code assigns meaning, units, or technique validity
+to the fixture's columns.
 
 ## Architecture
 
@@ -92,8 +94,26 @@ pip install -e ".[dev]"
 docker compose up -d                    # PostgreSQL and MinIO for the integration suite
 ```
 
-Four commands are registered. A command with no implementation behind it is not stubbed, because a
-stub in `--help` is a claim without evidence.
+Only implemented commands are registered. A command with no implementation behind it is not
+stubbed, because a stub in `--help` is a claim without evidence.
+
+The minimum source-capture path uses explicit provenance and the same application service from CLI
+and HTTP:
+
+```bash
+labbridge source intake fixtures/source/synthetic-replay-cv-opaque.csv \
+  --intake-id synthetic-replay-cv-v1 \
+  --media-type text/csv \
+  --data-origin synthetic \
+  --execution-mode replay
+labbridge source verify <source-artifact-id>
+labbridge validate-artifacts --bundle artifacts/source-capture
+```
+
+The reproduction command in
+[`artifacts/source-capture/REPRODUCE.txt`](artifacts/source-capture/REPRODUCE.txt) generates the
+closed source-capture artifact through PostgreSQL and MinIO. It demonstrates opaque retention and
+checksum verification only, not CSV interpretation.
 
 ```bash
 labbridge fetch-her --record-id 20439519 --dry-run
@@ -152,14 +172,16 @@ or operational experiment proves it), or `deferred`.
 | Append-only budget ledger, written in the outcome transaction | `implemented` |
 | Budget reservation and hard stopping rules | `planned` |
 | Evidence bundles, local bundle checks, and full stored-object verification | `implemented` |
+| Opaque source intake, exact-byte retrieval, and integrity verification | `demonstrated` |
 | Biosensor simulator and fault injection | `planned` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `planned` |
 | Deployment, backup restore, and the seeded fault-injection experiment | `planned` |
 | Model-based selection policy beyond a seeded random baseline | `deferred` |
 
-No capability has reached `demonstrated`. Doing so requires a committed, reproducible artifact with
-a manifest, and none has been released yet.
+Opaque source capture is demonstrated by the committed synthetic fixture and reproducible artifact
+under [`artifacts/source-capture`](artifacts/source-capture). No CSV semantics, normalisation, or
+scientific validity is demonstrated by that artifact.
 
 ## Limitations
 
@@ -215,7 +237,8 @@ reopens the gate on its own. Boundaries and layer definitions are in
 | [`docs/FAILURE_MATRIX.md`](docs/FAILURE_MATRIX.md) | Failure scenarios, expected outcomes, retention rules, and how each is proven |
 | [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECISIONS.md) | Accepted decisions and their consequences |
 
-`SHA256SUMS.txt` checksums those five documents; verify with `sha256sum -c SHA256SUMS.txt`.
+`SHA256SUMS.txt` checksums the normative public documents; verify with
+`sha256sum -c SHA256SUMS.txt`.
 
 ## Development
 

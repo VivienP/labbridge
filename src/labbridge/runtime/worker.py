@@ -381,8 +381,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                "environment_mismatch",
-                mismatch,
+                failure_code="environment_mismatch",
+                summary=mismatch,
                 retryable=False,
                 category="policy",
             )
@@ -428,8 +428,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                error.code,
-                str(error),
+                failure_code=error.code,
+                summary=str(error),
                 retryable=False,
             )
         except Exception as error:
@@ -445,8 +445,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                "adapter_error",
-                f"{type(error).__name__}: {error}",
+                failure_code="adapter_error",
+                summary=f"{type(error).__name__}: {error}",
                 retryable=True,
                 category="transport",
                 exception_type=type(error).__name__,
@@ -462,8 +462,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                result.failure_code,
-                result.reason,
+                failure_code=result.failure_code,
+                summary=result.reason,
                 retryable=False,
                 # Not `instrument`: the archive omits 20 areas per library from SECCM by design,
                 # so nothing failed. Recording an instrument fault would assert a breakage the
@@ -477,7 +477,7 @@ class Worker:
             # retain them instead of stranding them (F-008). The heartbeat is handed over so it can
             # cover the upload and stop before the finalisation transaction.
             return self._record_success(
-                lease, attempt_id, campaign_id, origin, mode, result, beating
+                lease, attempt_id, campaign_id, origin, mode, result=result, beating=beating
             )
         except Exception as error:
             return self._record_failure(
@@ -486,8 +486,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                "outcome_write_failed",
-                f"{type(error).__name__}: {error}",
+                failure_code="outcome_write_failed",
+                summary=f"{type(error).__name__}: {error}",
                 retryable=True,
                 exception_type=type(error).__name__,
             )
@@ -543,6 +543,7 @@ class Worker:
         attempt_id: uuid.UUID,
         campaign_id: uuid.UUID,
         origin: str,
+        *,
         mode: str,
         provenance: Provenance,
     ) -> bool:
@@ -592,8 +593,8 @@ class Worker:
         attempt_id: uuid.UUID,
         campaign_id: uuid.UUID,
         origin: str,
-        mode: str,
         *,
+        mode: str,
         identity: str,
         stored: StoredObject,
         result: AdapterSuccess,
@@ -641,6 +642,7 @@ class Worker:
         campaign_id: uuid.UUID,
         origin: str,
         mode: str,
+        *,
         result: AdapterSuccess,
         beating: Heartbeat,
     ) -> WorkOutcome:
@@ -694,7 +696,15 @@ class Worker:
             # route as one the fence catches: refused, with the bytes retained.
             beating.raise_if_lost()
             return self._finalise(
-                lease, attempt_id, campaign_id, origin, mode, result, provenance, identity, stored
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                result=result,
+                provenance=provenance,
+                identity=identity,
+                stored=stored,
             )
         except jobs.LeaseLostError:
             return self._record_lease_lost(
@@ -713,6 +723,7 @@ class Worker:
         campaign_id: uuid.UUID,
         origin: str,
         mode: str,
+        *,
         result: AdapterSuccess,
         provenance: Provenance,
         identity: str,
@@ -732,7 +743,13 @@ class Worker:
             # both would find nothing, both would write an observation, and the loser would surface
             # as an integrity error after the evidence had already been written (ADR-015, PO-02).
             if not self._claim_acceptance(
-                connection, lease, attempt_id, campaign_id, origin, mode, provenance
+                connection,
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode=mode,
+                provenance=provenance,
             ):
                 # No metric, no budget entry, no `observation.accepted` event — but the bytes this
                 # delivery received are retained under *its own* attempt, as a `received`
@@ -750,7 +767,7 @@ class Worker:
                     attempt_id,
                     campaign_id,
                     origin,
-                    mode,
+                    mode=mode,
                     identity=identity,
                     stored=stored,
                     result=result,
@@ -766,7 +783,7 @@ class Worker:
                     attempt_id,
                     campaign_id,
                     origin,
-                    mode,
+                    mode=mode,
                     status="duplicate_suppressed",
                     provenance=provenance,
                     observation=identity,
@@ -910,9 +927,9 @@ class Worker:
         campaign_id: uuid.UUID,
         origin: str,
         mode: str,
+        *,
         failure_code: str,
         summary: str,
-        *,
         retryable: bool,
         category: str = "instrument",
         exception_type: str | None = None,
@@ -933,7 +950,7 @@ class Worker:
                 attempt_id,
                 campaign_id,
                 origin,
-                mode,
+                mode=mode,
                 status=status,
                 provenance=provenance,
                 failure={
@@ -1029,7 +1046,7 @@ class Worker:
                     attempt_id,
                     campaign_id,
                     origin,
-                    mode,
+                    mode=mode,
                     identity=late.identity,
                     stored=late.stored,
                     result=late.result,
@@ -1045,7 +1062,7 @@ class Worker:
                 attempt_id,
                 campaign_id,
                 origin,
-                mode,
+                mode=mode,
                 status="lease_lost",
                 provenance=provenance,
                 observation=late.identity if late else None,
@@ -1139,8 +1156,8 @@ class Worker:
         attempt_id: uuid.UUID,
         campaign_id: uuid.UUID,
         origin: str,
-        mode: str,
         *,
+        mode: str,
         status: str,
         provenance: Provenance,
         observation: str | None = None,

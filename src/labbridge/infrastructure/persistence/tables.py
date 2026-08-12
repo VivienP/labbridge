@@ -508,6 +508,39 @@ storage_objects = Table(
     ),
 )
 
+source_artifacts = Table(
+    "source_artifacts",
+    metadata,
+    Column("source_artifact_id", _ID, primary_key=True),
+    Column("filename", Text, nullable=False),
+    Column("media_type", String(128), nullable=False),
+    Column("byte_size", BigInteger, nullable=False),
+    Column("sha256", _HASH, nullable=False),
+    Column("data_origin", String(16), nullable=False),
+    Column("execution_mode", String(16), nullable=False),
+    Column("state", String(16), nullable=False),
+    Column(
+        "object_uri",
+        Text,
+        ForeignKey("storage_objects.object_uri", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    *_timestamps("created_at"),
+    Column("committed_at", DateTime(timezone=True), nullable=True),
+    Column("quarantine_reason", Text, nullable=True),
+    CheckConstraint("byte_size >= 0", name="source_byte_size_non_negative"),
+    CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="source_admissible_origin_mode"),
+    CheckConstraint("state IN ('pending','committed','quarantined')", name="known_source_state"),
+    CheckConstraint(
+        "(state = 'committed') = (committed_at IS NOT NULL)",
+        name="committed_source_has_timestamp",
+    ),
+    CheckConstraint(
+        "(state = 'quarantined') = (quarantine_reason IS NOT NULL)",
+        name="quarantined_source_has_reason",
+    ),
+)
+
 idempotency_keys = Table(
     "idempotency_keys",
     metadata,
@@ -589,6 +622,7 @@ __all__ = [
     "metadata",
     "observations",
     "record_relations",
+    "source_artifacts",
     "storage_objects",
     "work_items",
 ]

@@ -85,6 +85,9 @@ The observation is valid and the experiment completed, but performance is poor. 
 | F-045 | Synthetic output exported without label | Report generation | Integrity-gate failure | Existing data unchanged | Refuse release | Automated report test requires visible and machine-readable synthetic labels |
 | F-046 | Observed XPS and GP-predicted XPS conflated | Ingestion or report | Data-contract validation failure | Source rows retained | Refuse affected dataset release | Distinct source-type field required and tested |
 | F-047 | Replay requested for a pre-contract campaign | Replay input validation | `IncompleteEventStreamError`; no reconstruction starts | Existing projections and event rows remain unchanged | Inspect as legacy evidence only; never infer missing history from projections | Migration test preserves row and event counts, marks contract version `0`, and proves replay refusal |
+| F-048 | Source intake stops after object upload but before metadata commit | Source-capture boundary | Source remains `pending`; uploaded bytes remain retained | Yes, as pending evidence | Reconcile by recorded size and SHA-256 | PostgreSQL/MinIO integration test uploads after reservation and reconciliation commits it |
+| F-049 | Retained source bytes differ from committed checksum | Source retrieval | Typed integrity failure; source becomes `quarantined` | Yes, mismatched bytes remain for diagnosis | Refuse retrieval as valid source | MinIO tamper test changes bytes and verifies quarantine |
+| F-050 | Source intake identity is reused with different bytes | Source intake reservation | Typed idempotency conflict; original source remains unchanged | Original only | Reject the changed request | Offline and PostgreSQL tests prove stable replay and changed-byte conflict |
 
 ---
 
