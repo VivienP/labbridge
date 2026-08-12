@@ -38,8 +38,11 @@ Report contradictions instead of choosing the most convenient interpretation.
 
 - Follow [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) for Git, branch, and worktree
   practices.
-- When a coherent worktree task is complete and finalization is explicitly authorised, use the
-  repository `finish-worktree` skill.
+- When a roadmap phase or other substantial coherent implementation is complete, use the repository
+  `finalize-phase` skill for review, selective specialist handoffs, verification, and integration
+  preparation.
+- `finalize-phase` delegates Git preparation to `finish-worktree`; both preserve every explicit
+  authorisation checkpoint in `git-commit-rules`.
 - Finalization uses validation proportional to the change rather than an automatic repository-wide
   audit.
 - Never push worktree changes directly to `main`.

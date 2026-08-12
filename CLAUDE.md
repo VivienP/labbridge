@@ -21,10 +21,12 @@ are read-only. Use the default workflow for non-trivial implementation:
 /plan-slice → /implement → /review → /verify
 ```
 
-When a coherent worktree task is complete and finalization is explicitly authorised, invoke
-`$finish-worktree`. It follows [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md), pushes a
-task branch rather than `main`, and opens but never merges the pull request. `/prepare-commit` remains
-the narrower workflow for preparing a proposed commit without completing branch integration.
+When a roadmap phase or other substantial coherent implementation is complete, invoke
+`$finalize-phase`. It coordinates the repository reviewer, requested specialist handoffs, final
+verification, and `$finish-worktree`. Git operations still require the explicit checkpoints in
+`git-commit-rules`, and the workflow opens but never merges the pull request. Use `$finish-worktree`
+directly only for an already reviewed and verified task. `/prepare-commit` remains the narrower
+workflow for preparing a proposed commit without completing branch integration.
 
 Run `python .claude/tools/gates.py` to inspect the available verification gates and never report a
 scaffolded or deferred gate as passing.

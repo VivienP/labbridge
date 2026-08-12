@@ -96,8 +96,9 @@ Drop anything below that bar. Suggestions alone do not prevent `APPROVE`.
 Use the range the author supplies. Otherwise determine the base as: configured upstream branch → merge
 base with `origin/main` → merge base with local `main`. Report the base you chose.
 
-Review the union of committed changes from base to `HEAD`, staged changes, and unstaged changes. Never
-silently ignore the working tree.
+Review the union of committed changes from base to `HEAD` and every staged, unstaged, and untracked
+working-tree change. Never silently ignore or exclude a working-tree path as unrelated; classify it in
+the scope report instead.
 
 Resolve the applicable spec as: a specification named in the task → a spec referenced by the branch or
 changed documentation → a spec found by searching the changed public symbols → the relevant section of

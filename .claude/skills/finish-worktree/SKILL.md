@@ -9,6 +9,10 @@ Finalize the current LabBridge worktree for integration.
 
 The objective is to make the completed change reviewable and open a pull request to `main` without performing an unnecessary repository-wide re-audit.
 
+**REQUIRED SUB-SKILL:** Apply `git-commit-rules` before any Git state mutation. Load it before a branch
+change or the first staging operation, keep it active through the commit and push, and reload it after
+context compaction or a repository-rule change. Its authorisation checkpoints are not optional.
+
 ## 1. Establish current state
 
 Inspect:
@@ -21,10 +25,11 @@ Inspect:
 
 Confirm that the current worktree contains a coherent completed change.
 
-Confirm that the user explicitly asked to run this skill or otherwise authorised the branch, staging,
-commit, push, and pull-request operations required for finalization. Treating a task as complete is a
-readiness signal, not authorisation for Git state changes. If authorisation is missing, stop and name
-the operations that remain unauthorised.
+Record which branch, staging, commit, push, and pull-request operations the user has explicitly
+authorised. Authorisation may be progressive. Treating a task as complete or invoking this skill is a
+readiness signal, not authorisation for Git state changes. If the next operation is not authorised,
+pause and request exactly that operation. Preserve the commit-specific title approval required by
+`git-commit-rules` even when broader finalization was requested.
 
 Do not modify `main`.
 
@@ -60,6 +65,9 @@ according to repository instructions.
 
 Prefer the narrowest validation that provides meaningful confidence.
 
+When `finalize-phase` supplies fresh evidence for the exact unchanged diff, reuse it and run only
+missing or invalidated checks. Do not repeat an expensive check solely for ceremony.
+
 Do not rerun the entire repository test suite unless:
 
 - repository policy explicitly requires it;
@@ -86,6 +94,9 @@ Do not perform a general documentation rewrite.
 
 ## 5. Prepare the branch
 
+Before changing branches, apply `git-commit-rules` and confirm explicit authorisation for that branch
+change.
+
 Before staging or committing, ensure the worktree is on a non-`main` task branch.
 
 If the worktree is in detached HEAD state or currently on `main`, create a descriptive branch for the
@@ -110,6 +121,11 @@ Do not switch to `main`.
 If a suitable non-`main` task branch already exists, use it.
 
 ## 6. Commit
+
+Before the first staging operation, apply `git-commit-rules` and confirm explicit staging
+authorisation. After staging, inspect the staged diff and complete its per-commit title approval
+checkpoint. Immediately before committing, apply the still-current `git-commit-rules`; do not commit
+until the exact title and that one commit are authorised.
 
 Stage only the intended task changes.
 
@@ -138,6 +154,8 @@ If the task already contains clean commits, do not unnecessarily rewrite them.
 
 ## 7. Push
 
+Before pushing, apply the `git-commit-rules` push check and obtain explicit push authorisation.
+
 Push the task branch to the configured remote.
 
 Never push directly to `main`.
@@ -145,6 +163,8 @@ Never push directly to `main`.
 Set the upstream branch when necessary.
 
 ## 8. Create the pull request
+
+Obtain explicit pull-request creation authorisation if it has not already been granted.
 
 Create a pull request targeting `main`.
 

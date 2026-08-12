@@ -288,36 +288,44 @@ for a repository-wide documentation restructuring unrelated to one particular fe
 
 ---
 
-## Finishing a Worktree
+## Finalizing a Completed Phase
 
 A worktree represents a coherent line of development, not a single prompt or development phase.
 Implementation, relevant tests, documentation, fixes, and targeted validation should remain in the
 same worktree when they belong to the same task.
 
-When that task is complete and the required Git operations are explicitly authorised, invoke the
-repository-local `finish-worktree` skill:
+When a roadmap phase or other substantial coherent implementation is complete, invoke the
+repository-local `finalize-phase` skill:
 
 ```text
-$finish-worktree
+$finalize-phase
 ```
 
-The skill owns the executable finalization procedure. It:
+The skill owns end-of-phase orchestration. It:
 
-1. reviews the task diff for accidental or unrelated changes;
-2. runs validation proportional to the scope of the change;
-3. checks directly affected documentation;
-4. creates or uses an appropriate task branch;
-5. commits the intended changes;
-6. pushes the task branch;
-7. opens a pull request targeting `main`.
+1. establishes the coherent task scope and its base against `main`;
+2. invokes the repository reviewer over the complete change;
+3. invokes only the scientific-data or failure-coverage handoffs requested by that reviewer;
+4. returns validated blockers for correction and repeats review until none remain;
+5. applies `verification-before-completion` to the final post-review state;
+6. delegates integration preparation to `finish-worktree`.
+
+Fresh validation evidence may be reused when it covers the unchanged final state and the verification
+authority accepts it. Checks invalidated by review fixes must run again. An expensive check is not
+repeated solely to reproduce an already valid result.
+
+`finish-worktree` owns the narrower executable Git procedure. It reviews the final task diff, performs
+any remaining targeted validation, checks directly affected documentation, prepares a task branch,
+stages and commits the intended changes, pushes the branch, and opens a pull request targeting `main`.
+It applies `git-commit-rules` and pauses at every missing human authorisation checkpoint.
 
 Targeted validation must provide meaningful confidence in the changed behavior. A repository-wide
 audit or full test run is required only when repository policy, shared behavior, or the proof
 obligation makes narrower validation insufficient.
 
-The skill never pushes directly to `main` and never merges the pull request. Review, CI, and merging
-remain separate integration decisions. Worktrees themselves are not merged; their branches or commits
-are integrated.
+Neither skill pushes directly to `main` or merges the pull request. Review, CI, and merging remain
+separate integration decisions. Worktrees themselves are not merged; their branches or commits are
+integrated.
 
 The normal lifecycle is:
 
@@ -326,6 +334,9 @@ worktree
 → implementation
 → tests and documentation as needed
 → targeted validation
+→ $finalize-phase
+→ repository review and selective handoffs
+→ final verification
 → $finish-worktree
 → task branch
 → commit
