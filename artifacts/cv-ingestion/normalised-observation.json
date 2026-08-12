@@ -1,0 +1,114 @@
+{
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_cv_fixture",
+  "execution_mode": "replay",
+  "import_profile_id": "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+  "metadata": {
+    "contact_area": {
+      "state": "not_applicable",
+      "unit": null,
+      "value": null
+    },
+    "current_basis": {
+      "state": "known",
+      "unit": null,
+      "value": "current"
+    },
+    "cycle_information": {
+      "state": "unavailable",
+      "unit": null,
+      "value": null
+    },
+    "electrode_role": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "geometric_area": {
+      "state": "unavailable",
+      "unit": null,
+      "value": null
+    },
+    "potential_treatment": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "reference_scale": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "scan_rate": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    }
+  },
+  "normalisation_version": "0.1.0",
+  "observation_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a",
+  "parser_version": "1",
+  "provenance": {
+    "environment_id": "synthetic_cv_fixture",
+    "import_profile_id": "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+    "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+    "source_sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8",
+    "transformation_ids": [
+      "transform:f68af4efccf1abc77ad31d818a2f4c53",
+      "transform:410698f3f7df9c9fa6b52ffe5066755a",
+      "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+      "transform:e5c8b9c23624b210ebbd534fc1183fe7"
+    ]
+  },
+  "row_count": 5,
+  "schema_version": "1",
+  "series": [
+    {
+      "dtype": "decimal",
+      "role": "potential",
+      "schema_version": "1",
+      "series_id": "cv-series:15ce8989d28aefc532fbbac53614ca51",
+      "shape": [
+        5
+      ],
+      "source_column": "channel_a",
+      "source_unit": "V",
+      "transformation_id": "transform:410698f3f7df9c9fa6b52ffe5066755a",
+      "unit": "V",
+      "values": [
+        "-0.240",
+        "-0.120",
+        "0.000",
+        "0.120",
+        "0.240"
+      ]
+    },
+    {
+      "dtype": "decimal",
+      "role": "current",
+      "schema_version": "1",
+      "series_id": "cv-series:8840491f4950dfd70033624a8d780622",
+      "shape": [
+        5
+      ],
+      "source_column": "channel_b",
+      "source_unit": "A",
+      "transformation_id": "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+      "unit": "A",
+      "values": [
+        "0.012",
+        "0.031",
+        "0.057",
+        "0.028",
+        "0.010"
+      ]
+    }
+  ],
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "transformation_ids": [
+    "transform:f68af4efccf1abc77ad31d818a2f4c53",
+    "transform:410698f3f7df9c9fa6b52ffe5066755a",
+    "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+    "transform:e5c8b9c23624b210ebbd534fc1183fe7"
+  ]
+}

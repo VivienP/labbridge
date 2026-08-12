@@ -33,11 +33,15 @@ EXPECTED_TABLES = {
     "attempts",
     "budget_ledger",
     "campaigns",
+    "cv_structural_findings",
+    "cv_transformation_records",
     "derived_metrics",
     "events",
     "idempotency_keys",
+    "import_profiles",
     "jobs",
     "observations",
+    "normalised_cv_observations",
     "record_relations",
     "source_artifacts",
     "storage_objects",
@@ -50,9 +54,13 @@ def _clear_all(engine: Engine) -> None:
     this deletes children first rather than cascading."""
     present = set(inspect(engine).get_table_names())
     order = (
+        "cv_transformation_records",
+        "cv_structural_findings",
         "derived_metrics",
         "attempt_outcomes",
         "observations",
+        "normalised_cv_observations",
+        "import_profiles",
         "source_artifacts",
         # Before `attempts` and `work_items`: a staged object references both under `RESTRICT`.
         "storage_objects",

@@ -41,7 +41,7 @@ verification.
 | Durable campaign jobs, lease fencing, heartbeats, and reconciliation | `implemented` | Existing local/integration tests; no released fault report |
 | Campaign evidence bundle verification | `implemented` | Current bundle schema is campaign-specific |
 | Opaque source capture and exact-byte integrity verification | `demonstrated` | Reproducible `synthetic + replay` artifact under `artifacts/source-capture` |
-| Generic CV CSV ingestion | `planned` | No parser, import profile, command, or acceptance artifact |
+| Generic CV CSV ingestion | `demonstrated` | Reproducible artifact under `artifacts/cv-ingestion` |
 | Experiment metadata origin/transformation model | `planned` | Concepts specified; no schema or persistence implementation |
 | Deterministic validation report and Experiment Passport | `planned` | No generator or report schema |
 | Experiment Package | `planned` | Existing evidence bundle does not satisfy this contract |
@@ -170,7 +170,8 @@ budget completion, and broad runtime hardening unrelated to file intake.
 
 ## Phase 2 — generic CV CSV ingestion
 
-**Status:** `planned`.
+**Status:** `demonstrated` by the reproducible `synthetic + replay` artifact under
+[`../artifacts/cv-ingestion`](../artifacts/cv-ingestion).
 
 ### Objective
 
@@ -220,7 +221,8 @@ retaining the exact input bytes and every explicit mapping decision.
 ### Artifact
 
 The committed synthetic CV CSV fixture, its explicit import profile, normalised observation,
-transformation graph, structural findings, and a documented reproduction command.
+transformation graph, structural findings, and documented reproduction command are under
+[`../artifacts/cv-ingestion`](../artifacts/cv-ingestion).
 
 ### Out of scope
 

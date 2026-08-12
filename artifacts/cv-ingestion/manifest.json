@@ -1,0 +1,61 @@
+{
+  "artifact_kind": "generic_cv_ingestion",
+  "data_origin": "synthetic",
+  "description": "Explicit generic CV CSV normalisation with closed source lineage.",
+  "environment_id": "synthetic_cv_fixture",
+  "execution_mode": "replay",
+  "files": [
+    {
+      "byte_size": 1469,
+      "name": "import-profile.json",
+      "sha256": "882d70df6dd21a6f3eff7f122b47ce70398176b6335028fd8ed1215e1d9bd6fe"
+    },
+    {
+      "byte_size": 609,
+      "name": "LIMITATIONS.md",
+      "sha256": "4369b7ffa40a45f25059cafa0f260baafdcfaa9e0121f0f922ac1c0c5b4a5386"
+    },
+    {
+      "byte_size": 2941,
+      "name": "normalised-observation.json",
+      "sha256": "c5351b468f14141df466ddeb14027b1db3b23a3f53326735b94dc171c917f728"
+    },
+    {
+      "byte_size": 69,
+      "name": "REPRODUCE.txt",
+      "sha256": "7a27b965e32b4abbefeb92f50e7cb3e4d72cf9f7adea7e0cc69406f708712058"
+    },
+    {
+      "byte_size": 1066,
+      "name": "structural-findings.json",
+      "sha256": "a011192923b66a9a6dacaa681cd361f7087d8189eddaaf093d8312936ef9e4af"
+    },
+    {
+      "byte_size": 105,
+      "name": "synthetic-replay-cv-opaque.csv",
+      "sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8"
+    },
+    {
+      "byte_size": 3170,
+      "name": "transformation-graph.json",
+      "sha256": "3364e5c45dd19f46697c29a5d8e8a62e3c5139609ea3541b40d3af02d0c299cf"
+    },
+    {
+      "byte_size": 723,
+      "name": "verification.json",
+      "sha256": "f90abc0ba313adbd50eb9569d865a80bcd659e26d3421de6f6ba92d64e9733a7"
+    }
+  ],
+  "files_digest": "fb21e2631ffb9cc9d87f91ce8f0154f669f79e85e508ef8a6f279c670b5d851f",
+  "import_profile_id": "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+  "observation_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a",
+  "producing_versions": {
+    "cv_csv_parser": "1",
+    "labbridge": "0.1.0",
+    "normalised_cv_observation": "1"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "source_filename": "synthetic-replay-cv-opaque.csv",
+  "source_sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8"
+}

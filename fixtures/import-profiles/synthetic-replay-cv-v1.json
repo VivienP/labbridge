@@ -1,0 +1,75 @@
+{
+  "schema_version": "1",
+  "technique": "cyclic_voltammetry",
+  "environment_id": "synthetic_cv_fixture",
+  "encoding": "utf-8",
+  "delimiter": ",",
+  "decimal_convention": "point",
+  "header_row": 1,
+  "missing_value_tokens": [
+    "",
+    "NA"
+  ],
+  "columns": [
+    {
+      "source_column": "sample_index",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "channel_a",
+      "role": "potential",
+      "source_unit": "V",
+      "target_unit": "V"
+    },
+    {
+      "source_column": "channel_b",
+      "role": "current",
+      "source_unit": "A",
+      "target_unit": "A"
+    }
+  ],
+  "metadata": {
+    "reference_scale": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "potential_treatment": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "current_basis": {
+      "state": "known",
+      "value": "current",
+      "unit": null
+    },
+    "electrode_role": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "geometric_area": {
+      "state": "unavailable",
+      "value": null,
+      "unit": null
+    },
+    "contact_area": {
+      "state": "not_applicable",
+      "value": null,
+      "unit": null
+    },
+    "scan_rate": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "cycle_information": {
+      "state": "unavailable",
+      "value": null,
+      "unit": null
+    }
+  }
+}

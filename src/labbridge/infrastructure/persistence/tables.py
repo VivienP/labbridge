@@ -541,6 +541,85 @@ source_artifacts = Table(
     ),
 )
 
+import_profiles = Table(
+    "import_profiles",
+    metadata,
+    Column("profile_id", _ID, primary_key=True),
+    Column("schema_version", String(16), nullable=False),
+    Column("technique", String(64), nullable=False),
+    Column("body", JSONB, nullable=False),
+    *_timestamps("created_at"),
+    CheckConstraint("schema_version = '1'", name="known_import_profile_schema"),
+    CheckConstraint("technique = 'cyclic_voltammetry'", name="known_import_profile_technique"),
+)
+
+normalised_cv_observations = Table(
+    "normalised_cv_observations",
+    metadata,
+    Column("observation_id", _ID, primary_key=True),
+    Column(
+        "source_artifact_id",
+        _ID,
+        ForeignKey("source_artifacts.source_artifact_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "profile_id",
+        _ID,
+        ForeignKey("import_profiles.profile_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("schema_version", String(16), nullable=False),
+    Column("parser_version", String(64), nullable=False),
+    Column("normalisation_version", String(64), nullable=False),
+    Column("data_origin", String(16), nullable=False),
+    Column("execution_mode", String(16), nullable=False),
+    Column("environment_id", String(128), nullable=False),
+    Column("row_count", BigInteger, nullable=False),
+    Column(
+        "object_uri",
+        Text,
+        ForeignKey("storage_objects.object_uri", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("byte_size", BigInteger, nullable=False),
+    Column("sha256", _HASH, nullable=False),
+    *_timestamps("created_at"),
+    CheckConstraint("schema_version = '1'", name="known_normalised_cv_schema"),
+    CheckConstraint("row_count >= 1", name="normalised_cv_has_rows"),
+    CheckConstraint("byte_size >= 0", name="normalised_cv_byte_size_non_negative"),
+    CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="normalised_cv_admissible_origin_mode"),
+)
+
+cv_transformation_records = Table(
+    "cv_transformation_records",
+    metadata,
+    Column("transformation_id", _ID, primary_key=True),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_cv_observations.observation_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("record", JSONB, nullable=False),
+    UniqueConstraint("observation_id", "ordinal", name="uq_cv_transform_observation_ordinal"),
+    CheckConstraint("ordinal >= 1", name="cv_transform_ordinal_starts_at_one"),
+)
+
+cv_structural_findings = Table(
+    "cv_structural_findings",
+    metadata,
+    Column("finding_id", _ID, primary_key=True),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_cv_observations.observation_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("finding", JSONB, nullable=False),
+)
+
 idempotency_keys = Table(
     "idempotency_keys",
     metadata,
@@ -615,11 +694,15 @@ __all__ = [
     "attempts",
     "budget_ledger",
     "campaigns",
+    "cv_structural_findings",
+    "cv_transformation_records",
     "derived_metrics",
     "events",
     "idempotency_keys",
+    "import_profiles",
     "jobs",
     "metadata",
+    "normalised_cv_observations",
     "observations",
     "record_relations",
     "source_artifacts",

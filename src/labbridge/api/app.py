@@ -32,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Connection, Engine, create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from labbridge.application.cv_ingestion import CVIngestionService
 from labbridge.application.source_intake import SourceArtifactService
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.idempotency import (
@@ -43,6 +44,7 @@ from labbridge.domain.idempotency import (
     work_item_instruction_key,
 )
 from labbridge.domain.identity import ADMISSIBLE_PAIRS, DataOrigin, ExecutionMode
+from labbridge.infrastructure.cv_wiring import build_cv_service
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
@@ -54,6 +56,7 @@ from labbridge.infrastructure.source_wiring import build_source_service
 from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 
+from .cv import register_cv_routes
 from .source_artifacts import register_source_routes
 
 API_VERSION: Final = "1"
@@ -118,6 +121,22 @@ def _source_service_provider(
     return provide
 
 
+def _cv_service_provider(
+    engine_provider: Callable[[], Engine],
+    source_provider: Callable[[], SourceArtifactService],
+    configured: CVIngestionService | None,
+) -> Callable[[], CVIngestionService]:
+    bound = configured
+
+    def provide() -> CVIngestionService:
+        nonlocal bound
+        if bound is None:
+            bound = build_cv_service(source_provider(), engine_provider())
+        return bound
+
+    return provide
+
+
 def _replay(
     connection: Connection, response: Response, *, key: str, request_hash: str
 ) -> CampaignCreated:
@@ -169,7 +188,9 @@ def _replay(
 
 
 def create_app(
-    engine: Engine | None = None, source_service: SourceArtifactService | None = None
+    engine: Engine | None = None,
+    source_service: SourceArtifactService | None = None,
+    cv_service: CVIngestionService | None = None,
 ) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
@@ -188,7 +209,10 @@ def create_app(
         return bound
 
     app = FastAPI(title="LabBridge", version=API_VERSION)
-    register_source_routes(app, _source_service_provider(_engine, source_service))
+    source_provider = _source_service_provider(_engine, source_service)
+    register_source_routes(app, source_provider)
+
+    register_cv_routes(app, _cv_service_provider(_engine, source_provider, cv_service))
 
     @app.get("/health")
     def health() -> dict[str, str]:

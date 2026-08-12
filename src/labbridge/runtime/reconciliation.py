@@ -35,6 +35,7 @@ from labbridge.infrastructure.persistence.tables import (
     campaigns,
     events,
     jobs,
+    normalised_cv_observations,
     observations,
     source_artifacts,
     storage_objects,
@@ -240,6 +241,14 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
         ).scalar_one()
         > 0
     )
+    referenced_by_normalised_cv = (
+        connection.execute(
+            select(func.count())
+            .select_from(normalised_cv_observations)
+            .where(normalised_cv_observations.c.object_uri == row.object_uri)
+        ).scalar_one()
+        > 0
+    )
     outcome_status: str | None = None
     if row.attempt_id is not None:
         outcome_status = connection.execute(
@@ -251,7 +260,9 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
         exists=exists,
         recorded_sha256=row.sha256,
         actual_sha256=actual,
-        referenced_by_accepted=referenced_by_observation or referenced_by_source,
+        referenced_by_accepted=(
+            referenced_by_observation or referenced_by_source or referenced_by_normalised_cv
+        ),
         outcome_status=outcome_status,
     )
 

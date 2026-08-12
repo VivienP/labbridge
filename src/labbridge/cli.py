@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Final, cast
@@ -25,12 +26,14 @@ from rich.table import Table
 from sqlalchemy import create_engine
 
 from labbridge import __version__
+from labbridge.application.cv_ingestion import CVIngestionError, CVIngestionService
 from labbridge.application.source_intake import (
     IntakeSource,
     SourceArtifactService,
     SourceIntakeError,
 )
 from labbridge.demo import engine_from_settings, run_demo
+from labbridge.domain.cv import CSVFormat, CVImportProfile
 from labbridge.domain.identity import DataOrigin, ExecutionMode
 from labbridge.environments.her_replay import HerReplayAdapter
 from labbridge.evidence.bundle import (
@@ -39,6 +42,8 @@ from labbridge.evidence.bundle import (
     VerificationStatus,
     verify_bundle,
 )
+from labbridge.infrastructure.cv_csv import CsvParseError
+from labbridge.infrastructure.cv_wiring import build_cv_service
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
 from labbridge.infrastructure.her_ingestion.fetch import (
     DEFAULT_LANDING_ROOT,
@@ -79,9 +84,13 @@ app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.split
 demo_app = typer.Typer(no_args_is_help=True, help="Run a demonstration campaign end to end.")
 evidence_app = typer.Typer(no_args_is_help=True, help="Build and verify evidence bundles.")
 source_app = typer.Typer(no_args_is_help=True, help="Retain and verify opaque source files.")
+cv_app = typer.Typer(
+    no_args_is_help=True, help="Inspect and normalise explicitly mapped CV CSV files."
+)
 app.add_typer(demo_app, name="demo")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(source_app, name="source")
+app.add_typer(cv_app, name="cv")
 console = Console()
 
 
@@ -119,6 +128,120 @@ def _utc_now() -> datetime:
 
 def _build_source_service() -> SourceArtifactService:
     return build_source_service()
+
+
+def _build_cv_service() -> CVIngestionService:
+    return build_cv_service(_build_source_service())
+
+
+def _cv_failure(error: Exception) -> None:
+    code = getattr(error, "code", "cv_ingestion_error")
+    console.print(f"[red]{code}[/red]: {error}")
+    raise typer.Exit(code=1) from error
+
+
+@cv_app.command("inspect")
+def cv_inspect(
+    source_artifact_id: Annotated[str, typer.Argument(help="Retained Phase 1 source identity.")],
+    encoding: Annotated[str, typer.Option("--encoding", help="Explicit source encoding.")],
+    delimiter: Annotated[
+        str, typer.Option("--delimiter", help="Explicit one-character delimiter.")
+    ],
+    header_row: Annotated[int, typer.Option("--header-row", help="One-based header row.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Inspect declared CSV structure without assigning column roles."""
+    try:
+        csv_format = CSVFormat.model_validate(
+            {"encoding": encoding, "delimiter": delimiter, "header_row": header_row}
+        )
+        inspected = _build_cv_service().inspect(source_artifact_id, csv_format)
+    except (CVIngestionError, SourceIntakeError, CsvParseError, ValueError) as error:
+        _cv_failure(error)
+    payload = {
+        "source_artifact_id": inspected.source_artifact_id,
+        "source_sha256": inspected.source_sha256,
+        "headers": inspected.headers,
+        "row_count": inspected.row_count,
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print("\n".join(inspected.headers))
+
+
+@cv_app.command("profile-create")
+def cv_profile_create(
+    profile_file: Annotated[Path, typer.Argument(help="Versioned JSON import profile.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Validate and retain one immutable explicit import profile."""
+    try:
+        profile = CVImportProfile.model_validate_json(profile_file.read_text(encoding="utf-8"))
+        stored = _build_cv_service().create_profile(profile)
+    except (OSError, ValueError, CVIngestionError) as error:
+        _cv_failure(error)
+    payload = {
+        "profile_id": stored.profile_id,
+        "profile": stored.profile.model_dump(mode="json"),
+        "replayed": stored.replayed,
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.profile_id)
+
+
+@cv_app.command("normalise")
+def cv_normalise(
+    source_artifact_id: Annotated[str, typer.Argument(help="Retained Phase 1 source identity.")],
+    profile_id: Annotated[
+        str, typer.Option("--profile-id", help="Explicit import profile identity.")
+    ],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Normalise one retained source through the shared application service."""
+    try:
+        stored = _build_cv_service().normalise(source_artifact_id, profile_id)
+    except (CVIngestionError, SourceIntakeError, CsvParseError, ValueError) as error:
+        _cv_failure(error)
+    payload = {"result": stored.result.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.result.observation.observation_id)
+
+
+@cv_app.command("plot")
+def cv_plot(
+    observation_id: Annotated[str, typer.Argument(help="Normalised CV observation identity.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Return backend-approved plot values without display transformations."""
+    try:
+        plot = _build_cv_service().plot_series(observation_id)
+    except CVIngestionError as error:
+        _cv_failure(error)
+    payload = {
+        "observation_id": plot.observation_id,
+        "data_origin": plot.data_origin,
+        "execution_mode": plot.execution_mode,
+        "environment_id": plot.environment_id,
+        "series": [item.model_dump(mode="json") for item in plot.series],
+        "provenance": plot.provenance.model_dump(mode="json"),
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(plot.observation_id)
 
 
 @source_app.command("intake")

@@ -15,8 +15,7 @@ from .persistence.config import DatabaseSettings, ObjectStoreSettings
 from .persistence.source_artifacts import PostgresSourceArtifactRepository
 
 
-def build_source_service(engine: Engine | None = None) -> SourceArtifactService:
-    database = engine or create_engine(DatabaseSettings().dsn, future=True)
+def build_source_store() -> S3ObjectStore:
     settings = ObjectStoreSettings()
     client = boto3.client(
         "s3",
@@ -28,6 +27,12 @@ def build_source_service(engine: Engine | None = None) -> SourceArtifactService:
     )
     store = S3ObjectStore(client, bucket=settings.bucket)
     store.ensure_bucket()
+    return store
+
+
+def build_source_service(engine: Engine | None = None) -> SourceArtifactService:
+    database = engine or create_engine(DatabaseSettings().dsn, future=True)
+    store = build_source_store()
     return SourceArtifactService(
         PostgresSourceArtifactRepository(database),
         store,
@@ -35,4 +40,4 @@ def build_source_service(engine: Engine | None = None) -> SourceArtifactService:
     )
 
 
-__all__ = ["build_source_service"]
+__all__ = ["build_source_service", "build_source_store"]
