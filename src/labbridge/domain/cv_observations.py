@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Literal, Self
 
@@ -35,6 +36,13 @@ class TransformationRecord(_Model):
     input_ids: tuple[str, ...] = Field(min_length=1)
     parameters: tuple[TransformationParameter, ...]
     output_ids: tuple[str, ...] = Field(min_length=1)
+
+
+def transformation_record_id(record: TransformationRecord) -> str:
+    """Recompute the identity of one retained transformation record."""
+    body = record.model_dump(mode="python", exclude={"transformation_id"})
+    body["parameters"] = sorted(body["parameters"], key=lambda item: item["name"])
+    return content_id("transform", body)
 
 
 def _transformation_record(
@@ -89,6 +97,37 @@ class NormalisedSeries(_Model):
         return self
 
 
+def normalised_series_id(
+    *,
+    source_artifact_id: str,
+    import_profile_id: str,
+    schema_version: str,
+    dtype: str,
+    shape: Sequence[int],
+    source_column: str,
+    role: ColumnRole,
+    source_unit: str,
+    unit: str,
+    values: Sequence[Decimal],
+) -> str:
+    """Identify retained series values and every mapping decision that produced them."""
+    return content_id(
+        "cv-series",
+        {
+            "source_artifact_id": source_artifact_id,
+            "import_profile_id": import_profile_id,
+            "schema_version": schema_version,
+            "dtype": dtype,
+            "shape": tuple(shape),
+            "source_column": source_column,
+            "role": role,
+            "source_unit": source_unit,
+            "unit": unit,
+            "values": tuple(values),
+        },
+    )
+
+
 class CVLineage(_Model):
     environment_id: str = Field(min_length=1)
     source_artifact_id: str = Field(min_length=1)
@@ -112,6 +151,26 @@ class NormalisedCVObservation(_Model):
     metadata: CVMetadata
     transformation_ids: tuple[str, ...] = Field(min_length=1)
     provenance: CVLineage
+
+
+def normalised_observation_id(observation: NormalisedCVObservation) -> str:
+    """Recompute the canonical identity of one retained normalised observation."""
+    return content_id(
+        "cv-observation",
+        {
+            "schema_version": observation.schema_version,
+            "parser_version": observation.parser_version,
+            "normalisation_version": observation.normalisation_version,
+            "source_artifact_id": observation.source_artifact_id,
+            "import_profile_id": observation.import_profile_id,
+            "data_origin": observation.data_origin,
+            "execution_mode": observation.execution_mode,
+            "environment_id": observation.environment_id,
+            "row_count": observation.row_count,
+            "series": [item.model_dump(mode="python") for item in observation.series],
+            "metadata": observation.metadata,
+        },
+    )
 
 
 class StructuralFinding(_Model):
@@ -163,4 +222,7 @@ __all__ = [
     "TransformationGraph",
     "TransformationParameter",
     "TransformationRecord",
+    "normalised_observation_id",
+    "normalised_series_id",
+    "transformation_record_id",
 ]

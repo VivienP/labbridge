@@ -367,6 +367,34 @@ parameters, and output identities. The graph begins at the retained `SourceArtif
 the parsed table and mapped series, and closes at the normalised observation. Phase 2 findings cover
 only parsing, mapping, unit, structural, and lineage validity.
 
+### 3.10 Experiment Passport and verified Package
+
+An `Experiment` is an immutable aggregate version rooted in one Phase 2 normalised observation. Its
+identity is stable across versions; an expected-version append creates a new snapshot. A
+`MetadataAssertion` records `origin`, `transformation`, `requirement_class`, and `value.state` as
+independent fields. Source-file assertions are never rewritten or superseded by user edits. A user
+supplement may cite the source assertion it supplements; a correction may supersede only an active
+user-supplied assertion. Every inferred assertion records its method, method version, evidence
+identities, confidence kind, and confidence value.
+
+`ValidationFinding` and `ValidationRun` are content-addressed deterministic results for one exact
+experiment version and validation-rule version. Findings have stable identifiers, severities of
+`blocking`, `warning`, or `unknown`, assertion and evidence references, and a visible resolution
+instruction. Any blocking finding produces a blocked release decision. Warnings and unknowns remain
+in released Passports and Packages.
+
+An `ExperimentPassport` freezes one experiment version, its assertions, findings, release decision,
+and Phase 1–2 lineage anchors. Its JSON and self-contained HTML forms derive from the same model and
+therefore expose the same finding identifiers and release decision. Rendering is deterministic with
+the release timestamp isolated as declared volatile metadata. A later Passport cites, but never
+mutates, the Passport it supersedes.
+
+An `ExperimentPackage` is a deterministic ZIP with a closed manifest covering the source bytes,
+Phase 1 source record, Phase 2 profile, normalised observation and transformation graph, Passport
+JSON and HTML, findings, and lineage index. Independent verification rejects missing, changed,
+unexpected, duplicate, or unsafe members; checks Passport/report parity; and closes every active
+assertion and finding through the retained Phase 2 graph to the retained Phase 1 source identity.
+
 ---
 
 ## 4. Operational persistence
@@ -385,6 +413,8 @@ PostgreSQL is authoritative for:
 - idempotency keys;
 - source-artifact lifecycle and provenance metadata;
 - versioned import profiles, normalised CV metadata, transformation records, and structural findings;
+- immutable experiment versions, metadata assertions, validation findings, released Passports, and
+  Experiment Package metadata;
 - state projections;
 - object and evidence-bundle metadata;
 - invalidation and supersession relations.
@@ -401,7 +431,8 @@ S3-compatible object storage holds:
 - Parquet dataset releases;
 - manifests;
 - evidence bundles;
-- self-contained HTML reports.
+- self-contained HTML reports;
+- immutable Experiment Package archives and their JSON/HTML Passport members.
 
 Objects progress through explicit states such as `pending`, `committed`, and `orphaned`. A database record MUST NOT declare an artifact committed until the expected object exists and its checksum has been verified.
 
@@ -820,6 +851,15 @@ Minimum endpoints:
   and retrieve its observation, graph, and structural findings;
 - `GET /cv/normalised-observations/{id}/plot-series` — retrieve backend-approved values, roles,
   units, identity, and provenance without display transformations;
+- `POST /experiments` and `GET /experiments/{id}` — create an experiment from one retained Phase 2
+  observation and retrieve its latest immutable version;
+- `POST /experiments/{id}/assertions` — append one user-supplied supplement or correction;
+- `POST /experiments/{id}/validations` — persist deterministic findings and a release decision;
+- `GET /experiments/{id}/passport-preview` and `POST /experiments/{id}/passports` — preview or
+  release a Passport;
+- `GET /experiment-passports/{id}` — retrieve the exact released Passport;
+- `POST /experiments/{id}/packages`, `GET /experiment-packages/{id}`, and
+  `GET /experiment-packages/{id}/download` — create, inspect, and download an immutable Package;
 - `POST /campaigns` — validate and create a campaign;
 - `POST /campaigns/{id}/start`;
 - `POST /campaigns/{id}/pause`;
@@ -860,6 +900,19 @@ labbridge cv inspect <source-artifact-id> --encoding <encoding> --delimiter <del
 labbridge cv profile-create <profile.json> [--json]
 labbridge cv normalise <source-artifact-id> --profile-id <profile-id> [--json]
 labbridge cv plot <normalised-observation-id> [--json]
+labbridge experiment create <normalised-observation-id> --expected-version 0 \
+  --idempotency-key <key> [--json]
+labbridge experiment assert <experiment-id> <assertion.json> --expected-version <version> \
+  --idempotency-key <key> [--json]
+labbridge experiment validate <experiment-id> --expected-version <version> \
+  --idempotency-key <key> [--json]
+labbridge experiment passport-preview <experiment-id> [--json]
+labbridge experiment passport-release <experiment-id> --expected-version <version> \
+  --idempotency-key <key> [--json]
+labbridge package create <experiment-id> --passport-id <passport-id> \
+  --expected-version <version> --idempotency-key <key> [--json]
+labbridge package download <package-id> --output <package.zip>
+labbridge package verify <package.zip> [--json]
 labbridge fetch-her
 labbridge inspect-her
 labbridge demo her

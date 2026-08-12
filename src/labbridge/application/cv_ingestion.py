@@ -21,26 +21,24 @@ from labbridge.domain.cv_observations import (
     TransformationParameter,
     TransformationRecord,
     _transformation_record,
+    normalised_series_id,
 )
 from labbridge.infrastructure.cv_csv import PARSER_VERSION, ParsedSeries, inspect_csv, parse_cv_csv
 
 
 def _series_identity(source_artifact_id: str, profile_id: str, series: ParsedSeries) -> str:
     shape = (len(series.values),)
-    return content_id(
-        "cv-series",
-        {
-            "source_artifact_id": source_artifact_id,
-            "import_profile_id": profile_id,
-            "schema_version": SERIES_SCHEMA_VERSION,
-            "dtype": SERIES_DTYPE,
-            "shape": shape,
-            "source_column": series.source_column,
-            "role": series.role,
-            "source_unit": series.source_unit,
-            "unit": series.target_unit,
-            "values": series.values,
-        },
+    return normalised_series_id(
+        source_artifact_id=source_artifact_id,
+        import_profile_id=profile_id,
+        schema_version=SERIES_SCHEMA_VERSION,
+        dtype=SERIES_DTYPE,
+        shape=shape,
+        source_column=series.source_column,
+        role=series.role,
+        source_unit=series.source_unit,
+        unit=series.target_unit,
+        values=series.values,
     )
 
 

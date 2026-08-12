@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Experiment Passport passport:08b7122ed54928ee9e4214aee1e521d3</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;
+padding:0 1rem;color:#202124}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #bbb;padding:.45rem;text-align:left}
+code{overflow-wrap:anywhere}.decision{padding:.75rem;border:2px solid #555}
+</style>
+</head>
+<body>
+<h1>Experiment Passport passport:08b7122ed54928ee9e4214aee1e521d3</h1>
+<p><strong>Origin and mode:</strong> synthetic + replay</p>
+<p><strong>Technique:</strong> cyclic_voltammetry</p>
+<p><strong>Experiment version:</strong> 2</p>
+<p class="decision"><strong>Release decision: eligible</strong><br>
+Blocking: 0;
+warnings: 2;
+unknowns: 3</p>
+<h2>Metadata assertions</h2>
+<table><thead><tr><th>Field</th><th>Value state</th><th>Origin</th><th>Transformation</th>
+<th>Requirement</th><th>Assertion</th></tr></thead><tbody><tr><td>source_artifact</td><td>source:97fbafab40e0dde53c902a88f32e5088</td><td>source_file</td><td>none</td><td>required</td><td><code>assertion:36b696aef3ac558c4e07ae80a2f30ee1</code></td></tr><tr><td>observation</td><td>cv-observation:6b9846ff3dfe2a38e2989984c21d450a</td><td>source_file</td><td>derived</td><td>required</td><td><code>assertion:0d2dbf6962c7310f508e14af3af03928</code></td></tr><tr><td>potential_axis</td><td>channel_a V</td><td>user_supplied</td><td>parsed</td><td>required</td><td><code>assertion:7ab3feed622de2091a02074a2f2532ca</code></td></tr><tr><td>current_axis</td><td>channel_b A</td><td>user_supplied</td><td>parsed</td><td>required</td><td><code>assertion:2f19e45bebbc4c3b513721f817fc3115</code></td></tr><tr><td>reference_scale</td><td>unknown</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:481b94dda4145ee976dba563d7b7c435</code></td></tr><tr><td>potential_treatment</td><td>unknown</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:7547c32945f17078e37cf6b4bed92994</code></td></tr><tr><td>current_basis</td><td>current</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:4cd5aa6623aa07f6b5568954329920d5</code></td></tr><tr><td>electrode_role</td><td>unknown</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:a33d72a527964c58aa566d078d336454</code></td></tr><tr><td>geometric_area</td><td>unavailable</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:52732089a088947ba1bcad81ff348ea1</code></td></tr><tr><td>contact_area</td><td>not_applicable</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:6a1bc136fa2ab5954587a0b9c800ac42</code></td></tr><tr><td>scan_rate</td><td>unknown</td><td>user_supplied</td><td>none</td><td>recommended</td><td><code>assertion:bcbe564a62bc8cc14a15e5f6a9732feb</code></td></tr><tr><td>cycle_information</td><td>unavailable</td><td>user_supplied</td><td>none</td><td>recommended</td><td><code>assertion:3b55576dc2092db65b6397c28d3a3432</code></td></tr><tr><td>reference_scale</td><td>RHE</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:0194e6a6bef2629c9a8ac33acd667ef0</code></td></tr></tbody></table>
+<h2>Validation findings</h2><ul><li><strong>unknown</strong> <code>validation-finding:fc6b3d62d6172d12288e0c34916f3088</code> — electrode_role remains unknown; the Passport does not infer it. Resolution: Append a user-supplied electrode_role assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>unknown</strong> <code>validation-finding:4963005e76583bbdd9cf6ee9e01bfd7f</code> — potential_treatment remains unknown; the Passport does not infer it. Resolution: Append a user-supplied potential_treatment assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>unknown</strong> <code>validation-finding:4869976de1bb29dab27f659cb0acfb71</code> — scan_rate remains unknown; the Passport does not infer it. Resolution: Append a user-supplied scan_rate assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>warning</strong> <code>validation-finding:163f30a5772990034dc473fb2a1b620b</code> — cycle_information remains unavailable; the Passport does not infer it. Resolution: Append a user-supplied cycle_information assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>warning</strong> <code>validation-finding:22537a33ba8e55cae307dc329528c564</code> — geometric_area remains unavailable; the Passport does not infer it. Resolution: Append a user-supplied geometric_area assertion if additional retained evidence is available; otherwise keep this finding visible.</li></ul>
+<h2>Lineage anchors</h2>
+<p>Source artifact: <code>source:97fbafab40e0dde53c902a88f32e5088</code><br>
+Normalised observation: <code>cv-observation:6b9846ff3dfe2a38e2989984c21d450a</code><br>
+Import profile: <code>cv-profile:93b2ab987c861b65a4284876505bd8d5</code></p>
+<h2>Limitations</h2>
+<p>This Passport records evidence completeness and declared metadata. It does not claim scientific
+validity, data quality, reproducibility, or fitness for a journal.</p>
+</body>
+</html>

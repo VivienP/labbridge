@@ -34,6 +34,8 @@ from labbridge.infrastructure.persistence.tables import (
     attempts,
     campaigns,
     events,
+    experiment_packages,
+    experiment_passports,
     jobs,
     normalised_cv_observations,
     observations,
@@ -249,6 +251,27 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
         ).scalar_one()
         > 0
     )
+    referenced_by_passport = (
+        connection.execute(
+            select(func.count())
+            .select_from(experiment_passports)
+            .where(
+                or_(
+                    experiment_passports.c.json_object_uri == row.object_uri,
+                    experiment_passports.c.html_object_uri == row.object_uri,
+                )
+            )
+        ).scalar_one()
+        > 0
+    )
+    referenced_by_package = (
+        connection.execute(
+            select(func.count())
+            .select_from(experiment_packages)
+            .where(experiment_packages.c.object_uri == row.object_uri)
+        ).scalar_one()
+        > 0
+    )
     outcome_status: str | None = None
     if row.attempt_id is not None:
         outcome_status = connection.execute(
@@ -261,7 +284,11 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
         recorded_sha256=row.sha256,
         actual_sha256=actual,
         referenced_by_accepted=(
-            referenced_by_observation or referenced_by_source or referenced_by_normalised_cv
+            referenced_by_observation
+            or referenced_by_source
+            or referenced_by_normalised_cv
+            or referenced_by_passport
+            or referenced_by_package
         ),
         outcome_status=outcome_status,
     )

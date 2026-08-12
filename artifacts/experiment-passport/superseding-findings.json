@@ -1,0 +1,127 @@
+{
+  "experiment_id": "experiment:597a22bdb8f545691500910a01e36aa1",
+  "experiment_version": 2,
+  "findings": [
+    {
+      "assertion_ids": [
+        "assertion:a33d72a527964c58aa566d078d336454"
+      ],
+      "code": "metadata.electrode_role.unknown",
+      "evidence_ids": [
+        "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+        "source:97fbafab40e0dde53c902a88f32e5088",
+        "transform:410698f3f7df9c9fa6b52ffe5066755a",
+        "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+        "transform:e5c8b9c23624b210ebbd534fc1183fe7",
+        "transform:f68af4efccf1abc77ad31d818a2f4c53"
+      ],
+      "field_name": "electrode_role",
+      "finding_id": "validation-finding:fc6b3d62d6172d12288e0c34916f3088",
+      "message": "electrode_role remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied electrode_role assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:7547c32945f17078e37cf6b4bed92994"
+      ],
+      "code": "metadata.potential_treatment.unknown",
+      "evidence_ids": [
+        "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+        "source:97fbafab40e0dde53c902a88f32e5088",
+        "transform:410698f3f7df9c9fa6b52ffe5066755a",
+        "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+        "transform:e5c8b9c23624b210ebbd534fc1183fe7",
+        "transform:f68af4efccf1abc77ad31d818a2f4c53"
+      ],
+      "field_name": "potential_treatment",
+      "finding_id": "validation-finding:4963005e76583bbdd9cf6ee9e01bfd7f",
+      "message": "potential_treatment remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied potential_treatment assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:bcbe564a62bc8cc14a15e5f6a9732feb"
+      ],
+      "code": "metadata.scan_rate.unknown",
+      "evidence_ids": [
+        "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+        "source:97fbafab40e0dde53c902a88f32e5088",
+        "transform:410698f3f7df9c9fa6b52ffe5066755a",
+        "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+        "transform:e5c8b9c23624b210ebbd534fc1183fe7",
+        "transform:f68af4efccf1abc77ad31d818a2f4c53"
+      ],
+      "field_name": "scan_rate",
+      "finding_id": "validation-finding:4869976de1bb29dab27f659cb0acfb71",
+      "message": "scan_rate remains unknown; the Passport does not infer it.",
+      "requirement_class": "recommended",
+      "resolution": "Append a user-supplied scan_rate assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:3b55576dc2092db65b6397c28d3a3432"
+      ],
+      "code": "metadata.cycle_information.warning",
+      "evidence_ids": [
+        "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+        "source:97fbafab40e0dde53c902a88f32e5088",
+        "transform:410698f3f7df9c9fa6b52ffe5066755a",
+        "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+        "transform:e5c8b9c23624b210ebbd534fc1183fe7",
+        "transform:f68af4efccf1abc77ad31d818a2f4c53"
+      ],
+      "field_name": "cycle_information",
+      "finding_id": "validation-finding:163f30a5772990034dc473fb2a1b620b",
+      "message": "cycle_information remains unavailable; the Passport does not infer it.",
+      "requirement_class": "recommended",
+      "resolution": "Append a user-supplied cycle_information assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "warning"
+    },
+    {
+      "assertion_ids": [
+        "assertion:52732089a088947ba1bcad81ff348ea1"
+      ],
+      "code": "metadata.geometric_area.warning",
+      "evidence_ids": [
+        "cv-profile:93b2ab987c861b65a4284876505bd8d5",
+        "source:97fbafab40e0dde53c902a88f32e5088",
+        "transform:410698f3f7df9c9fa6b52ffe5066755a",
+        "transform:815b2e702ae1bb982ada3ea11ed5b59f",
+        "transform:e5c8b9c23624b210ebbd534fc1183fe7",
+        "transform:f68af4efccf1abc77ad31d818a2f4c53"
+      ],
+      "field_name": "geometric_area",
+      "finding_id": "validation-finding:22537a33ba8e55cae307dc329528c564",
+      "message": "geometric_area remains unavailable; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied geometric_area assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "warning"
+    }
+  ],
+  "release_decision": {
+    "blocking_count": 0,
+    "finding_ids": [
+      "validation-finding:fc6b3d62d6172d12288e0c34916f3088",
+      "validation-finding:4963005e76583bbdd9cf6ee9e01bfd7f",
+      "validation-finding:4869976de1bb29dab27f659cb0acfb71",
+      "validation-finding:163f30a5772990034dc473fb2a1b620b",
+      "validation-finding:22537a33ba8e55cae307dc329528c564"
+    ],
+    "status": "eligible",
+    "unknown_count": 3,
+    "warning_count": 2
+  },
+  "schema_version": "1",
+  "validation_id": "validation:ca4fef4006dea2efa33082f4830d2d79",
+  "validation_version": "1"
+}

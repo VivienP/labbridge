@@ -1,0 +1,81 @@
+{
+  "artifact_kind": "experiment_passport_and_verified_package",
+  "capability_status": "implemented",
+  "data_origin": "synthetic",
+  "description": "Versioned Passports and independently verified Packages with append-only user supplementation and closed retained-source lineage.",
+  "execution_mode": "replay",
+  "files": [
+    {
+      "byte_size": 1909,
+      "name": "assertion-immutability.json",
+      "sha256": "293d930de20df10b1b0611adc7a4bb3b31c41218e5b2503b77d033e5e89f69d3"
+    },
+    {
+      "byte_size": 1037,
+      "name": "cli-verification.json",
+      "sha256": "f7bac38fa45b9b4641abc79761011a89016366f852791c5b7a555e8cc8f07415"
+    },
+    {
+      "byte_size": 6497,
+      "name": "initial-findings.json",
+      "sha256": "a1d192cfa01cd967301cd7f9c9265be390cdd0340d7f00d17224cffb52feae58"
+    },
+    {
+      "byte_size": 10263,
+      "name": "initial-package.zip",
+      "sha256": "7d9ea1be6736ec42b4d220bd4b1036a84dbc10a9705af6f1ca0a7266f19addaf"
+    },
+    {
+      "byte_size": 5529,
+      "name": "initial-passport.html",
+      "sha256": "f2003eea5583236730cfc7efcdaf2d8e12a4b51cf6c3768c20b0f08276876b89"
+    },
+    {
+      "byte_size": 19394,
+      "name": "initial-passport.json",
+      "sha256": "8623e1fb9e6296ce4d7e880bd56aa2a8c6133250a97ebd2d08b9d8dd120b5746"
+    },
+    {
+      "byte_size": 635,
+      "name": "LIMITATIONS.md",
+      "sha256": "621cf76afd2fa8b443cd77c0a8b821b8bbb8dd288493562159f2c53affad6199"
+    },
+    {
+      "byte_size": 243,
+      "name": "REPRODUCE.txt",
+      "sha256": "d1ab37c3727655cb3a37c7b3c0546fa83309b417c15f8e39d429b70d37a37359"
+    },
+    {
+      "byte_size": 5479,
+      "name": "superseding-findings.json",
+      "sha256": "f89ba7722927fe2a18b798964db200255abb7ee7617481fb0175ac066fe59ca3"
+    },
+    {
+      "byte_size": 10271,
+      "name": "superseding-package.zip",
+      "sha256": "0e006a95d462174e7d7222b28c7e84ad5bce577234c9a31e1d4ae788808b3bfd"
+    },
+    {
+      "byte_size": 5382,
+      "name": "superseding-passport.html",
+      "sha256": "34c6c441ac7699386646372cc4d13bf35beb273ed197196aacad4f879831b1a5"
+    },
+    {
+      "byte_size": 19215,
+      "name": "superseding-passport.json",
+      "sha256": "d496c30b7fd29db5f69b735dbb51a36ddd664682ed86d7dd5fb7b7beb6aff330"
+    }
+  ],
+  "files_digest": "defc8aef61d1c3a1179266e83d6bca3c79cca6662e87a0279408ce0244c8c11f",
+  "initial_package_id": "experiment-package:54d5a232d20e0390930d0f7ea74b9821",
+  "initial_passport_id": "passport:dec55e3c9f20d3811be385173bbf79c7",
+  "observation_id": "cv-observation:6b9846ff3dfe2a38e2989984c21d450a",
+  "producing_versions": {
+    "experiment_package": "1",
+    "labbridge": "0.1.0"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "superseding_package_id": "experiment-package:38d6f31e93e9a35ab9e28660c5890fde",
+  "superseding_passport_id": "passport:08b7122ed54928ee9e4214aee1e521d3"
+}
