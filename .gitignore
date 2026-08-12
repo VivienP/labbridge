@@ -23,27 +23,24 @@ dist/
 .venv/
 venv/
 
-# Development tooling and internal working documents — local only, never committed.
-# The agent system governs how the repository is built; it is not part of what the repository
-# publishes. Internal planning and positioning documents are likewise not public artifacts.
-CLAUDE.md
-AGENTS.md
-AI_CONTRACT.md
-UPDATE_NOTES.md
-docs/AGENT_SYSTEM.md
-docs/ROADMAP.md
-docs/ROLE_FIT.md
-docs/specs/
-.claude/
-.agents/
-.codex/
-
 # Tooling
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Machine-local agent settings and runtime state. Shared instructions, skills, hooks, and tool
+# configuration under these directories remain version-controlled.
+.claude/settings.local.json
+.claude/logs/
+.claude/state/
+.agents/settings.local.json
+.agents/logs/
+.agents/state/
+.codex/settings.local.json
+.codex/logs/
+.codex/state/
 
 # OS / IDE
 .DS_Store
