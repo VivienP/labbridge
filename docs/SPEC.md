@@ -6,7 +6,7 @@
 
 LabBridge turns replayed or simulated electrochemical runs into validated, provenance-tracked scientific artifacts while executing campaigns through a durable, inspectable, and recoverable runtime. The V1 emphasis is not novel machine learning. It is the operational layer between an experimental request, a failure-prone execution, and evidence that a scientist can inspect and reproduce.
 
-`../AI_CONTRACT.md` defines implementation invariants. `DATA_STRATEGY.md` defines the data sources and scientific limits. `ROADMAP.md` defines delivery order. `SIMULATOR_MODEL.md` defines the biosensor simulator. `FAILURE_MATRIX.md` defines the required fault scenarios.
+`../AI_CONTRACT.md` defines the implementation invariants, and outranks this document wherever the two disagree. `DATA_STRATEGY.md` defines the data sources and scientific limits. `SIMULATOR_MODEL.md` defines the biosensor simulator. `FAILURE_MATRIX.md` defines the required fault scenarios. `ARCHITECTURE_DECISIONS.md` records the accepted decisions and their consequences.
 
 ---
 
@@ -363,6 +363,7 @@ class EventEnvelope(BaseModel):
     aggregate_id: UUID
     aggregate_type: str
     sequence: int
+    campaign_position: int
     event_type: str
     schema_version: int
     occurred_at: datetime
@@ -376,16 +377,135 @@ class EventEnvelope(BaseModel):
 Requirements:
 
 - `sequence` is unique and monotonic per aggregate;
+- `campaign_position` is unique and monotonic across one campaign;
 - append uses an expected aggregate version;
 - event append and required projection update are atomic;
 - event types and payload versions are registered;
 - unsupported versions fail explicitly;
 - upcasting is deterministic and tested;
-- replay orders by aggregate sequence, not timestamps.
+- an aggregate stream is ordered by `sequence`;
+- a whole campaign stream is ordered by `campaign_position`, never by aggregate identifier or
+  timestamp.
 
-### 5.2 Evidence event export
+### 5.2 Typed event registry
 
-The evidence bundle contains an ordered `events.jsonl` export produced from PostgreSQL. This file is checksummed and sufficient to reconstruct the logical campaign state when combined with the declared event schemas and versions. It is not used for concurrent appends.
+The registry key is `(event_type, schema_version)`. Each registered definition names one Pydantic
+payload model, one permitted `aggregate_type`, and whether `causation_id` is required. Validation runs
+before insertion and again when a complete stream is loaded.
+
+- an unknown `event_type` raises `UnknownEventTypeError`;
+- a known type with an unknown version raises `UnsupportedEventVersionError`;
+- a payload that does not satisfy the exact registered model raises `InvalidEventPayloadError`;
+- no reader chooses the nearest version, ignores an unknown type, or accepts an unvalidated payload;
+- `causation_id` may be absent only on `campaign.created`; every derived event names its direct cause;
+- `campaign.created` is the unique root at campaign position `1` and aggregate sequence `1`;
+- a cause must already exist in the same campaign and carry the same `correlation_id`;
+- payload identifiers that repeat envelope identity must match the envelope;
+- event and payload timestamps must be timezone-aware;
+- `append_event` never generates a correlation identifier for the caller.
+
+The aggregate identity used for version checks and uniqueness is
+`(campaign_id, aggregate_type, aggregate_id)`. Aggregate types with coincident UUIDs do not share a
+sequence.
+
+### 5.3 Event-stream compatibility
+
+Each campaign row carries `event_stream_contract_version` and `event_stream_last_position`.
+
+- contract version `0` identifies a pre-contract stream whose event history is incomplete;
+- contract version `1` identifies a typed stream that is complete for the projection fields listed in
+  section 5.4;
+- migrations MUST NOT synthesize missing historical events from current projections;
+- append to a version `0` stream fails with `IncompleteEventStreamError` before any projection write;
+- loading a version `0` stream for replay fails with `IncompleteEventStreamError`;
+- evidence export MAY retain a version `0` stream, but MUST label it `legacy_incomplete` and MUST NOT
+  describe it as deterministic state reconstruction.
+
+The event store serializes append through the campaign row. While that row is
+locked, it compares the mandatory expected aggregate version, allocates the next campaign position,
+inserts the validated event, and advances the stored position in the caller's transaction. Unique
+constraints on `(campaign_id, aggregate_type, aggregate_id, sequence)` and
+`(campaign_id, campaign_position)` are durable backstops, not substitutes for the expected-version
+check.
+
+New campaign creation writes the campaign row with contract version `1`, `campaign.created`, every
+initial `work_item.queued`, and every initial `job.enqueued` in one transaction. A rollback leaves none
+of them. An application that does not know the contract omits the new column and therefore creates a
+version `0` campaign, never a stream that is silently labelled complete.
+
+`job.enqueued` stores its `correlation_id` and event identifier on the durable job projection. Claiming
+and executing the job propagate that correlation. Each event append returns its event identifier so
+the next derived event can name it as `causation_id`; the worker does not replace the correlation after
+crossing the queue boundary.
+
+### 5.4 Replay-completeness matrix
+
+No replay fold may read a current operational table to fill missing event history. Contract version
+`1` contains the facts required to reconstruct these projection fields:
+
+| Projection columns | Event | Required payload fields or envelope source |
+|---|---|---|
+| `campaigns.campaign_id` | `campaign.created` | `aggregate_id` |
+| `campaigns.name`, `environment_id`, `adapter_version`, `data_origin`, `execution_mode`, `declaration`, `declaration_hash`, `state` | `campaign.created` | fields with the same names; `state` is the actual initial state |
+| `campaigns.created_at`, `updated_at` | `campaign.created`; campaign lifecycle events | `occurred_at` |
+| `campaigns.state` | `campaign.started`, `campaign.paused`, `campaign.resumed`, `campaign.completed`, `campaign.cancelled`, `campaign.failed`, `campaign.budget_exhausted` | `state`; terminal failures also require `reason` |
+| `work_items.work_item_id`, `campaign_id` | `work_item.queued` | `aggregate_id`, `campaign_id` |
+| `work_items.candidate_id`, `candidate`, `state`, `quarantine_reason` | `work_item.queued`, `work_item.accepted`, `work_item.quarantined`, `work_item.rejected`, `work_item.cancelled` | creation carries `candidate_id` and typed `candidate`; every event carries `state`; quarantine or rejection carries `reason` |
+| `work_items.created_at`, `updated_at` | all work-item events | `occurred_at` |
+| `jobs.job_id`, `work_item_id`, `state`, `available_at`, `attempt_count`, `max_attempts`, `command_version`, `idempotency_key`, `last_failure` | all job events | `aggregate_id` plus a complete typed job-projection payload after the transition |
+| `jobs.lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at` | `job.leased`, `job.started`, `job.available`, and terminal job events | fields with the same names in the complete job-projection payload |
+| `jobs.created_at`, `updated_at` | all job events | payload timestamps |
+| durable job event context | all job events | envelope `correlation_id`; persisted last event identifier |
+| `attempts.attempt_id`, `work_item_id`, `job_id`, `ordinal`, `state`, `started_at`, `created_at` | `attempt.started` | `aggregate_id`, `work_item_id`, `job_id`, `ordinal`, `state`, `occurred_at` |
+| terminal `attempts.state` | `attempt.completed` | `state` |
+| all `attempt_outcomes` logical columns | `attempt.completed` | `work_item_id`, `campaign_id`, `status`, `observation_id`, typed `failure`, typed `cost`, `data_origin`, `execution_mode`, typed `provenance`, `started_at`, `finished_at` |
+| accepted `observations` row | `observation.accepted` | observation and attempt identifiers, media type, object URI, byte size, SHA-256, schema version, signal kind, typed quantities, status and reason, origin, mode, typed provenance, received time |
+| invalidation relation | `observation.invalidated` | relation identifier, subject, `invalidates` predicate, object, reason, recorded time |
+| supersession relation | `observation.superseded` | relation identifier, subject, `supersedes` predicate, object, reason, recorded time |
+| event correlation and causation | every event | envelope `correlation_id`, `causation_id` |
+
+Budget state is outside contract version `1`. A replay consumer MUST NOT reconstruct it from the
+current ledger or claim that contract version `1` covers it. A contract that includes budget state
+requires a new event-stream contract version and registered budget-event schemas.
+
+Derived metrics, object-store metadata, idempotency-response records, and correction relations other
+than observation invalidation or supersession are also outside contract version `1`. They remain
+durable evidence but are not reconstructable projections under this contract.
+
+This section specifies stream completeness and validation. It does not implement or claim a replay
+fold, projection rebuilding, or deterministic state reconstruction.
+
+### 5.5 Failure and migration semantics
+
+- `ExpectedVersionError` is the stable F-029 result when the locked aggregate version differs from the
+  caller's required version. Two real PostgreSQL transactions prove one winner and one typed loser.
+- `UnknownEventTypeError`, `UnsupportedEventVersionError`, `InvalidEventPayloadError`,
+  `CampaignPositionGapError`, `AggregateSequenceGapError`, `InvalidEventCausationError`,
+  `EventIdentityMismatchError`, and `InvalidEventTimestampError` fail closed under F-039.
+- the PostgreSQL migration is transactional. It adds nullable event positions, assigns a deterministic
+  technical position only to event rows that already exist, creates campaign version `0` metadata,
+  records each legacy last position, and then adds the constraints;
+- the technical ordering of legacy rows is not a historical reconstruction and remains unusable by the
+  replay loader;
+- upgrade tests start from the previous revision and prove that campaigns and events are preserved,
+  no event count increases, and all existing campaigns are version `0`;
+- downgrade is permitted only while no version `1` campaign exists. Otherwise it fails explicitly and
+  requires restoration of the compatible application and schema together;
+- interruption rolls back the transaction under F-042; no partially marked stream is committed;
+- deployment requires a write outage: stop and drain API and worker writers, apply the transactional
+  migration, deploy the contract-aware application, then resume writes. An old writer cannot run after
+  `campaign_position` becomes mandatory;
+- the database default remains version `0` so an unrecognised direct writer cannot create an apparently
+  complete stream, but such a writer is unsupported after migration and must not receive write access.
+
+### 5.6 Evidence event export
+
+The evidence bundle contains an ordered `events.jsonl` export produced from PostgreSQL. For contract
+version `1`, events are ordered by `campaign_position` and validated against registered schemas. A
+version `0` export remains explicitly `legacy_incomplete`. JSONL is not used for concurrent appends.
+Manifests created before the two additive event-stream fields remain verifiable as historical
+evidence, but they make no replay-completeness assertion; verification never interprets their absence
+as a complete stream.
 
 ---
 
@@ -403,7 +523,13 @@ AVAILABLE → LEASED → RUNNING → SUCCEEDED
       └── campaign cancelled ──▶ CANCELLED
 ```
 
-A job records availability, lease owner, lease expiry, heartbeat, attempt count, command version, and idempotency key.
+A job records availability, lease owner, lease expiry, heartbeat, attempt count, command version, idempotency key, and a **lease generation**.
+
+The lease generation is the fencing token. It is monotonic per job and never reset: every claim and every reclaim increments it. Ownership means job identity, lease token, lease generation, and an unexpired lease, all evaluated by the database. A worker MUST NOT treat a process-local timer as evidence of ownership.
+
+Reclaiming an expired lease increments the generation at the reclaim, not at the next claim, so the previous holder is fenced out immediately whether or not the job is claimed again (ADR-016).
+
+The job's idempotency key is a **logical instruction identity**, derived from the work item and the command version rather than from a client-supplied token. Enqueueing the same instruction again resolves to the existing job and creates no second unit of executable work. The decision belongs to a uniqueness constraint reached through a conflict-safe insert, never to a prior read (ADR-015).
 
 ### 6.2 Worker behaviour
 
@@ -420,6 +546,59 @@ A worker:
 9. schedules retry or terminal handling according to policy.
 
 If the process dies between stages, lease recovery and idempotency constraints restore progress without accepting duplicate results.
+
+Step 7 begins by verifying the fencing token against a locked job row. The check MUST happen inside the finalisation transaction; a check made before opening it proves nothing, because the lease can lapse and be reclaimed in the gap.
+
+Step 3 runs under a heartbeat on an independent database connection. The heartbeat interval and the lease duration MUST be configurable. A heartbeat MUST update only a lease still held by the same owner, token and generation, MUST fail explicitly when it is not, and that failure MUST reach the worker so a stale execution cannot proceed to finalisation.
+
+Step 7 then claims the work item's single accepted outcome through the partial unique index. The claim is a conflict-safe insert rather than a "has this already succeeded?" query, because that query answers the same way for two concurrent executions.
+
+An execution that reaches finalisation and loses that claim records a `duplicate_suppressed` outcome for its own attempt, and writes no derived metric, no budget entry, and no acceptance event.
+
+It retains any bytes already received as an observation with status `received`, linked to its own
+attempt and digest. An identical read therefore records the same content-derived observation identity
+under a different attempt; a divergent read records a different identity. Neither receipt becomes an
+accepted observation, derived metric, budget entry, or acceptance event.
+
+### 6.3 Reconciliation
+
+Reconciliation is one function with two entry points: it runs once when a worker starts, before it takes any new work, and behind `labbridge reconcile`. There is no reconciliation daemon.
+
+One pass, in this order:
+
+1. reclaim expired leases, incrementing each job's lease generation;
+2. close attempts left `running` whose job holds no live lease, as `lease_lost`;
+3. classify every stored object.
+
+The order matters: reclaiming first fences out a stale worker, and closing attempts next means the outcome statuses the object verdicts depend on are already settled.
+
+**No known failure may leave an attempt indefinitely in `running`.** Where an attempt cannot complete normally it takes the most accurate terminal state available. `cancelled` means a campaign or an operator asked for the work to stop, and MUST NOT be used to describe duplicate suppression or lease loss in documentation or metrics.
+
+#### Object classification
+
+Every stored object records at least bucket, object key, byte size, SHA-256, media type, staging attempt, work item, a classification, and the reason for it. The classifications are:
+
+| Classification | Meaning |
+|---|---|
+| `accepted_evidence` | referenced by an accepted observation, bytes present and matching the recorded digest |
+| `diagnostic_duplicate` | staged by an execution refused as a duplicate, and its bytes differ from the accepted object |
+| `diagnostic_orphan` | bytes present, no accepted observation references them |
+| `quarantined` | ambiguous — the store and the database disagree about the digest |
+| `missing` | the row promises bytes the store does not have |
+
+Rules:
+
+- **deletion is never a recovery action.** Every verdict retains the bytes;
+- released evidence is immutable: reconciliation may label it and MUST NOT otherwise modify or remove it;
+- a checksum disagreement is quarantined; neither side is trusted, the recorded digest is not refreshed, and the object is not removed;
+- an object whose store cannot be reached is left unclassified, so an outage is never recorded as a fact about the bytes;
+- classification MUST be reproducible: the same facts always yield the same verdict, and the verdict states the fact that produced it.
+
+#### Retained receipts
+
+A result refused *after* its bytes reached storage — because it lost the acceptance race, or because it lost its lease — retains those bytes as an observation with status `received` under its own attempt, carrying its digest, size and the reason it was refused. This is invariant 2 applied to refusal: what is denied is acceptance, not receipt.
+
+Because `observation_id` is content-derived, an identical read produces the same identity under a different attempt, recording the match as a fact; a divergent read produces a different identity and is visible. At most one *accepted* observation may exist per work item, enforced by a partial unique index.
 
 ---
 
@@ -579,6 +758,15 @@ Polling is sufficient in V1. Server-sent events MAY be added later.
 
 All mutating endpoints require an idempotency key. Errors use stable typed shapes with machine-readable codes.
 
+An idempotency record persists at minimum the operation scope, the key, a canonical request fingerprint, and the resulting aggregate identity. The scope is part of the key, so a token chosen by a caller for one operation cannot be answered with another operation's result. The endpoint MUST behave as follows:
+
+- same key and same canonical request: return the original result, marked as a replay;
+- same key and a different canonical request: return a stable typed conflict, and create nothing;
+- concurrent identical requests: exactly one aggregate and one initial event, with no uncaught database error and no 5xx caused by the race;
+- missing, blank, or unstorable key: a stable typed client error raised before any statement runs.
+
+The reservation of the key MUST be the first write of the submission transaction, so a uniqueness constraint rather than a prior read decides which request creates the aggregate (ADR-015).
+
 ### 11.2 CLI
 
 Minimum commands:
@@ -620,7 +808,12 @@ An evidence bundle contains:
 - a self-contained HTML report;
 - bundle-level checksum and release identifier.
 
-The report distinguishes observed/replay and synthetic/simulation data visibly. Verification fails if any released file is missing or changed.
+The report distinguishes observed/replay and synthetic/simulation data visibly. Bundle-only
+verification checks the closed bundle and reports `partial` because it does not contact object
+storage. Full verification of a version 2 manifest additionally reads every referenced object and
+checks existence, byte size, and SHA-256 before reporting `complete`. Missing, modified, or
+inaccessible referenced objects fail with distinct stable classifications. Version 1 manifests remain
+available only for bundle-only verification.
 
 ---
 

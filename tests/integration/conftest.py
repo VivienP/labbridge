@@ -33,8 +33,10 @@ from labbridge.infrastructure.persistence.tables import (
     campaigns,
     derived_metrics,
     events,
+    idempotency_keys,
     jobs,
     observations,
+    storage_objects,
     work_items,
 )
 
@@ -116,11 +118,19 @@ _PURGE_ORDER: Final = (
     (derived_metrics, "observation"),
     (attempt_outcomes, "campaign"),
     (observations, "campaign"),
+    # Before `attempts`: a staged object names the attempt that wrote it, under `RESTRICT`, so the
+    # attempt cannot go first. That reference is the whole point — it is what lets reconciliation
+    # attribute an orphan to an execution.
+    (storage_objects, "work_item"),
     (attempts, "work_item"),
     (jobs, "work_item"),
     (budget_ledger, "campaign"),
     (events, "campaign"),
     (work_items, "campaign"),
+    # Before the campaign it references. The foreign key is `DEFERRABLE INITIALLY DEFERRED`, but
+    # that defers only the insert side: `ON DELETE RESTRICT` is checked at the delete itself, so a
+    # campaign removed while an idempotency record still names it fails there, not at commit.
+    (idempotency_keys, "campaign"),
     (campaigns, "self"),
 )
 

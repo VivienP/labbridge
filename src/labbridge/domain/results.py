@@ -48,7 +48,19 @@ QualityStatus = Literal["accepted", "warning", "rejected"]
 
 #: Outcomes that may carry an observation. Every other status means no bytes were received, so an
 #: observation on one of them would be a fabrication.
-_STATUSES_WITH_BYTES: frozenset[AttemptStatus] = frozenset({"succeeded", "corrupted"})
+#:
+#: `duplicate_suppressed` and `lease_lost` are here because a result can be refused *after* its
+#: bytes have already been stored — it lost the acceptance race, or it lost its lease while the
+#: adapter ran. The bytes arrived, so invariant 2 requires an observation describing them; what the
+#: refusal denies is acceptance, not receipt. The observation those statuses carry is `received`,
+#: never `accepted`, which `uq_observations_one_accepted_per_work_item` enforces in the database.
+#:
+#: Mirrored by the `observation_only_when_bytes_arrived` check constraint. The two must widen
+#: together: the constraint stops a foreign writer, this stops an event payload that would describe
+#: a receipt the schema would have refused.
+_STATUSES_WITH_BYTES: frozenset[AttemptStatus] = frozenset(
+    {"succeeded", "corrupted", "duplicate_suppressed", "lease_lost"}
+)
 
 
 class _Model(BaseModel):

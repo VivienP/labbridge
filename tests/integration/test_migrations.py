@@ -14,15 +14,17 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import Connection, Engine, func, inspect, text
+from sqlalchemy import Connection, Engine, func, inspect, select, text
 
 from labbridge.infrastructure.persistence.tables import (
     attempts,
     campaigns,
+    idempotency_keys,
     metadata,
     observations,
     work_items,
 )
+from labbridge.runtime.events import IncompleteEventStreamError, load_replay_stream
 
 pytestmark = pytest.mark.integration
 
@@ -49,14 +51,17 @@ def _clear_all(engine: Engine) -> None:
         "derived_metrics",
         "attempt_outcomes",
         "observations",
+        # Before `attempts` and `work_items`: a staged object references both under `RESTRICT`.
+        "storage_objects",
         "attempts",
         "jobs",
         "events",
         "budget_ledger",
         "work_items",
-        "campaigns",
-        "storage_objects",
+        # Before `campaigns`: an idempotency record names the campaign it produced, under
+        # `RESTRICT`, which PostgreSQL checks at the delete rather than at commit.
         "idempotency_keys",
+        "campaigns",
         "record_relations",
     )
     with engine.begin() as connection:
@@ -109,6 +114,95 @@ def test_the_origin_mode_constraint_exists_on_every_table_that_records_a_pair(
     ).scalars()
 
     assert {"campaigns", "observations"} <= set(tables)
+
+
+def test_existing_campaigns_are_marked_legacy_without_inventing_events(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+    try:
+        command.downgrade(alembic_config, "1e6a158aabea")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO campaigns "
+                    "(campaign_id,name,environment_id,adapter_version,data_origin,execution_mode,"
+                    "state,declaration,declaration_hash,created_at,updated_at) VALUES "
+                    "(:campaign_id,'legacy','her','1','synthetic','replay','active','{}',:digest,"
+                    "now(),now())"
+                ),
+                {"campaign_id": campaign_id, "digest": "a" * 64},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO events "
+                    "(event_id,campaign_id,aggregate_id,aggregate_type,sequence,event_type,"
+                    "schema_version,occurred_at,recorded_at,correlation_id,payload) VALUES "
+                    "(:event_id,:campaign_id,:campaign_id,'campaign',1,'campaign.declared',1,"
+                    "now(),now(),:correlation_id,'{}')"
+                ),
+                {
+                    "event_id": event_id,
+                    "campaign_id": campaign_id,
+                    "correlation_id": uuid.uuid4(),
+                },
+            )
+
+        command.upgrade(alembic_config, "head")
+        with engine.begin() as connection:
+            campaign = connection.execute(
+                select(
+                    campaigns.c.event_stream_contract_version,
+                    campaigns.c.event_stream_last_position,
+                ).where(campaigns.c.campaign_id == campaign_id)
+            ).one()
+            assert campaign.event_stream_contract_version == 0
+            assert campaign.event_stream_last_position == 1
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM events WHERE campaign_id = :campaign_id"),
+                    {"campaign_id": campaign_id},
+                ).scalar_one()
+                == 1
+            )
+            with pytest.raises(IncompleteEventStreamError):
+                load_replay_stream(connection, campaign_id)
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_contract_downgrade_refuses_complete_campaigns(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                campaigns.insert().values(
+                    campaign_id=campaign_id,
+                    name="complete",
+                    environment_id="her",
+                    adapter_version="1",
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    state="active",
+                    declaration={},
+                    declaration_hash="a" * 64,
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+        with pytest.raises(RuntimeError, match="complete campaigns exist"):
+            command.downgrade(alembic_config, "1e6a158aabea")
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
 
 
 def test_the_downgrade_refuses_rather_than_dropping_a_receipt(
@@ -198,3 +292,121 @@ def _two_attempts_sharing_content(engine: Engine) -> tuple[uuid.UUID, uuid.UUID,
                 )
             )
     return campaign_id, *attempt_ids
+
+
+def test_the_scope_downgrade_refuses_rather_than_collapsing_two_scopes(
+    engine: Engine, alembic_config: Config
+) -> None:
+    """The composite key admits what the single-column key cannot: one caller-chosen token used by
+    two operations. Restoring the narrow key would have to drop one of them, so the downgrade stops
+    and says why instead."""
+    _clear_all(engine)
+    shared = f"key:{uuid.uuid4().hex}"
+    with engine.begin() as connection:
+        for scope in ("campaigns.create", "campaigns.cancel"):
+            connection.execute(
+                idempotency_keys.insert().values(
+                    scope=scope,
+                    idempotency_key=shared,
+                    request_hash="c" * 64,
+                    campaign_id=None,
+                    response={"work_items": 0},
+                    created_at=func.now(),
+                )
+            )
+
+    try:
+        # Target the revision *before* the guarded one: `downgrade(rev)` unwinds down *to* `rev`, so
+        # naming the guarded revision would stop just above it and never run its downgrade.
+        with pytest.raises(RuntimeError, match="used in several scopes"):
+            command.downgrade(alembic_config, "8c4d7e2a91bf")
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_the_scope_downgrade_proceeds_when_no_key_is_shared(
+    engine: Engine, alembic_config: Config
+) -> None:
+    """The guard must refuse a real collision and nothing else, or it is just a broken downgrade."""
+    _clear_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            idempotency_keys.insert().values(
+                scope="campaigns.create",
+                idempotency_key=f"key:{uuid.uuid4().hex}",
+                request_hash="d" * 64,
+                campaign_id=None,
+                response={"work_items": 0},
+                created_at=func.now(),
+            )
+        )
+
+    try:
+        command.downgrade(alembic_config, "8c4d7e2a91bf")
+        assert "campaign_id" not in {
+            column["name"] for column in inspect(engine).get_columns("idempotency_keys")
+        }
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_an_existing_idempotency_record_is_resolved_to_the_campaign_it_returned(
+    engine: Engine, alembic_config: Config
+) -> None:
+    """The backfill moves a value, it does not derive one: the campaign identifier it lifts out of
+    `response` is the one the endpoint already returned to the caller.
+
+    A record whose campaign is gone keeps a null rather than acquiring a dangling reference — the
+    foreign key added by the same migration would refuse it, and inventing a campaign to satisfy it
+    would be worse."""
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    resolved = f"key:{uuid.uuid4().hex}"
+    orphaned = f"key:{uuid.uuid4().hex}"
+    try:
+        command.downgrade(alembic_config, "8c4d7e2a91bf")
+        with engine.begin() as connection:
+            connection.execute(
+                campaigns.insert().values(
+                    campaign_id=campaign_id,
+                    name="backfill",
+                    environment_id="her",
+                    adapter_version="1",
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    state="active",
+                    declaration={},
+                    declaration_hash="a" * 64,
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            for key, named in ((resolved, str(campaign_id)), (orphaned, str(uuid.uuid4()))):
+                connection.execute(
+                    text(
+                        "INSERT INTO idempotency_keys "
+                        "(idempotency_key,scope,request_hash,response,created_at) VALUES "
+                        "(:key,'campaigns.create',:digest,CAST(:response AS jsonb),now())"
+                    ),
+                    {
+                        "key": key,
+                        "digest": "b" * 64,
+                        "response": f'{{"campaign_id": "{named}", "work_items": 2}}',
+                    },
+                )
+
+        command.upgrade(alembic_config, "head")
+        with engine.begin() as connection:
+            backfilled = dict(
+                connection.execute(
+                    select(
+                        idempotency_keys.c.idempotency_key, idempotency_keys.c.campaign_id
+                    ).where(idempotency_keys.c.idempotency_key.in_((resolved, orphaned)))
+                ).all()
+            )
+        assert backfilled == {resolved: campaign_id, orphaned: None}
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")

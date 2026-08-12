@@ -1,8 +1,7 @@
-"""The Slice 1 demonstration: one campaign from declaration to a verified evidence bundle.
+"""One campaign from declaration to a verified evidence bundle.
 
-`docs/ROADMAP.md` Slice 1 asks for one complete path, runnable from a clean Compose environment.
-This module is that path and nothing more — no policy, no selection, no scheduling. It exists so the
-exit criterion can be *run* rather than argued about.
+This module is one complete runnable path and nothing more — no policy, no selection, no
+scheduling. It exists so the capability can be run rather than argued about.
 
 What it demonstrates is the runtime. It is **not** a scientific result: it replays a generated
 fixture, so every record it produces is `synthetic`, and the manifest says so. A fixture-backed run
@@ -13,18 +12,21 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, func
+from sqlalchemy import Engine, create_engine, func, select
 
 from labbridge.domain.candidates import HerCandidate, candidate_id
+from labbridge.domain.idempotency import work_item_instruction_key
 from labbridge.domain.quantities import Quantity
 from labbridge.environments.her_replay import HerReplayAdapter
-from labbridge.evidence.bundle import build_bundle, verify_bundle
+from labbridge.evidence.bundle import VerificationMode, build_bundle, verify_bundle
 from labbridge.infrastructure.objectstore import ObjectStore
 from labbridge.infrastructure.persistence.config import DatabaseSettings
-from labbridge.infrastructure.persistence.tables import campaigns, work_items
+from labbridge.infrastructure.persistence.tables import campaigns, events, work_items
+from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 from labbridge.runtime.worker import Worker
 
@@ -54,6 +56,8 @@ def _declare(engine: Engine, adapter: HerReplayAdapter, name: str) -> uuid.UUID:
     campaign_id = uuid.uuid4()
     environment = adapter.environment
     with engine.begin() as connection:
+        declaration = {"demo": True, "locations": "adapter-known"}
+        correlation_id = uuid.uuid4()
         connection.execute(
             campaigns.insert().values(
                 campaign_id=campaign_id,
@@ -63,11 +67,33 @@ def _declare(engine: Engine, adapter: HerReplayAdapter, name: str) -> uuid.UUID:
                 data_origin=environment.data_origin,
                 execution_mode=environment.execution_mode,
                 state="active",
-                declaration={"demo": True, "locations": "adapter-known"},
+                declaration=declaration,
                 declaration_hash="0" * 64,
+                event_stream_contract_version=1,
+                event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
             )
+        )
+        append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=campaign_id,
+            aggregate_type="campaign",
+            event_type="campaign.created",
+            payload={
+                "name": name,
+                "environment_id": environment.environment_id,
+                "adapter_version": environment.adapter_version,
+                "data_origin": environment.data_origin,
+                "execution_mode": environment.execution_mode,
+                "declaration": declaration,
+                "declaration_hash": "0" * 64,
+                "state": "active",
+            },
+            expected_version=0,
+            correlation_id=correlation_id,
+            causation_id=None,
         )
     return campaign_id
 
@@ -75,6 +101,12 @@ def _declare(engine: Engine, adapter: HerReplayAdapter, name: str) -> uuid.UUID:
 def _submit(engine: Engine, campaign_id: uuid.UUID, candidate: HerCandidate) -> None:
     work_item_id = uuid.uuid4()
     with engine.begin() as connection:
+        campaign_event = connection.execute(
+            select(events.c.event_id, events.c.correlation_id).where(
+                events.c.campaign_id == campaign_id,
+                events.c.event_type == "campaign.created",
+            )
+        ).one()
         connection.execute(
             work_items.insert().values(
                 work_item_id=work_item_id,
@@ -86,11 +118,31 @@ def _submit(engine: Engine, campaign_id: uuid.UUID, candidate: HerCandidate) -> 
                 updated_at=func.now(),
             )
         )
+        queued_event = append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=work_item_id,
+            aggregate_type="work_item",
+            event_type="work_item.queued",
+            payload={
+                "candidate_id": candidate_id(candidate),
+                "candidate": candidate.model_dump(mode="json"),
+                "state": "queued",
+            },
+            expected_version=0,
+            correlation_id=campaign_event.correlation_id,
+            causation_id=campaign_event.event_id,
+        )
         enqueue(
             connection,
+            campaign_id=campaign_id,
             work_item_id=work_item_id,
-            idempotency_key=f"demo:{campaign_id}:{candidate_id(candidate)}",
+            instruction_key=work_item_instruction_key(
+                work_item_id=work_item_id, command_version="1"
+            ),
             command_version="1",
+            correlation_id=campaign_event.correlation_id,
+            causation_id=queued_event.event_id,
         )
 
 
@@ -109,7 +161,7 @@ async def run_demo(
     a terminal outcome alongside the successes. A demo that only ever succeeded would say nothing
     about the runtime's actual job, which is handling the failures.
     """
-    campaign_id = _declare(engine, adapter, "slice 1 demonstration")
+    campaign_id = _declare(engine, adapter, "LabBridge demonstration")
     known = adapter.known_locations()[:locations]
     for key in known:
         _submit(engine, campaign_id, _candidate(key.library_id, key.measurement_area_id))
@@ -135,8 +187,10 @@ async def run_demo(
 
     destination = bundle_root / str(campaign_id)
     with engine.begin() as connection:
-        manifest = build_bundle(connection, campaign_id, destination)
-    verify_bundle(destination)
+        manifest = build_bundle(
+            connection, campaign_id, destination, generated_at=datetime.now(UTC)
+        )
+    verify_bundle(destination, mode=VerificationMode.FULL, object_store=store)
 
     return DemoReport(
         campaign_id=campaign_id,

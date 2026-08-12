@@ -19,7 +19,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from mypy_boto3_s3.client import S3Client
@@ -49,6 +49,15 @@ class ObjectNotFoundError(ObjectStoreError):
     def __init__(self, key: str) -> None:
         self.key = key
         super().__init__(f"object `{key}` does not exist")
+
+
+class ObjectAccessError(ObjectStoreError):
+    code: ClassVar[str] = "object_access_failed"
+
+    def __init__(self, key: str, provider_code: str) -> None:
+        self.key = key
+        self.provider_code = provider_code
+        super().__init__(f"object `{key}` could not be read ({provider_code})")
 
 
 class ObjectAlreadyExistsError(ObjectStoreError):
@@ -179,14 +188,24 @@ class S3ObjectStore:
     def get(self, key: str) -> bytes:
         try:
             response = self._client.get_object(Bucket=self.bucket, Key=key)
+            body: bytes = response["Body"].read()
         except ClientError as error:
-            raise ObjectNotFoundError(key) from error
-        body: bytes = response["Body"].read()
+            provider_code = str(error.response.get("Error", {}).get("Code", "unknown"))
+            if provider_code in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFoundError(key) from error
+            raise ObjectAccessError(key, provider_code) from error
+        except BotoCoreError as error:
+            raise ObjectAccessError(key, type(error).__name__) from error
         return body
 
     def exists(self, key: str) -> bool:
         try:
             self._client.head_object(Bucket=self.bucket, Key=key)
-        except ClientError:
-            return False
+        except ClientError as error:
+            provider_code = str(error.response.get("Error", {}).get("Code", "unknown"))
+            if provider_code in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise ObjectAccessError(key, provider_code) from error
+        except BotoCoreError as error:
+            raise ObjectAccessError(key, type(error).__name__) from error
         return True
