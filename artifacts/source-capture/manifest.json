@@ -1,0 +1,40 @@
+{
+  "artifact_kind": "source_capture",
+  "data_origin": "synthetic",
+  "description": "Opaque synthetic + replay source capture; no CSV interpretation.",
+  "execution_mode": "replay",
+  "files": [
+    {
+      "byte_size": 376,
+      "name": "LIMITATIONS.md",
+      "sha256": "420355a963f35e1ae4a46cd7a0441da0788eb7cf1678600815dedb27e313160f"
+    },
+    {
+      "byte_size": 73,
+      "name": "REPRODUCE.txt",
+      "sha256": "22135f632eb09805f3d467ca31fef129b29ca6918c0fcce8d4baa6776ab07584"
+    },
+    {
+      "byte_size": 478,
+      "name": "source-artifact.json",
+      "sha256": "7a26eda626351f3d3ea77b044ccf2ed7c18aab50f941af486e926d7c1c7e9487"
+    },
+    {
+      "byte_size": 105,
+      "name": "synthetic-replay-cv-opaque.csv",
+      "sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8"
+    },
+    {
+      "byte_size": 358,
+      "name": "verification.json",
+      "sha256": "2faa9c9040679c349107a3e6dd1000b898e0dfe7bfc3f92ecb7cc49f2f256fb1"
+    }
+  ],
+  "files_digest": "c5efec9e94d889b65d4f439fce8cb94364253afaa043da7bb36bb923361ca879",
+  "producing_versions": {
+    "labbridge": "0.1.0"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "source_filename": "synthetic-replay-cv-opaque.csv"
+}

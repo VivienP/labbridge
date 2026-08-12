@@ -37,6 +37,7 @@ EXPECTED_TABLES = {
     "jobs",
     "observations",
     "record_relations",
+    "source_artifacts",
     "storage_objects",
     "work_items",
 }
@@ -55,6 +56,7 @@ def _clear_all(engine: Engine) -> None:
         "budget_ledger",
         "work_items",
         "campaigns",
+        "source_artifacts",
         "storage_objects",
         "idempotency_keys",
         "record_relations",

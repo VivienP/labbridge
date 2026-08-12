@@ -223,8 +223,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                "environment_mismatch",
-                mismatch,
+                failure_code="environment_mismatch",
+                summary=mismatch,
                 retryable=False,
                 category="policy",
             )
@@ -245,8 +245,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                error.code,
-                str(error),
+                failure_code=error.code,
+                summary=str(error),
                 retryable=False,
             )
         except Exception as error:
@@ -261,8 +261,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                "adapter_error",
-                f"{type(error).__name__}: {error}",
+                failure_code="adapter_error",
+                summary=f"{type(error).__name__}: {error}",
                 retryable=True,
                 category="transport",
                 exception_type=type(error).__name__,
@@ -277,8 +277,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                result.failure_code,
-                result.reason,
+                failure_code=result.failure_code,
+                summary=result.reason,
                 retryable=False,
                 # Not `instrument`: the archive omits 20 areas per library from SECCM by design,
                 # so nothing failed. Recording an instrument fault would assert a breakage the
@@ -287,7 +287,7 @@ class Worker:
             )
 
         try:
-            return self._record_success(lease, attempt_id, campaign_id, origin, mode, result)
+            return self._record_success(lease, attempt_id, campaign_id, origin, mode, result=result)
         except jobs.LeaseLostError:
             # The lease lapsed while the adapter ran and another worker owns the job now. The
             # result is correctly rejected — but the rejection must leave a record, or the attempt
@@ -301,8 +301,8 @@ class Worker:
                 campaign_id,
                 origin,
                 mode,
-                "outcome_write_failed",
-                f"{type(error).__name__}: {error}",
+                failure_code="outcome_write_failed",
+                summary=f"{type(error).__name__}: {error}",
                 retryable=True,
                 exception_type=type(error).__name__,
             )
@@ -358,6 +358,7 @@ class Worker:
         campaign_id: uuid.UUID,
         origin: str,
         mode: str,
+        *,
         result: AdapterSuccess,
     ) -> WorkOutcome:
         provenance = self._provenance(result)
@@ -401,7 +402,7 @@ class Worker:
                     attempt_id,
                     campaign_id,
                     origin,
-                    mode,
+                    mode=mode,
                     status="duplicate_suppressed",
                     provenance=provenance,
                 )
@@ -443,7 +444,7 @@ class Worker:
                 attempt_id,
                 campaign_id,
                 origin,
-                mode,
+                mode=mode,
                 status="succeeded",
                 provenance=provenance,
                 observation=identity,
@@ -484,9 +485,9 @@ class Worker:
         campaign_id: uuid.UUID,
         origin: str,
         mode: str,
+        *,
         failure_code: str,
         summary: str,
-        *,
         retryable: bool,
         category: str = "instrument",
         exception_type: str | None = None,
@@ -507,7 +508,7 @@ class Worker:
                 attempt_id,
                 campaign_id,
                 origin,
-                mode,
+                mode=mode,
                 status=status,
                 provenance=provenance,
                 failure={
@@ -577,7 +578,7 @@ class Worker:
                 attempt_id,
                 campaign_id,
                 origin,
-                mode,
+                mode=mode,
                 status="lease_lost",
                 provenance=provenance,
                 failure={
@@ -671,8 +672,8 @@ class Worker:
         attempt_id: uuid.UUID,
         campaign_id: uuid.UUID,
         origin: str,
-        mode: str,
         *,
+        mode: str,
         status: str,
         provenance: Provenance,
         observation: str | None = None,

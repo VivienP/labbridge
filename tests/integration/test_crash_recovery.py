@@ -170,6 +170,7 @@ def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -
 
 
 async def test_a_crash_after_upload_loses_no_outcome_and_creates_no_duplicate(
+    *,
     migrated: Engine,
     adapter: HerReplayAdapter,
     object_store: S3ObjectStore,
@@ -210,6 +211,7 @@ async def test_a_crash_after_upload_loses_no_outcome_and_creates_no_duplicate(
 
 
 async def test_the_orphaned_object_is_visible_as_pending_rather_than_lost(
+    *,
     migrated: Engine,
     adapter: HerReplayAdapter,
     object_store: S3ObjectStore,

@@ -1,0 +1,12 @@
+{
+  "byte_size": 105,
+  "data_origin": "synthetic",
+  "execution_mode": "replay",
+  "filename": "synthetic-replay-cv-opaque.csv",
+  "media_type": "text/csv",
+  "object_uri": "s3://labbridge/source-artifacts/sha256/74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8",
+  "schema_version": "1",
+  "sha256": "74faa3ee2be1b151b31d5db0e59563e176c1504d8eb55f9cbffbec46f6b9d2f8",
+  "source_artifact_id": "source:97fbafab40e0dde53c902a88f32e5088",
+  "state": "committed"
+}

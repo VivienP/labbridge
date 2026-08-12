@@ -24,6 +24,7 @@ from fastapi import FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Engine, create_engine, func, select
 
+from labbridge.application.source_intake import SourceArtifactService
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.canonical import canonical_bytes
 from labbridge.domain.identity import ADMISSIBLE_PAIRS, DataOrigin, ExecutionMode
@@ -34,7 +35,10 @@ from labbridge.infrastructure.persistence.tables import (
     idempotency_keys,
     work_items,
 )
+from labbridge.infrastructure.source_wiring import build_source_service
 from labbridge.runtime.jobs import enqueue
+
+from .source_artifacts import register_source_routes
 
 API_VERSION: Final = "1"
 COMMAND_VERSION: Final = "1"
@@ -84,7 +88,9 @@ def _error(code: str, message: str, http_status: int) -> HTTPException:
     )
 
 
-def create_app(engine: Engine | None = None) -> FastAPI:
+def create_app(
+    engine: Engine | None = None, source_service: SourceArtifactService | None = None
+) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
     The handlers close over `_engine()` rather than taking it through `Depends`. With
@@ -94,6 +100,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     it directly cannot fail that way.
     """
     bound = engine
+    bound_source = source_service
 
     def _engine() -> Engine:
         nonlocal bound
@@ -101,7 +108,14 @@ def create_app(engine: Engine | None = None) -> FastAPI:
             bound = create_engine(DatabaseSettings().dsn, future=True)
         return bound
 
+    def _source_service() -> SourceArtifactService:
+        nonlocal bound_source
+        if bound_source is None:
+            bound_source = build_source_service(_engine())
+        return bound_source
+
     app = FastAPI(title="LabBridge", version=API_VERSION)
+    register_source_routes(app, _source_service)
 
     @app.get("/health")
     def health() -> dict[str, str]:

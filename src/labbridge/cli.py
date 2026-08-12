@@ -14,7 +14,7 @@ import asyncio
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Final
+from typing import Annotated, Final, cast
 
 import boto3
 import typer
@@ -23,7 +23,13 @@ from rich.console import Console
 from rich.table import Table
 
 from labbridge import __version__
+from labbridge.application.source_intake import (
+    IntakeSource,
+    SourceArtifactService,
+    SourceIntakeError,
+)
 from labbridge.demo import engine_from_settings, run_demo
+from labbridge.domain.identity import DataOrigin, ExecutionMode
 from labbridge.environments.her_replay import HerReplayAdapter
 from labbridge.evidence.bundle import BundleVerificationError, verify_bundle
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
@@ -50,6 +56,7 @@ from labbridge.infrastructure.her_ingestion.records import PINNED_DOI
 from labbridge.infrastructure.her_ingestion.zenodo import ZenodoTransport
 from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.config import ObjectStoreSettings
+from labbridge.infrastructure.source_wiring import build_source_service
 
 EXPECTED_DOI: Final = PINNED_DOI
 #: Beside the landing root and git-ignored with it. The fixture is regenerable from its seed, so
@@ -63,8 +70,10 @@ app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.split
 #: subcommand groups, so they are groups rather than hyphenated names.
 demo_app = typer.Typer(no_args_is_help=True, help="Run a demonstration campaign end to end.")
 evidence_app = typer.Typer(no_args_is_help=True, help="Build and verify evidence bundles.")
+source_app = typer.Typer(no_args_is_help=True, help="Retain and verify opaque source files.")
 app.add_typer(demo_app, name="demo")
 app.add_typer(evidence_app, name="evidence")
+app.add_typer(source_app, name="source")
 console = Console()
 
 
@@ -87,8 +96,63 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _build_source_service() -> SourceArtifactService:
+    return build_source_service()
+
+
+@source_app.command("intake")
+def source_intake(
+    source: Annotated[Path, typer.Argument(help="Opaque source file to retain.")],
+    intake_id: Annotated[str, typer.Option("--intake-id", help="Stable request identity.")],
+    media_type: Annotated[str, typer.Option("--media-type", help="Declared media type.")],
+    data_origin: Annotated[
+        str, typer.Option("--data-origin", help="Explicit observed or synthetic origin.")
+    ],
+    execution_mode: Annotated[
+        str, typer.Option("--execution-mode", help="Explicit replay, simulation, or live mode.")
+    ],
+) -> None:
+    """Retain exact source bytes without interpreting their contents."""
+    command = IntakeSource(
+        intake_id=intake_id,
+        data=source.read_bytes(),
+        filename=source.name,
+        media_type=media_type,
+        data_origin=cast(DataOrigin, data_origin),
+        execution_mode=cast(ExecutionMode, execution_mode),
+    )
+    try:
+        result = _build_source_service().intake(command)
+    except SourceIntakeError as error:
+        console.print(f"[red]{error.code}[/red]: {error}")
+        raise typer.Exit(code=1) from error
+    artifact = result.artifact
+    console.print(artifact.source_artifact_id)
+    console.print(
+        f"{artifact.filename}  {artifact.byte_size} bytes  sha256:{artifact.sha256}  "
+        f"{artifact.data_origin} + {artifact.execution_mode}"
+    )
+    if result.replayed:
+        console.print("[dim]idempotent replay: existing source artifact returned[/dim]")
+
+
+@source_app.command("verify")
+def source_verify(source_artifact_id: str) -> None:
+    """Read source bytes back and compare their size and SHA-256."""
+    try:
+        artifact = _build_source_service().verify(source_artifact_id)
+    except SourceIntakeError as error:
+        console.print(f"[red]{error.code}[/red]: {error}")
+        raise typer.Exit(code=1) from error
+    console.print(
+        f"[green]verified[/green] {artifact.source_artifact_id}  "
+        f"{artifact.byte_size} bytes  sha256:{artifact.sha256}"
+    )
+
+
 @app.command("fetch-her")
 def fetch_her(
+    *,
     record_id: Annotated[str, typer.Option("--record-id", help="Zenodo record identifier.")],
     file: Annotated[
         list[str] | None,
@@ -249,7 +313,9 @@ def _verify_one(bundle: Path) -> None:
 
     files = manifest["files"]
     assert isinstance(files, list)
-    table = Table(title=f"bundle {manifest['campaign_id']}")
+    artifact_kind = str(manifest.get("artifact_kind", "campaign_bundle"))
+    artifact_id = manifest.get("campaign_id", manifest.get("source_artifact_id", bundle.name))
+    table = Table(title=f"{artifact_kind} {artifact_id}")
     table.add_column("file")
     table.add_column("bytes", justify="right")
     table.add_column("sha256")
