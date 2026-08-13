@@ -580,3 +580,37 @@ This decision demonstrates only the project-owned synthetic CV fixture and the e
 It does not claim compatibility with other EchemDB metadata-schema versions, other Data Package
 profiles, other Frictionless versions, other techniques, EchemDB ingestion or publication, or
 scientific completeness of the explicit fixture declarations.
+
+---
+
+## ADR-019 — Keep electrolysis technique-specific and extend Package verification with schema 3
+
+**Status:** accepted
+
+**Decision:** Galvanostatic electrolysis uses dedicated profile, observation, transformation,
+finding, and auxiliary-result persistence. A minimal normalised-observation identity registry is
+shared because both CV and electrolysis Experiments require one referentially enforced root. Package
+schema `3` carries electrolysis evidence and optional auxiliary source artifacts through the existing
+independent verification entry point; CV schemas `1` and `2` retain their prior contracts.
+
+### Consequences
+
+- electrolysis requires explicit time, current or current-density, and potential mappings with
+  role-compatible units and a distinct current quantity kind;
+- electrical completeness requires aligned series, increasing time, and agreement with a declared
+  sampling interval, and is reported separately from unavailable chemical analysis;
+- CV-only scan-rate and cycle assertions are `not_applicable` for electrolysis;
+- profile- and observation-owned electrolysis assertions cannot be supplemented or corrected within
+  the same Experiment; corrected semantics require a new immutable profile and observation;
+- auxiliary analytical declarations close to exact electrical and analytical source bytes, sample and
+  collection-point identifiers, and declared method versions; their source locations are not parsed;
+- no conversion, selectivity, yield, or Faradaic-efficiency derivation is approved by this decision;
+- PostgreSQL references both technique-specific observation tables through the minimal shared
+  identity registry, while normalised payloads remain immutable objects in S3-compatible storage.
+
+### Limits
+
+This decision does not add instrument control, chromatography ingestion, automatic product
+assignment, mechanism attribution, or a generic workflow/technique abstraction. Any derived
+chemical quantity requires a separate reviewed analysis contract with equations, dimensions,
+method version, and complete provenance.

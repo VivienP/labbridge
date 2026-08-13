@@ -1,0 +1,141 @@
+{
+  "auxiliary_results": [],
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_galvanostatic_fixture",
+  "execution_mode": "replay",
+  "import_profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+  "metadata": {
+    "cell_geometry": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "chemical_analysis": {
+      "state": "unavailable",
+      "unit": null,
+      "value": null
+    },
+    "current_basis": {
+      "state": "known",
+      "unit": null,
+      "value": "total_current"
+    },
+    "current_sign_convention": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "electrode_area": {
+      "state": "not_applicable",
+      "unit": null,
+      "value": null
+    },
+    "interruptions": {
+      "state": "known",
+      "unit": null,
+      "value": "none_declared"
+    },
+    "potential_treatment": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "reference_scale": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "sampling_interval": {
+      "state": "known",
+      "unit": "s",
+      "value": "60"
+    }
+  },
+  "normalisation_version": "0.1.0",
+  "observation_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e",
+  "parser_version": "1",
+  "provenance": {
+    "auxiliary_source_artifact_ids": [],
+    "environment_id": "synthetic_galvanostatic_fixture",
+    "import_profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+    "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f",
+    "source_sha256": "b1bc9619989641bf569f1912372b257a5fa32103153f4906d141d638c743b808",
+    "transformation_ids": [
+      "transform:23ad340c615a93d7405dd09a8a503ac6",
+      "transform:80870c93a9c044c5b52c10ab3f82d17f",
+      "transform:7a3225c64fa93d7a8fbd951277c65d40",
+      "transform:6ae518fc293641ea33d14d5e00023aec",
+      "transform:1c15c7f327d8b885a20330e2010e8a15"
+    ]
+  },
+  "row_count": 4,
+  "schema_version": "1",
+  "series": [
+    {
+      "dtype": "decimal",
+      "role": "potential",
+      "schema_version": "1",
+      "series_id": "electrolysis-series:4f4132c4c66cae4a642b58e2554bba88",
+      "shape": [
+        4
+      ],
+      "source_column": "working_potential_V",
+      "source_unit": "V",
+      "transformation_id": "transform:80870c93a9c044c5b52c10ab3f82d17f",
+      "unit": "V",
+      "values": [
+        "-0.420",
+        "-0.435",
+        "-0.447",
+        "-0.459"
+      ]
+    },
+    {
+      "dtype": "decimal",
+      "role": "current",
+      "schema_version": "1",
+      "series_id": "electrolysis-series:be07a245d33202a4dcdc41b4d36af79f",
+      "shape": [
+        4
+      ],
+      "source_column": "applied_current_mA",
+      "source_unit": "mA",
+      "transformation_id": "transform:7a3225c64fa93d7a8fbd951277c65d40",
+      "unit": "A",
+      "values": [
+        "0.0100",
+        "0.0100",
+        "0.0100",
+        "0.0100"
+      ]
+    },
+    {
+      "dtype": "decimal",
+      "role": "time",
+      "schema_version": "1",
+      "series_id": "electrolysis-series:5332f2b056d611e8636378ad9deef838",
+      "shape": [
+        4
+      ],
+      "source_column": "elapsed_s",
+      "source_unit": "s",
+      "transformation_id": "transform:6ae518fc293641ea33d14d5e00023aec",
+      "unit": "s",
+      "values": [
+        "0",
+        "60",
+        "120",
+        "180"
+      ]
+    }
+  ],
+  "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f",
+  "technique": "galvanostatic_electrolysis",
+  "transformation_ids": [
+    "transform:23ad340c615a93d7405dd09a8a503ac6",
+    "transform:80870c93a9c044c5b52c10ab3f82d17f",
+    "transform:7a3225c64fa93d7a8fbd951277c65d40",
+    "transform:6ae518fc293641ea33d14d5e00023aec",
+    "transform:1c15c7f327d8b885a20330e2010e8a15"
+  ]
+}

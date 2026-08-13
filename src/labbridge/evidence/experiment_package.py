@@ -7,7 +7,7 @@ import json
 import zipfile
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,10 +15,29 @@ from labbridge.domain.canonical import content_id
 from labbridge.domain.cv import CVImportProfile, import_profile_id
 from labbridge.domain.cv_observations import (
     NormalisedCVObservation,
+    NormalisedSeries,
     TransformationGraph,
     normalised_observation_id,
     normalised_series_id,
     transformation_record_id,
+)
+from labbridge.domain.electrolysis import (
+    AuxiliaryAnalyticalResult,
+    ElectrolysisColumnRole,
+    ElectrolysisImportProfile,
+    auxiliary_result_id,
+    electrolysis_import_profile_id,
+)
+from labbridge.domain.electrolysis_observations import (
+    NormalisedElectrolysisObservation,
+    electrolysis_observation_id,
+    electrolysis_series_id,
+)
+from labbridge.domain.experiments import (
+    AssertionOrigin,
+    AssertionTransformation,
+    MetadataAssertion,
+    RequirementClass,
 )
 from labbridge.domain.identity import DataOrigin, ExecutionMode
 from labbridge.domain.parser_diagnostics import ParserRecord
@@ -29,7 +48,38 @@ from .passport import ExperimentPassport, render_passport_html, render_passport_
 
 PACKAGE_SCHEMA_VERSION = "2"
 LEGACY_PACKAGE_SCHEMA_VERSION = "1"
+ELECTROLYSIS_PACKAGE_SCHEMA_VERSION = "3"
 MANIFEST_MEMBER = "manifest.json"
+
+_ELECTROLYSIS_PROFILE_ASSERTION_REQUIREMENTS: dict[str, RequirementClass] = {
+    "source_artifact": "required",
+    "observation": "required",
+    "time_axis": "required",
+    "potential_axis": "required",
+    "current_axis": "required",
+    "current_quantity_kind": "required",
+    "current_sign_convention": "conditional",
+    "current_basis": "conditional",
+    "electrode_area": "conditional",
+    "cell_geometry": "recommended",
+    "reference_scale": "conditional",
+    "potential_treatment": "conditional",
+    "sampling_interval": "recommended",
+    "interruptions": "recommended",
+    "chemical_analysis": "optional",
+    "scan_rate": "optional",
+    "cycle_information": "optional",
+}
+
+
+class AuxiliaryPackageSource(BaseModel):
+    """Exact bytes and Phase 1 record for one linked analytical source."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    source_filename: str = Field(min_length=1)
+    source_bytes: bytes
+    source_artifact: dict[str, object]
 
 
 class PackageInputs(BaseModel):
@@ -44,6 +94,7 @@ class PackageInputs(BaseModel):
     normalised_observation: dict[str, object]
     transformation_graph: dict[str, object]
     parser_record: dict[str, object] | None = None
+    auxiliary_sources: tuple[AuxiliaryPackageSource, ...] = ()
     passport: ExperimentPassport
 
 
@@ -53,7 +104,7 @@ class ExperimentPackage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     package_id: str = Field(min_length=1)
-    schema_version: Literal["1", "2"]
+    schema_version: Literal["1", "2", "3"]
     passport_id: str = Field(min_length=1)
     experiment_id: str = Field(min_length=1)
     experiment_version: int = Field(ge=1)
@@ -125,6 +176,16 @@ def _source_member_name(filename: str) -> str:
     return f"source/{name}"
 
 
+def _auxiliary_source_member_name(source_artifact_id_value: str, filename: str) -> str:
+    name = PurePosixPath(filename).name
+    if name in {"", ".", ".."} or name != filename.replace("\\", "/"):
+        raise ValueError("auxiliary source filename must be a plain filename")
+    safe_identity = source_artifact_id_value.replace(":", "-")
+    if "/" in safe_identity or "\\" in safe_identity:
+        raise ValueError("auxiliary source identity is not path safe")
+    return f"auxiliary-source/{safe_identity}/{name}"
+
+
 def _lineage_payload(inputs: PackageInputs) -> dict[str, object]:
     passport = inputs.passport
     payload: dict[str, object] = {
@@ -154,6 +215,18 @@ def _lineage_payload(inputs: PackageInputs) -> dict[str, object]:
     }
     if inputs.parser_record is not None:
         payload["parser_record_id"] = inputs.parser_record.get("parser_record_id")
+    auxiliary_results = inputs.normalised_observation.get("auxiliary_results", [])
+    if passport.technique == "galvanostatic_electrolysis" and isinstance(auxiliary_results, list):
+        payload["auxiliary_result_ids"] = [
+            item.get("result_id") for item in auxiliary_results if isinstance(item, dict)
+        ]
+        payload["auxiliary_source_artifact_ids"] = sorted(
+            {
+                str(item.get("source_artifact_id"))
+                for item in auxiliary_results
+                if isinstance(item, dict)
+            }
+        )
     return payload
 
 
@@ -180,11 +253,41 @@ def build_experiment_package(
         ),
         "lineage.json": canonical_json(_lineage_payload(inputs)),
     }
-    schema_version = (
-        PACKAGE_SCHEMA_VERSION
-        if inputs.parser_record is not None
-        else LEGACY_PACKAGE_SCHEMA_VERSION
-    )
+    if passport.technique == "galvanostatic_electrolysis":
+        if inputs.parser_record is not None:
+            raise ValueError("generic electrolysis Packages cannot carry a vendor parser record")
+        raw_results = inputs.normalised_observation.get("auxiliary_results")
+        if not isinstance(raw_results, list):
+            raise ValueError("electrolysis observation has no auxiliary result inventory")
+        expected_auxiliary = {
+            str(item.get("source_artifact_id")) for item in raw_results if isinstance(item, dict)
+        }
+        supplied_auxiliary = {
+            str(item.source_artifact.get("source_artifact_id")) for item in inputs.auxiliary_sources
+        }
+        if expected_auxiliary != supplied_auxiliary:
+            raise ValueError("auxiliary result sources differ from packaged source artifacts")
+        auxiliary_inventory: list[dict[str, object]] = []
+        for item in sorted(
+            inputs.auxiliary_sources,
+            key=lambda source: str(source.source_artifact.get("source_artifact_id")),
+        ):
+            source_id_value = str(item.source_artifact.get("source_artifact_id"))
+            member_name = _auxiliary_source_member_name(source_id_value, item.source_filename)
+            members[member_name] = item.source_bytes
+            auxiliary_inventory.append(
+                {"member_name": member_name, "source_artifact": item.source_artifact}
+            )
+        members["phase1/auxiliary-source-artifacts.json"] = canonical_json(auxiliary_inventory)
+        schema_version = ELECTROLYSIS_PACKAGE_SCHEMA_VERSION
+    elif inputs.auxiliary_sources:
+        raise ValueError("CV Packages cannot carry electrolysis auxiliary sources")
+    else:
+        schema_version = (
+            PACKAGE_SCHEMA_VERSION
+            if inputs.parser_record is not None
+            else LEGACY_PACKAGE_SCHEMA_VERSION
+        )
     if inputs.parser_record is not None:
         members["phase2/parser-record.json"] = canonical_json(inputs.parser_record)
     entries = [_member_entry(name, data) for name, data in sorted(members.items())]
@@ -316,13 +419,361 @@ def _json_member(members: dict[str, bytes], name: str) -> dict[str, object]:
     return parsed
 
 
-def _verify_phase_evidence_identity(  # noqa: PLR0912 - each branch rejects one identity defect
+def _verify_electrolysis_profile_semantics(
+    profile_id: object,
+    profile: ElectrolysisImportProfile,
+    observation: NormalisedElectrolysisObservation,
+) -> None:
+    if (
+        observation.import_profile_id != profile_id
+        or observation.metadata != profile.metadata
+        or observation.auxiliary_results != profile.auxiliary_results
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open",
+            "electrolysis observation semantics differ from the retained profile",
+        )
+    profile_mappings = {
+        (item.source_column, item.role, item.source_unit, item.target_unit)
+        for item in profile.columns
+        if item.role != "ignored"
+    }
+    if any(
+        (series.source_column, series.role, series.source_unit, series.unit) not in profile_mappings
+        for series in observation.series
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open",
+            "electrolysis series semantics differ from the retained profile mapping",
+        )
+
+
+def _active_electrolysis_profile_assertions(
+    passport: ExperimentPassport,
+) -> dict[str, MetadataAssertion]:
+    active_ids = passport.active_assertion_ids
+    active_id_set = set(active_ids)
+    active = [item for item in passport.assertions if item.assertion_id in active_id_set]
+    protected_fields = set(_ELECTROLYSIS_PROFILE_ASSERTION_REQUIREMENTS)
+    protected = [item for item in active if item.field_name in protected_fields]
+    counts = {field_name: 0 for field_name in protected_fields}
+    for assertion in protected:
+        counts[assertion.field_name] += 1
+    if (
+        len(active_ids) != len(active_id_set)
+        or len(active) != len(active_ids)
+        or any(count != 1 for count in counts.values())
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open",
+            "electrolysis Passport requires one active assertion per profile-owned field",
+        )
+    unsupported_known = next(
+        (
+            item
+            for item in active
+            if item.field_name not in protected_fields
+            and not item.field_name.startswith("auxiliary_result.")
+            and item.value.state == "known"
+        ),
+        None,
+    )
+    if unsupported_known is not None:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open",
+            f"active electrolysis claim {unsupported_known.field_name} has no approved contract",
+        )
+    return {item.field_name: item for item in protected}
+
+
+def _verify_electrolysis_assertion_authority(
+    observation: NormalisedElectrolysisObservation,
+    assertions: dict[str, MetadataAssertion],
+) -> None:
+    common_evidence = (
+        observation.source_artifact_id,
+        observation.import_profile_id,
+        *observation.transformation_ids,
+    )
+    expected: dict[
+        str,
+        tuple[
+            RequirementClass,
+            AssertionOrigin,
+            AssertionTransformation,
+            tuple[str, ...],
+        ],
+    ] = {
+        "source_artifact": (
+            "required",
+            "source_file",
+            "none",
+            (observation.source_artifact_id,),
+        ),
+        "observation": (
+            "required",
+            "source_file",
+            "derived",
+            (observation.source_artifact_id, *observation.transformation_ids),
+        ),
+    }
+    for series in observation.series:
+        field_name = (
+            "current_axis"
+            if series.role in {"current", "current_density"}
+            else f"{series.role}_axis"
+        )
+        series_evidence = (
+            observation.source_artifact_id,
+            observation.import_profile_id,
+            series.transformation_id,
+        )
+        expected[field_name] = (
+            "required",
+            "user_supplied",
+            "parsed" if series.source_unit == series.unit else "unit_converted",
+            series_evidence,
+        )
+        if series.role in {"current", "current_density"}:
+            expected["current_quantity_kind"] = (
+                "required",
+                "user_supplied",
+                "none",
+                series_evidence,
+            )
+    for field_name, requirement_class in _ELECTROLYSIS_PROFILE_ASSERTION_REQUIREMENTS.items():
+        if field_name not in expected:
+            expected[field_name] = (
+                requirement_class,
+                "user_supplied",
+                "none",
+                common_evidence,
+            )
+    for field_name, assertion in assertions.items():
+        requirement, origin, transformation, evidence_ids = expected[field_name]
+        assertion_body = assertion.model_dump(mode="python", exclude={"assertion_id"})
+        if (
+            assertion.requirement_class != requirement
+            or assertion.origin != origin
+            or assertion.transformation != transformation
+            or assertion.evidence_ids != evidence_ids
+            or assertion.assertion_id != content_id("assertion", assertion_body)
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open",
+                f"Passport {field_name} authority differs from retained electrolysis evidence",
+            )
+
+
+def _verify_electrolysis_passport_semantics(
+    observation: NormalisedElectrolysisObservation,
+    passport: ExperimentPassport,
+) -> None:
+    assertions = _active_electrolysis_profile_assertions(passport)
+    _verify_electrolysis_assertion_authority(observation, assertions)
+    series_by_role: dict[str, NormalisedSeries] = {item.role: item for item in observation.series}
+    for field_name, role in (
+        ("time_axis", "time"),
+        ("potential_axis", "potential"),
+        ("current_axis", "current" if "current" in series_by_role else "current_density"),
+    ):
+        assertion = assertions.get(field_name)
+        series = series_by_role[role]
+        if (
+            assertion is None
+            or assertion.value.state != "known"
+            or assertion.value.value != series.source_column
+            or assertion.value.unit != series.unit
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open",
+                f"Passport {field_name} differs from the retained electrolysis series",
+            )
+    current_series = series_by_role.get("current") or series_by_role["current_density"]
+    current_kind = assertions.get("current_quantity_kind")
+    if (
+        current_kind is None
+        or current_kind.value.state != "known"
+        or current_kind.value.value != current_series.role
+        or current_kind.value.unit is not None
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open",
+            "Passport current quantity kind differs from the retained electrolysis series",
+        )
+    for field_name in (
+        "current_sign_convention",
+        "current_basis",
+        "electrode_area",
+        "cell_geometry",
+        "reference_scale",
+        "potential_treatment",
+        "sampling_interval",
+        "interruptions",
+        "chemical_analysis",
+    ):
+        assertion = assertions.get(field_name)
+        metadata = getattr(observation.metadata, field_name)
+        if assertion is None or assertion.value.model_dump() != metadata.model_dump():
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open",
+                f"Passport {field_name} differs from retained electrolysis metadata",
+            )
+    for field_name, expected_value in (
+        ("source_artifact", observation.source_artifact_id),
+        ("observation", observation.observation_id),
+    ):
+        assertion = assertions.get(field_name)
+        if (
+            assertion is None
+            or assertion.value.state != "known"
+            or assertion.value.value != expected_value
+            or assertion.value.unit is not None
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open",
+                f"Passport {field_name} assertion differs from retained electrolysis evidence",
+            )
+    for field_name in ("scan_rate", "cycle_information"):
+        assertion = assertions.get(field_name)
+        if assertion is None or assertion.value.state != "not_applicable":
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open",
+                f"Passport {field_name} is not applicable to electrolysis",
+            )
+
+
+def _verify_electrolysis_evidence_identity(  # noqa: PLR0912
     source: dict[str, object],
     observation: dict[str, object],
     profile: dict[str, object],
     graph: dict[str, object],
     passport: ExperimentPassport,
 ) -> None:
+    try:
+        profile_body = {key: value for key, value in profile.items() if key != "profile_id"}
+        profile_model = ElectrolysisImportProfile.model_validate(profile_body)
+        observation_model = NormalisedElectrolysisObservation.model_validate(observation)
+        graph_model = TransformationGraph.model_validate(graph)
+    except ValueError as error:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "retained electrolysis evidence does not match its schema"
+        ) from error
+    source_sha256 = source.get("sha256")
+    source_byte_size = source.get("byte_size")
+    source_media_type = source.get("media_type")
+    if (
+        not isinstance(source_sha256, str)
+        or not isinstance(source_byte_size, int)
+        or not isinstance(source_media_type, str)
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "primary electrolysis source identity inputs are invalid"
+        )
+    if source.get("source_artifact_id") != source_artifact_id(
+        sha256=source_sha256,
+        byte_size=source_byte_size,
+        media_type=source_media_type,
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "primary electrolysis source identity does not match content"
+        )
+    if profile.get("profile_id") != electrolysis_import_profile_id(profile_model):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis profile identity does not match content"
+        )
+    _verify_electrolysis_profile_semantics(
+        profile.get("profile_id"), profile_model, observation_model
+    )
+    for series in observation_model.series:
+        expected = electrolysis_series_id(
+            source_artifact_id=observation_model.source_artifact_id,
+            import_profile_id=observation_model.import_profile_id,
+            schema_version=series.schema_version,
+            dtype=series.dtype,
+            shape=series.shape,
+            source_column=series.source_column,
+            role=cast(ElectrolysisColumnRole, series.role),
+            source_unit=series.source_unit,
+            unit=series.unit,
+            values=series.values,
+        )
+        if series.series_id != expected:
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "electrolysis series identity does not match content"
+            )
+    if observation_model.observation_id != electrolysis_observation_id(observation_model):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis observation identity does not match content"
+        )
+    if any(
+        record.transformation_id != transformation_record_id(record)
+        for record in graph_model.records
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis transformation identity does not match content"
+        )
+    graph_ids = tuple(record.transformation_id for record in graph_model.records)
+    if (
+        observation_model.transformation_ids != graph_ids
+        or observation_model.provenance.transformation_ids != graph_ids
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis transformation inventories differ"
+        )
+    if (
+        observation_model.provenance.source_artifact_id != observation_model.source_artifact_id
+        or observation_model.provenance.import_profile_id != observation_model.import_profile_id
+        or observation_model.provenance.environment_id != observation_model.environment_id
+        or observation_model.provenance.source_sha256 != source_sha256
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis provenance differs from retained evidence"
+        )
+    graph_record_ids = {record.transformation_id for record in graph_model.records}
+    if any(series.transformation_id not in graph_record_ids for series in observation_model.series):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis series names an absent transformation"
+        )
+    if (
+        source.get("source_artifact_id") != passport.source_artifact_id
+        or observation_model.observation_id != passport.observation_id
+        or observation_model.source_artifact_id != passport.source_artifact_id
+        or profile.get("profile_id") != passport.import_profile_id
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "electrolysis Passport lineage anchors differ"
+        )
+    for field_name in ("data_origin", "execution_mode"):
+        expected_value = getattr(passport, field_name)
+        if (
+            source.get(field_name) != expected_value
+            or getattr(observation_model, field_name) != expected_value
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_origin_mismatch",
+                f"electrolysis source, observation, and Passport {field_name} differ",
+            )
+    if (
+        observation_model.environment_id != passport.environment_id
+        or profile_model.environment_id != passport.environment_id
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_origin_mismatch", "electrolysis environment identities differ"
+        )
+    _verify_electrolysis_passport_semantics(observation_model, passport)
+
+
+def _verify_phase_evidence_identity(  # noqa: PLR0912,PLR0915
+    source: dict[str, object],
+    observation: dict[str, object],
+    profile: dict[str, object],
+    graph: dict[str, object],
+    passport: ExperimentPassport,
+) -> None:
+    if profile.get("technique") == "galvanostatic_electrolysis":
+        _verify_electrolysis_evidence_identity(source, observation, profile, graph, passport)
+        return
     try:
         profile_body = {key: value for key, value in profile.items() if key != "profile_id"}
         profile_model = CVImportProfile.model_validate(profile_body)
@@ -454,6 +905,21 @@ def _verify_parser_evidence(
     schema_version: str,
 ) -> str | None:
     member_name = "phase2/parser-record.json"
+    if schema_version == ELECTROLYSIS_PACKAGE_SCHEMA_VERSION:
+        if member_name in members or observation.get("parser_record_id") is not None:
+            raise ExperimentPackageVerificationError(
+                "package_schema_mismatch",
+                "electrolysis Package schema 3 cannot carry a vendor parser record",
+            )
+        versions = manifest.get("producing_versions")
+        if (
+            not isinstance(versions, dict)
+            or versions.get("experiment_package") != ELECTROLYSIS_PACKAGE_SCHEMA_VERSION
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "Package producing versions omit schema 3"
+            )
+        return None
     if schema_version == LEGACY_PACKAGE_SCHEMA_VERSION:
         if member_name in members or observation.get("parser_record_id") is not None:
             raise ExperimentPackageVerificationError(
@@ -508,7 +974,126 @@ def _verify_parser_evidence(
     return record.parser_record_id
 
 
-def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage defect
+def _verify_auxiliary_sources(  # noqa: PLR0912,PLR0915
+    *,
+    members: dict[str, bytes],
+    observation: dict[str, object],
+    profile: dict[str, object],
+    passport: ExperimentPassport,
+    schema_version: str,
+) -> tuple[set[str], set[str]]:
+    inventory_name = "phase1/auxiliary-source-artifacts.json"
+    auxiliary_members = {name for name in members if name.startswith("auxiliary-source/")}
+    if schema_version != ELECTROLYSIS_PACKAGE_SCHEMA_VERSION:
+        if inventory_name in members or auxiliary_members:
+            raise ExperimentPackageVerificationError(
+                "package_schema_mismatch", "CV Package carries electrolysis auxiliary sources"
+            )
+        return set(), set()
+    try:
+        raw_inventory = json.loads(members[inventory_name])
+    except (KeyError, json.JSONDecodeError) as error:
+        raise ExperimentPackageVerificationError(
+            "package_member_invalid", "auxiliary source inventory is missing or invalid"
+        ) from error
+    if not isinstance(raw_inventory, list):
+        raise ExperimentPackageVerificationError(
+            "package_member_invalid", "auxiliary source inventory must contain a list"
+        )
+    source_ids: set[str] = set()
+    listed_members: set[str] = set()
+    for raw in raw_inventory:
+        if not isinstance(raw, dict):
+            raise ExperimentPackageVerificationError(
+                "package_member_invalid", "auxiliary source entry is not an object"
+            )
+        member_name = raw.get("member_name")
+        source = raw.get("source_artifact")
+        if not isinstance(member_name, str) or not isinstance(source, dict):
+            raise ExperimentPackageVerificationError(
+                "package_member_invalid", "auxiliary source entry is incomplete"
+            )
+        data = members.get(member_name)
+        if data is None:
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "auxiliary source bytes are absent"
+            )
+        source_sha256 = source.get("sha256")
+        byte_size = source.get("byte_size")
+        media_type = source.get("media_type")
+        if (
+            not isinstance(source_sha256, str)
+            or not isinstance(byte_size, int)
+            or not isinstance(media_type, str)
+            or source_sha256 != digest(data)
+            or byte_size != len(data)
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_source_integrity_mismatch",
+                "auxiliary source bytes differ from their retained record",
+            )
+        expected_id = source_artifact_id(
+            sha256=source_sha256, byte_size=byte_size, media_type=media_type
+        )
+        if source.get("source_artifact_id") != expected_id:
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "auxiliary source identity does not match content"
+            )
+        if (
+            source.get("data_origin") != passport.data_origin
+            or source.get("execution_mode") != passport.execution_mode
+        ):
+            raise ExperimentPackageVerificationError(
+                "package_origin_mismatch", "auxiliary source origin or mode differs"
+            )
+        if expected_id in source_ids or member_name in listed_members:
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "auxiliary source inventory contains a duplicate"
+            )
+        source_ids.add(expected_id)
+        listed_members.add(member_name)
+    if listed_members != auxiliary_members:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "auxiliary source inventory and members differ"
+        )
+    raw_results = observation.get("auxiliary_results")
+    profile_results = profile.get("auxiliary_results")
+    if not isinstance(raw_results, list) or raw_results != profile_results:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "profile and observation auxiliary results differ"
+        )
+    result_ids: set[str] = set()
+    referenced_sources: set[str] = set()
+    for raw in raw_results:
+        if not isinstance(raw, dict):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "auxiliary result is not an object"
+            )
+        try:
+            result = AuxiliaryAnalyticalResult.model_validate(raw)
+        except ValueError as error:
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "auxiliary result does not match its schema"
+            ) from error
+        if result.result_id != auxiliary_result_id(result):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open", "auxiliary result identity does not match content"
+            )
+        if result.electrical_source_artifact_id != observation.get("source_artifact_id"):
+            raise ExperimentPackageVerificationError(
+                "package_lineage_open",
+                "auxiliary result does not name the retained electrical source",
+            )
+        result_ids.add(result.result_id)
+        referenced_sources.add(result.source_artifact_id)
+    if referenced_sources != source_ids:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "auxiliary results and retained sources differ"
+        )
+    return source_ids, result_ids
+
+
+def _verify_lineage(  # noqa: PLR0912,PLR0915
     members: dict[str, bytes],
     passport: ExperimentPassport,
     *,
@@ -531,6 +1116,13 @@ def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage
     graph = _json_member(members, "phase2/transformation-graph.json")
     lineage = _json_member(members, "lineage.json")
     _verify_phase_evidence_identity(source, observation, profile, graph, passport)
+    auxiliary_source_ids, auxiliary_result_ids = _verify_auxiliary_sources(
+        members=members,
+        observation=observation,
+        profile=profile,
+        passport=passport,
+        schema_version=schema_version,
+    )
     parser_record_id = _verify_parser_evidence(
         members=members,
         manifest=manifest,
@@ -582,10 +1174,37 @@ def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage
         passport.experiment_id,
         *transformation_ids,
         *assertion_ids,
+        *auxiliary_source_ids,
+        *auxiliary_result_ids,
     }
     if parser_record_id is not None:
         evidence_universe.add(parser_record_id)
+    raw_auxiliary_results = observation.get("auxiliary_results", [])
+    if not isinstance(raw_auxiliary_results, list):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "auxiliary result inventory is not a list"
+        )
+    auxiliary_results_by_id = {
+        str(item.get("result_id")): item
+        for item in raw_auxiliary_results
+        if isinstance(item, dict) and isinstance(item.get("result_id"), str)
+    }
     for assertion in passport.assertions:
+        if assertion.field_name.startswith("auxiliary_result."):
+            result_id = assertion.field_name.removeprefix("auxiliary_result.")
+            result = auxiliary_results_by_id.get(result_id)
+            source_id = None if result is None else result.get("source_artifact_id")
+            if (
+                result_id not in auxiliary_result_ids
+                or not isinstance(source_id, str)
+                or assertion.origin != "user_supplied"
+                or assertion.transformation != "none"
+                or set(assertion.evidence_ids) != {result_id, source_id}
+            ):
+                raise ExperimentPackageVerificationError(
+                    "package_lineage_open",
+                    f"auxiliary assertion {assertion.assertion_id} has no retained result record",
+                )
         if not set(assertion.evidence_ids).issubset(evidence_universe):
             raise ExperimentPackageVerificationError(
                 "package_lineage_open",
@@ -613,6 +1232,22 @@ def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage
         raise ExperimentPackageVerificationError(
             "package_lineage_open", "lineage inventory does not match the parser record"
         )
+    raw_auxiliary_source_ids = lineage.get("auxiliary_source_artifact_ids", [])
+    raw_auxiliary_result_ids = lineage.get("auxiliary_result_ids", [])
+    if (
+        not isinstance(raw_auxiliary_source_ids, list)
+        or set(map(str, raw_auxiliary_source_ids)) != auxiliary_source_ids
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "lineage inventory does not match auxiliary sources"
+        )
+    if (
+        not isinstance(raw_auxiliary_result_ids, list)
+        or set(map(str, raw_auxiliary_result_ids)) != auxiliary_result_ids
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "lineage inventory does not match auxiliary results"
+        )
 
 
 def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
@@ -620,7 +1255,11 @@ def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
     members = _open_members(package_bytes)
     manifest = _manifest(members)
     schema_version = manifest.get("schema_version")
-    if schema_version not in {LEGACY_PACKAGE_SCHEMA_VERSION, PACKAGE_SCHEMA_VERSION}:
+    if schema_version not in {
+        LEGACY_PACKAGE_SCHEMA_VERSION,
+        PACKAGE_SCHEMA_VERSION,
+        ELECTROLYSIS_PACKAGE_SCHEMA_VERSION,
+    }:
         raise ExperimentPackageVerificationError(
             "package_schema_unsupported", "the Package schema version is not supported"
         )
@@ -637,6 +1276,16 @@ def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
         raise ExperimentPackageVerificationError(
             "package_passport_invalid", "passport/passport.json is invalid"
         ) from error
+    if (
+        passport.technique == "galvanostatic_electrolysis"
+        and schema_version != ELECTROLYSIS_PACKAGE_SCHEMA_VERSION
+    ) or (
+        passport.technique == "cyclic_voltammetry"
+        and schema_version == ELECTROLYSIS_PACKAGE_SCHEMA_VERSION
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_schema_mismatch", "Package schema and Passport technique differ"
+        )
     if passport.passport_id != manifest.get("passport_id"):
         raise ExperimentPackageVerificationError(
             "package_passport_mismatch", "Passport and manifest identities differ"
@@ -678,8 +1327,10 @@ def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
 
 
 __all__ = [
+    "ELECTROLYSIS_PACKAGE_SCHEMA_VERSION",
     "LEGACY_PACKAGE_SCHEMA_VERSION",
     "PACKAGE_SCHEMA_VERSION",
+    "AuxiliaryPackageSource",
     "BuiltExperimentPackage",
     "ExperimentPackage",
     "ExperimentPackageVerificationError",

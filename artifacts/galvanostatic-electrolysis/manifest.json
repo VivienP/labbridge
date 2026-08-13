@@ -1,0 +1,98 @@
+{
+  "artifact_kind": "galvanostatic_electrolysis_package",
+  "capability_status": "implemented",
+  "data_origin": "synthetic",
+  "description": "Galvanostatic electrical time-series normalisation, technique-aware Passport, and standalone-verified Package with chemical claims explicitly unavailable.",
+  "environment_id": "synthetic_galvanostatic_fixture",
+  "execution_mode": "replay",
+  "files": [
+    {
+      "byte_size": 11687,
+      "name": "experiment-package.zip",
+      "sha256": "347acfe4e146d586add373abf6d31d9db021ff1a8dff376546227b16f749c4d1"
+    },
+    {
+      "byte_size": 349,
+      "name": "fixture-provenance.json",
+      "sha256": "bffd91eb95aed406831956f9dabbc04add931401ca48ff252dd7c9083d21676a"
+    },
+    {
+      "byte_size": 1722,
+      "name": "import-profile.json",
+      "sha256": "0bc0b57b23e811a1192451f2eccf602517e738ff61c5af313ab49339f9f5f496"
+    },
+    {
+      "byte_size": 900,
+      "name": "LIMITATIONS.md",
+      "sha256": "9b4dc2814a700e8181bfc47abeacc100495941847585488481aaffb921923814"
+    },
+    {
+      "byte_size": 3779,
+      "name": "normalised-observation.json",
+      "sha256": "d3e127746c356060d6bd7ed6b76e5a8b293f6c70f75df8389ce9c355d25e92d4"
+    },
+    {
+      "byte_size": 477,
+      "name": "package-verification.json",
+      "sha256": "8226c2dfb9be01cfb5fbd9c06e281b59366ef894026229387915d46ec6a8ed4c"
+    },
+    {
+      "byte_size": 6429,
+      "name": "passport.html",
+      "sha256": "12d53d19e364f932680c0d72e31ede25d23280cf22c70ab653607259dca1825a"
+    },
+    {
+      "byte_size": 24473,
+      "name": "passport.json",
+      "sha256": "4ac8787065058d1f63cfb6a968c4ccea0ac4c104b248dd4938e11ed61bd3cbc8"
+    },
+    {
+      "byte_size": 247,
+      "name": "REPRODUCE.txt",
+      "sha256": "5419e336d24c003361f7be5e6db02e9582066a2b1ea0e6d11020abc0c6ab6bc3"
+    },
+    {
+      "byte_size": 598,
+      "name": "source-artifact.json",
+      "sha256": "a3eecfe6a2dadeee37e2653c1cc9bd8b84151a1d50fe894c157e56ac4e581cf4"
+    },
+    {
+      "byte_size": 1143,
+      "name": "structural-findings.json",
+      "sha256": "a20dcb941e5371bb4209bd1cc83b9a60eebcfbc7c1512c28fbfe1b56603a08e5"
+    },
+    {
+      "byte_size": 110,
+      "name": "synthetic-galvanostatic-electrolysis.csv",
+      "sha256": "b1bc9619989641bf569f1912372b257a5fa32103153f4906d141d638c743b808"
+    },
+    {
+      "byte_size": 4185,
+      "name": "transformation-graph.json",
+      "sha256": "e605377eb01fb5b55d456326480ed70947676967d388ad1eda0a41fb0bf0e8b1"
+    },
+    {
+      "byte_size": 5848,
+      "name": "validation.json",
+      "sha256": "b45b6ab3623c5ef6590d6bb3b7b143edccab42510768808c74f7f395b0644b2f"
+    },
+    {
+      "byte_size": 663,
+      "name": "verification.json",
+      "sha256": "aa0d10c794f2630f2c1ad2a883452b6262ce2a5e77560e40b14d46cae6ba810a"
+    }
+  ],
+  "files_digest": "36d69a4cf252b8a2c01e9949a43e40592fc86d09c4edbaf49f7f4f6860eb4a04",
+  "import_profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+  "observation_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e",
+  "package_id": "experiment-package:6479dddfda8860fedee9058d164fffd9",
+  "passport_id": "passport:887d95b0e3849b62b4cd778d3d3460dc",
+  "producing_versions": {
+    "experiment_package": "3",
+    "labbridge": "0.1.0"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f",
+  "source_filename": "synthetic-galvanostatic-electrolysis.csv",
+  "source_sha256": "b1bc9619989641bf569f1912372b257a5fa32103153f4906d141d638c743b808"
+}

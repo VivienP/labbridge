@@ -32,6 +32,10 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
                 "type": "string"
               },
               {
@@ -80,6 +84,10 @@
           },
           "value": {
             "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
               {
                 "type": "string"
               },
@@ -593,8 +601,16 @@
             "type": "string"
           },
           "value": {
-            "title": "Value",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
           }
         },
         "required": [
@@ -738,7 +754,10 @@
             "title": "Supersedes Version"
           },
           "technique": {
-            "const": "cyclic_voltammetry",
+            "enum": [
+              "cyclic_voltammetry",
+              "galvanostatic_electrolysis"
+            ],
             "title": "Technique",
             "type": "string"
           },
@@ -840,7 +859,8 @@
           "schema_version": {
             "enum": [
               "1",
-              "2"
+              "2",
+              "3"
             ],
             "title": "Schema Version",
             "type": "string"
@@ -990,7 +1010,10 @@
             "title": "Supersedes Passport Id"
           },
           "technique": {
-            "const": "cyclic_voltammetry",
+            "enum": [
+              "cyclic_voltammetry",
+              "galvanostatic_electrolysis"
+            ],
             "title": "Technique",
             "type": "string"
           },
@@ -1319,6 +1342,10 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
                 "type": "string"
               },
               {
@@ -1361,6 +1388,10 @@
           },
           "value": {
             "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
               {
                 "type": "string"
               },
@@ -1633,6 +1664,7 @@
           },
           "values": {
             "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             "minItems": 1,
@@ -2055,6 +2087,7 @@
                 "type": "number"
               },
               {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2064,6 +2097,7 @@
                       "type": "number"
                     },
                     {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                       "type": "string"
                     }
                   ]

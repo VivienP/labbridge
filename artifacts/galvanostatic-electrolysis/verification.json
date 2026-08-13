@@ -1,0 +1,15 @@
+{
+  "capability_status": "implemented",
+  "chemical_analysis": "unavailable",
+  "electrical_series_complete": true,
+  "import_profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+  "lineage_closed": true,
+  "observation_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e",
+  "package_id": "experiment-package:6479dddfda8860fedee9058d164fffd9",
+  "package_verified": true,
+  "passport_id": "passport:887d95b0e3849b62b4cd778d3d3460dc",
+  "schema_version": "1",
+  "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f",
+  "source_sha256": "b1bc9619989641bf569f1912372b257a5fa32103153f4906d141d638c743b808",
+  "verified": true
+}

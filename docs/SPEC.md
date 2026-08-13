@@ -382,6 +382,31 @@ header line, unit line, and inclusive data-line range. A rejected record contain
 claims and at least one error diagnostic. Rejected records remain queryable even though no
 normalised observation is created.
 
+Generic galvanostatic electrolysis ingestion uses a distinct immutable
+`ElectrolysisImportProfile`. It requires exactly one time axis, one potential axis, and one current
+or current-density axis, with role-compatible source and target units. Its normalised observation
+retains the electrical series, explicit current quantity kind, current sign convention, current
+basis, electrode-area state, cell geometry, reference scale, potential treatment, sampling,
+interruption, and chemical-analysis states without inferring any of them from headers or filenames.
+Every series has the declared row count, time is strictly increasing, and a declared sampling
+interval matches every recorded interval. CV-only scan-rate and cycle fields are represented as
+`not_applicable` in the Experiment Passport.
+Electrolysis assertions that project the retained profile or observation are not editable within the
+same Experiment. Correcting a role, unit, quantity kind, electrical context, or other profile state
+requires a new profile and normalised observation; the Package verifier rejects any active Passport
+assertion that disagrees with those retained records.
+
+An auxiliary analytical declaration is accepted only when it identifies the exact electrical source,
+a retained analytical source artifact, sample and collection point, declared method and method
+version, source location, analyte, quantity kind, value, and unit. LabBridge does not claim to parse
+the analytical source location in this boundary. Package schema `3` contains every referenced
+auxiliary source record and exact bytes and rejects declarations that do not match its retained
+result inventory. Electrical time-series completeness is independent from chemical or product
+quantification. This contract defines no approved conversion, selectivity, yield, or
+Faradaic-efficiency equation; any known electrolysis assertion outside the supported metadata and
+source-linked auxiliary fields blocks release until a reviewed versioned derivation contract exists
+with all inputs, units, and provenance.
+
 ### 3.10 Experiment Passport and verified Package
 
 An `Experiment` is an immutable aggregate version rooted in one Phase 2 normalised observation. Its
@@ -412,6 +437,9 @@ remains the generic-CSV compatibility boundary. Independent verification rejects
 unexpected, duplicate, or unsafe members; checks Passport/report parity; and closes every active
 assertion and finding through the retained parser and Phase 2 graph to the retained Phase 1 source
 identity.
+Schema `3` is the galvanostatic-electrolysis boundary. It uses the same independent verifier and
+adds a closed auxiliary-source inventory when analytical results are linked; schemas `1` and `2`
+retain their CV contracts unchanged.
 
 ---
 
@@ -432,6 +460,8 @@ PostgreSQL is authoritative for:
 - source-artifact lifecycle and provenance metadata;
 - versioned import profiles, accepted and rejected parser records, normalised CV metadata,
   transformation records, and structural findings;
+- galvanostatic electrolysis profiles, normalised observations, auxiliary-result links, and their
+  transformation and finding records;
 - immutable experiment versions, metadata assertions, validation findings, released Passports, and
   Experiment Package metadata;
 - state projections;

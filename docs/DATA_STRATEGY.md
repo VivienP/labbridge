@@ -146,6 +146,26 @@ Equivalent DTA and generic CSV inputs converge only after independent explicit p
 source columns and units into the common CV roles. Equality of normalised values does not collapse
 their source artifacts, parser records, transformation graphs, or provenance.
 
+#### Galvanostatic electrolysis boundary
+
+The electrolysis normalised layer contains recorded time, current or current density, and potential
+series only after an explicit profile assigns every role and a role-compatible unit. Electrical
+completeness means aligned series lengths, a strictly increasing time axis, and agreement with any
+declared sampling interval; it is not evidence of product identity or quantity. Current sign
+convention, area basis, cell geometry, reference scale, correction state, sampling, and interruptions
+remain independently declared metadata states with controlled known values.
+These profile-owned semantics cannot be supplemented, shadowed, or corrected on the existing
+Experiment. A mapping, unit, quantity-kind, or profile-metadata correction creates a new immutable
+profile and normalised observation while retaining the prior records.
+
+Auxiliary analytical values remain source-linked user declarations. Each declaration names the exact
+electrical source, retained analytical source bytes, sample and collection point, a declared method
+and method version, and a source location. This boundary retains the source bytes but does not parse
+that analytical location or claim that the declared value was extracted by LabBridge. LabBridge does
+not ingest chromatography, assign products, or calculate conversion, selectivity, yield, or Faradaic
+efficiency in this boundary. Adding such a derived quantity requires a separate versioned analysis
+contract with dimensional checks and complete lineage.
+
 #### Derived layer
 
 Versioned metrics and analytical outputs. Source-provided fits and LabBridge-computed fits remain distinguishable.

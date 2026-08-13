@@ -16,6 +16,7 @@ RequirementClass = Literal["required", "conditional", "recommended", "optional"]
 ValueState = Literal["known", "unknown", "unavailable", "not_applicable"]
 FindingSeverity = Literal["blocking", "warning", "unknown"]
 ReleaseStatus = Literal["blocked", "eligible"]
+Technique = Literal["cyclic_voltammetry", "galvanostatic_electrolysis"]
 
 EXPERIMENT_SCHEMA_VERSION = "1"
 ASSERTION_SCHEMA_VERSION = "1"
@@ -171,7 +172,7 @@ class Experiment(_Model):
     observation_id: str = Field(min_length=1)
     source_artifact_id: str = Field(min_length=1)
     import_profile_id: str = Field(min_length=1)
-    technique: Literal["cyclic_voltammetry"]
+    technique: Technique
     data_origin: DataOrigin
     execution_mode: ExecutionMode
     environment_id: str = Field(min_length=1)
@@ -206,7 +207,7 @@ def create_experiment(
     observation_id: str,
     source_artifact_id: str,
     import_profile_id: str,
-    technique: Literal["cyclic_voltammetry"],
+    technique: Technique,
     data_origin: DataOrigin,
     execution_mode: ExecutionMode,
     environment_id: str,
@@ -249,6 +250,17 @@ def add_user_assertion(
         raise ExperimentVersionConflictError(expected_version, experiment.version)
     if requested_origin != "user_supplied":
         raise ValueError("user edits always have origin=user_supplied")
+    if experiment.technique == "galvanostatic_electrolysis" and field_name.startswith(
+        "auxiliary_result."
+    ):
+        raise ValueError(
+            "auxiliary analytical results must enter through retained source-linked records"
+        )
+    if (
+        experiment.technique == "galvanostatic_electrolysis"
+        and field_name in _ELECTROLYSIS_ASSERTION_FIELDS
+    ):
+        raise ValueError("electrolysis profile semantics require a new profile and observation")
     by_id = {assertion.assertion_id: assertion for assertion in experiment.assertions}
     if supplements_assertion_id is not None:
         supplemented = by_id.get(supplements_assertion_id)
@@ -320,7 +332,46 @@ class ValidationRun(_Model):
     release_decision: ReleaseDecision
 
 
-_REQUIRED_FIELDS = ("source_artifact", "observation", "potential_axis", "current_axis")
+_REQUIRED_FIELDS = {
+    "cyclic_voltammetry": (
+        "source_artifact",
+        "observation",
+        "potential_axis",
+        "current_axis",
+    ),
+    "galvanostatic_electrolysis": (
+        "source_artifact",
+        "observation",
+        "time_axis",
+        "potential_axis",
+        "current_axis",
+        "current_quantity_kind",
+    ),
+}
+_ELECTROLYSIS_ASSERTION_FIELDS = {
+    "source_artifact",
+    "observation",
+    "time_axis",
+    "potential_axis",
+    "current_axis",
+    "current_quantity_kind",
+    "current_sign_convention",
+    "current_basis",
+    "electrode_area",
+    "cell_geometry",
+    "reference_scale",
+    "potential_treatment",
+    "sampling_interval",
+    "interruptions",
+    "chemical_analysis",
+    "scan_rate",
+    "cycle_information",
+}
+_ELECTROLYSIS_AREA_BASES = {
+    "geometric_area",
+    "electrochemically_active_area",
+    "contact_or_wetted_area",
+}
 _ORIGIN_PRIORITY = {"source_file": 0, "inferred": 1, "user_supplied": 2}
 
 
@@ -379,10 +430,12 @@ def _finding(
 
 
 def validate_experiment(experiment: Experiment, *, validation_version: str) -> ValidationRun:
-    """Apply the bounded CV Passport completeness rules without judging scientific quality."""
+    """Apply technique-aware evidence-completeness rules without judging scientific quality."""
     resolved = _resolved_by_field(experiment)
     findings: list[ValidationFinding] = []
-    for field_name in _REQUIRED_FIELDS:
+    technique_handled_fields: set[str] = set()
+    required_fields = _REQUIRED_FIELDS[experiment.technique]
+    for field_name in required_fields:
         assertion = resolved.get(field_name)
         if assertion is None or assertion.value.state != "known":
             assertions = () if assertion is None else (assertion,)
@@ -400,8 +453,79 @@ def validate_experiment(experiment: Experiment, *, validation_version: str) -> V
                     ),
                 )
             )
-    for field_name in sorted(set(resolved) - set(_REQUIRED_FIELDS)):
+    if experiment.technique == "galvanostatic_electrolysis":
+        current_kind = resolved.get("current_quantity_kind")
+        current_basis = resolved.get("current_basis")
+        electrode_area = resolved.get("electrode_area")
+        density_context_is_valid = (
+            current_basis is not None
+            and current_basis.value.state == "known"
+            and current_basis.value.value in _ELECTROLYSIS_AREA_BASES
+            and electrode_area is not None
+            and electrode_area.value.state == "known"
+        )
+        total_current_context_is_valid = (
+            current_basis is not None
+            and current_basis.value.state == "known"
+            and current_basis.value.value == "total_current"
+            and electrode_area is not None
+            and electrode_area.value.state == "not_applicable"
+        )
+        expected_context_is_valid = current_kind is not None and (
+            (current_kind.value.value == "current_density" and density_context_is_valid)
+            or (current_kind.value.value == "current" and total_current_context_is_valid)
+        )
+        if not expected_context_is_valid:
+            context_assertions = tuple(
+                item for item in (current_kind, current_basis, electrode_area) if item is not None
+            )
+            findings.append(
+                _finding(
+                    validation_version=validation_version,
+                    experiment=experiment,
+                    field_name="current_basis",
+                    requirement_class="conditional",
+                    severity="blocking",
+                    assertions=context_assertions,
+                    message=(
+                        "Current quantity kind, total-current or area basis, and electrode "
+                        "area are not dimensionally compatible."
+                    ),
+                    resolution=(
+                        "Use total_current with a total-current series and not_applicable area, "
+                        "or use a supported area basis and known area for current density."
+                    ),
+                )
+            )
+            technique_handled_fields.add("current_basis")
+    for field_name in sorted(set(resolved) - set(required_fields) - technique_handled_fields):
         assertion = resolved[field_name]
+        is_auxiliary_result = field_name.startswith("auxiliary_result.")
+        if (
+            experiment.technique == "galvanostatic_electrolysis"
+            and field_name not in _ELECTROLYSIS_ASSERTION_FIELDS
+            and not is_auxiliary_result
+            and assertion.value.state == "known"
+        ):
+            findings.append(
+                _finding(
+                    validation_version=validation_version,
+                    experiment=experiment,
+                    field_name=field_name,
+                    requirement_class="conditional",
+                    severity="blocking",
+                    assertions=(assertion,),
+                    message=(
+                        f"{field_name} has no approved galvanostatic-electrolysis derivation "
+                        "contract in this release."
+                    ),
+                    resolution=(
+                        "Provide a reviewed equation, every technique-specific input and unit, "
+                        "an analysis version, and complete source lineage in a future contract."
+                    ),
+                )
+            )
+            continue
         if assertion.value.state in {"known", "not_applicable"}:
             continue
         severity: FindingSeverity = (
@@ -471,6 +595,7 @@ __all__ = [
     "MetadataAssertion",
     "ReleaseDecision",
     "RequirementClass",
+    "Technique",
     "ValidationFinding",
     "ValidationRun",
     "add_user_assertion",

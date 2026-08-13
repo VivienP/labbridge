@@ -1,0 +1,607 @@
+{
+  "active_assertion_ids": [
+    "assertion:8c88d9cfdef3f776eaee47c7c7f85f5e",
+    "assertion:853147eb61fff54d6071a0dedde574fa",
+    "assertion:59a9ca794a3bd564e8fca2949651567c",
+    "assertion:3d61f1b8856bccfb7c71891e55fe1088",
+    "assertion:c4828d75a1e8aace26900627349f4621",
+    "assertion:6dd6840247c4d1132b0580a126c49f02",
+    "assertion:c6cbaa50dd870653294a994f0d11378a",
+    "assertion:87c4b0fd153f24418b999f1578f3cd06",
+    "assertion:22e758c2ff9a799770a768c4bf2e178f",
+    "assertion:60913f24c196035e2064b48ca268fb91",
+    "assertion:4af485baf6b3d1b3c70614df7e0e94ba",
+    "assertion:1533c00a356fb32c17c15ff11d7258a0",
+    "assertion:ab255a7d68159afe192526939c0c520f",
+    "assertion:42a5894a6dffd95a93bcfae391738821",
+    "assertion:b1711151cb5d73cff91b1d571861277d",
+    "assertion:5bfd8ff2c49b4400f5b04a30fde28ac0",
+    "assertion:aec9fcaff735e52a2cb2fd7a54c7a82c"
+  ],
+  "assertions": [
+    {
+      "assertion_id": "assertion:8c88d9cfdef3f776eaee47c7c7f85f5e",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f"
+      ],
+      "evidence_note": "Exact primary electrolysis source bytes are retained.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "source_artifact",
+      "inference": null,
+      "origin": "source_file",
+      "requirement_class": "required",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "known",
+        "unit": null,
+        "value": "source:c0f58f1620c4f47e242543199641b10f"
+      }
+    },
+    {
+      "assertion_id": "assertion:853147eb61fff54d6071a0dedde574fa",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrical transformation graph closes to the primary source.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "observation",
+      "inference": null,
+      "origin": "source_file",
+      "requirement_class": "required",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "derived",
+      "value": {
+        "state": "known",
+        "unit": null,
+        "value": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e"
+      }
+    },
+    {
+      "assertion_id": "assertion:59a9ca794a3bd564e8fca2949651567c",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "evidence_note": "The explicit electrolysis profile assigns this axis and unit.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "potential_axis",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "required",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "parsed",
+      "value": {
+        "state": "known",
+        "unit": "V",
+        "value": "working_potential_V"
+      }
+    },
+    {
+      "assertion_id": "assertion:3d61f1b8856bccfb7c71891e55fe1088",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40"
+      ],
+      "evidence_note": "The explicit electrolysis profile assigns this axis and unit.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "current_axis",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "required",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "unit_converted",
+      "value": {
+        "state": "known",
+        "unit": "A",
+        "value": "applied_current_mA"
+      }
+    },
+    {
+      "assertion_id": "assertion:c4828d75a1e8aace26900627349f4621",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40"
+      ],
+      "evidence_note": "The explicit profile declares current or current density.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "current_quantity_kind",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "required",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "known",
+        "unit": null,
+        "value": "current"
+      }
+    },
+    {
+      "assertion_id": "assertion:6dd6840247c4d1132b0580a126c49f02",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:6ae518fc293641ea33d14d5e00023aec"
+      ],
+      "evidence_note": "The explicit electrolysis profile assigns this axis and unit.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "time_axis",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "required",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "parsed",
+      "value": {
+        "state": "known",
+        "unit": "s",
+        "value": "elapsed_s"
+      }
+    },
+    {
+      "assertion_id": "assertion:c6cbaa50dd870653294a994f0d11378a",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "current_sign_convention",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "conditional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "unknown",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:87c4b0fd153f24418b999f1578f3cd06",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "current_basis",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "conditional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "known",
+        "unit": null,
+        "value": "total_current"
+      }
+    },
+    {
+      "assertion_id": "assertion:22e758c2ff9a799770a768c4bf2e178f",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "electrode_area",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "conditional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "not_applicable",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:60913f24c196035e2064b48ca268fb91",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "cell_geometry",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "recommended",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "unknown",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:4af485baf6b3d1b3c70614df7e0e94ba",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "reference_scale",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "conditional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "unknown",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:1533c00a356fb32c17c15ff11d7258a0",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "potential_treatment",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "conditional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "unknown",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:ab255a7d68159afe192526939c0c520f",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "sampling_interval",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "recommended",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "known",
+        "unit": "s",
+        "value": "60"
+      }
+    },
+    {
+      "assertion_id": "assertion:42a5894a6dffd95a93bcfae391738821",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "interruptions",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "recommended",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "known",
+        "unit": null,
+        "value": "none_declared"
+      }
+    },
+    {
+      "assertion_id": "assertion:b1711151cb5d73cff91b1d571861277d",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "The electrolysis profile declares this metadata state without inferring experimental context from column names.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "chemical_analysis",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "optional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "unavailable",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:5bfd8ff2c49b4400f5b04a30fde28ac0",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "This cyclic-voltammetry field does not apply to electrolysis.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "scan_rate",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "optional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "not_applicable",
+        "unit": null,
+        "value": null
+      }
+    },
+    {
+      "assertion_id": "assertion:aec9fcaff735e52a2cb2fd7a54c7a82c",
+      "evidence_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:1c15c7f327d8b885a20330e2010e8a15"
+      ],
+      "evidence_note": "This cyclic-voltammetry field does not apply to electrolysis.",
+      "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+      "field_name": "cycle_information",
+      "inference": null,
+      "origin": "user_supplied",
+      "requirement_class": "optional",
+      "schema_version": "1",
+      "supersedes_assertion_id": null,
+      "supplements_assertion_id": null,
+      "transformation": "none",
+      "value": {
+        "state": "not_applicable",
+        "unit": null,
+        "value": null
+      }
+    }
+  ],
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_galvanostatic_fixture",
+  "execution_mode": "replay",
+  "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+  "experiment_version": 1,
+  "findings": [
+    {
+      "assertion_ids": [
+        "assertion:60913f24c196035e2064b48ca268fb91"
+      ],
+      "code": "metadata.cell_geometry.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "cell_geometry",
+      "finding_id": "validation-finding:7e3c34a744bef5e26ec75eb610f25291",
+      "message": "cell_geometry remains unknown; the Passport does not infer it.",
+      "requirement_class": "recommended",
+      "resolution": "Append a user-supplied cell_geometry assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:c6cbaa50dd870653294a994f0d11378a"
+      ],
+      "code": "metadata.current_sign_convention.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "current_sign_convention",
+      "finding_id": "validation-finding:5acd36b0287540527a6e39794910f0c2",
+      "message": "current_sign_convention remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied current_sign_convention assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:1533c00a356fb32c17c15ff11d7258a0"
+      ],
+      "code": "metadata.potential_treatment.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "potential_treatment",
+      "finding_id": "validation-finding:b5e15761b4cfdc1deefb6263719b8558",
+      "message": "potential_treatment remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied potential_treatment assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:4af485baf6b3d1b3c70614df7e0e94ba"
+      ],
+      "code": "metadata.reference_scale.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "reference_scale",
+      "finding_id": "validation-finding:5ae9a6d3bd6d3c4ddf1d4b281bf9a194",
+      "message": "reference_scale remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied reference_scale assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:b1711151cb5d73cff91b1d571861277d"
+      ],
+      "code": "metadata.chemical_analysis.warning",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "chemical_analysis",
+      "finding_id": "validation-finding:d4182f96e49f2c4800440edfe1ac3ca4",
+      "message": "chemical_analysis remains unavailable; the Passport does not infer it.",
+      "requirement_class": "optional",
+      "resolution": "Append a user-supplied chemical_analysis assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "warning"
+    }
+  ],
+  "import_profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+  "observation_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e",
+  "passport_id": "passport:887d95b0e3849b62b4cd778d3d3460dc",
+  "release_decision": {
+    "blocking_count": 0,
+    "finding_ids": [
+      "validation-finding:7e3c34a744bef5e26ec75eb610f25291",
+      "validation-finding:5acd36b0287540527a6e39794910f0c2",
+      "validation-finding:b5e15761b4cfdc1deefb6263719b8558",
+      "validation-finding:5ae9a6d3bd6d3c4ddf1d4b281bf9a194",
+      "validation-finding:d4182f96e49f2c4800440edfe1ac3ca4"
+    ],
+    "status": "eligible",
+    "unknown_count": 4,
+    "warning_count": 1
+  },
+  "release_status": "released",
+  "released_at": "2026-08-13T12:00:00Z",
+  "schema_version": "1",
+  "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f",
+  "supersedes_passport_id": null,
+  "technique": "galvanostatic_electrolysis",
+  "transformation_ids": [
+    "transform:23ad340c615a93d7405dd09a8a503ac6",
+    "transform:80870c93a9c044c5b52c10ab3f82d17f",
+    "transform:7a3225c64fa93d7a8fbd951277c65d40",
+    "transform:6ae518fc293641ea33d14d5e00023aec",
+    "transform:1c15c7f327d8b885a20330e2010e8a15"
+  ],
+  "validation_id": "validation:1b68b0c7629ce937974e225526896925",
+  "validation_version": "2"
+}

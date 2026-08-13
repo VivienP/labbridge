@@ -7,11 +7,45 @@ import io
 import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Literal, Protocol
 
 from labbridge.domain.cv import ColumnRole, CSVFormat, CVImportProfile
 
 PARSER_VERSION = "1"
+
+
+class MappedColumn(Protocol):
+    @property
+    def source_column(self) -> str: ...
+
+    @property
+    def role(self) -> ColumnRole: ...
+
+    @property
+    def source_unit(self) -> str | None: ...
+
+    @property
+    def target_unit(self) -> str | None: ...
+
+
+class MappedCSVProfile(Protocol):
+    @property
+    def encoding(self) -> Literal["utf-8", "utf-8-sig"]: ...
+
+    @property
+    def delimiter(self) -> str: ...
+
+    @property
+    def decimal_convention(self) -> Literal["point", "comma"]: ...
+
+    @property
+    def header_row(self) -> int: ...
+
+    @property
+    def missing_value_tokens(self) -> tuple[str, ...]: ...
+
+    @property
+    def columns(self) -> tuple[MappedColumn, ...]: ...
 
 
 class CsvParseError(ValueError):
@@ -95,7 +129,7 @@ def _factor(source_unit: str, target_unit: str) -> Decimal:
         raise UnsupportedUnitMappingError(source_unit, target_unit) from error
 
 
-def _decimal(cell: str, profile: CVImportProfile, *, row: int, column: str) -> Decimal:
+def _decimal(cell: str, profile: MappedCSVProfile, *, row: int, column: str) -> Decimal:
     if cell in profile.missing_value_tokens:
         raise CsvParseError(
             "missing_scientific_value",
@@ -144,7 +178,7 @@ def parse_mapped_cv_table(
     *,
     headers: tuple[str, ...],
     rows: tuple[tuple[int, tuple[str, ...]], ...],
-    profile: CVImportProfile,
+    profile: MappedCSVProfile,
     parser_version: str,
 ) -> ParsedCV:
     """Apply one explicit CV profile to already delimited rows."""
@@ -220,6 +254,11 @@ def parse_mapped_cv_table(
 
 def parse_cv_csv(data: bytes, profile: CVImportProfile) -> ParsedCV:
     """Parse exact bytes without guessing dialect, headers, roles, units, or missing values."""
+    return parse_mapped_csv(data, profile)
+
+
+def parse_mapped_csv(data: bytes, profile: MappedCSVProfile) -> ParsedCV:
+    """Parse exact CSV bytes with a complete technique profile and no dialect inference."""
     try:
         text = data.decode(profile.encoding, errors="strict")
     except UnicodeDecodeError as error:
@@ -299,5 +338,6 @@ __all__ = [
     "decimal_syntax_matches",
     "inspect_csv",
     "parse_cv_csv",
+    "parse_mapped_csv",
     "parse_mapped_cv_table",
 ]

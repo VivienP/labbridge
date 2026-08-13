@@ -21,10 +21,14 @@ artifacts/experiment-passport/** -text
 artifacts/cv-passport-demo/** -text -eol
 artifacts/gamry-dta-cv/** -text
 artifacts/echemdb-cv-exchange/** -text
+artifacts/galvanostatic-electrolysis/** -text
 fixtures/source/synthetic-replay-cv-opaque.csv -text
 fixtures/source/synthetic-gamry-cv.dta -text
+fixtures/source/synthetic-galvanostatic-electrolysis.csv -text
+fixtures/source/synthetic-galvanostatic-electrolysis.provenance.json -text
 frontend/public/demo-fixtures/synthetic-cv-passport-demo.csv -text
 src/labbridge/evidence/schemas/** -text whitespace=-trailing-space
+contracts/openapi-v1.json -text
 
 # Binary payloads: never transformed, never diffed as text.
 *.parquet binary

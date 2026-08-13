@@ -264,6 +264,7 @@ or operational experiment proves it), or `deferred`.
 | Opaque source intake, exact-byte retrieval, and integrity verification | `demonstrated` |
 | Explicit generic CV CSV ingestion and closed normalisation lineage | `demonstrated` |
 | Bounded Gamry DTA Framework 7.07 CV ingestion and retained parser diagnostics | `implemented` |
+| Galvanostatic electrolysis electrical time series and Package schema `3` | `implemented` |
 | Append-only Experiment assertions and deterministic release validation | `implemented` |
 | JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
 | Single-user interactive CV Passport demo | `implemented` |
@@ -285,6 +286,10 @@ single-user CV Passport candidate is under
 domain classification and unfamiliar-viewer acceptance records described above. The
 Phase 4 candidate under [`artifacts/gamry-dta-cv`](artifacts/gamry-dta-cv) follows the same boundary:
 its code, tests, and candidate Package justify `implemented`, not `demonstrated`, in this worktree.
+The galvanostatic electrolysis candidate under
+[`artifacts/galvanostatic-electrolysis`](artifacts/galvanostatic-electrolysis) packages explicit time,
+current, and potential series while reporting chemical analysis as unavailable. It makes no
+conversion, selectivity, yield, product-assignment, or Faradaic-efficiency claim.
 
 ## Limitations
 
@@ -315,6 +320,10 @@ its code, tests, and candidate Package justify `implemented`, not `demonstrated`
 - Experiment Passport validation reports declared evidence completeness. A released Package may
   retain warnings and unknowns; release does not assert scientific validity, data quality, or
   reproducibility.
+- Galvanostatic electrolysis support covers generic CSV electrical time series. It excludes
+  instrument control, chromatography ingestion, automatic product assignment, and derived
+  efficiency or yield calculations. Auxiliary analytical declarations require exact electrical and
+  analytical source links, sample and collection-point identifiers, and declared method versions.
 - No number in this repository comes from a released measurement run. The reliability targets in
   [`docs/FAILURE_MATRIX.md`](docs/FAILURE_MATRIX.md) are acceptance targets, not results.
 

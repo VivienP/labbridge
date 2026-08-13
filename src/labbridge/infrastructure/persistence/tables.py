@@ -542,6 +542,18 @@ source_artifacts = Table(
     ),
 )
 
+normalised_observations = Table(
+    "normalised_observations",
+    metadata,
+    Column("observation_id", _ID, primary_key=True),
+    Column("technique", String(64), nullable=False),
+    *_timestamps("created_at"),
+    CheckConstraint(
+        "technique IN ('cyclic_voltammetry','galvanostatic_electrolysis')",
+        name="known_normalised_observation_technique",
+    ),
+)
+
 import_profiles = Table(
     "import_profiles",
     metadata,
@@ -557,7 +569,12 @@ import_profiles = Table(
 normalised_cv_observations = Table(
     "normalised_cv_observations",
     metadata,
-    Column("observation_id", _ID, primary_key=True),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_observations.observation_id", ondelete="RESTRICT"),
+        primary_key=True,
+    ),
     Column(
         "source_artifact_id",
         _ID,
@@ -658,6 +675,117 @@ cv_structural_findings = Table(
     Column("finding", JSONB, nullable=False),
 )
 
+electrolysis_import_profiles = Table(
+    "electrolysis_import_profiles",
+    metadata,
+    Column("profile_id", _ID, primary_key=True),
+    Column("schema_version", String(16), nullable=False),
+    Column("technique", String(64), nullable=False),
+    Column("body", JSONB, nullable=False),
+    *_timestamps("created_at"),
+    CheckConstraint("schema_version = '1'", name="known_electrolysis_profile_schema"),
+    CheckConstraint(
+        "technique = 'galvanostatic_electrolysis'",
+        name="known_electrolysis_profile_technique",
+    ),
+)
+
+normalised_electrolysis_observations = Table(
+    "normalised_electrolysis_observations",
+    metadata,
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_observations.observation_id", ondelete="RESTRICT"),
+        primary_key=True,
+    ),
+    Column(
+        "source_artifact_id",
+        _ID,
+        ForeignKey("source_artifacts.source_artifact_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "profile_id",
+        _ID,
+        ForeignKey("electrolysis_import_profiles.profile_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("schema_version", String(16), nullable=False),
+    Column("parser_version", String(64), nullable=False),
+    Column("normalisation_version", String(64), nullable=False),
+    Column("data_origin", String(16), nullable=False),
+    Column("execution_mode", String(16), nullable=False),
+    Column("environment_id", String(128), nullable=False),
+    Column("row_count", BigInteger, nullable=False),
+    Column(
+        "object_uri",
+        Text,
+        ForeignKey("storage_objects.object_uri", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("byte_size", BigInteger, nullable=False),
+    Column("sha256", _HASH, nullable=False),
+    *_timestamps("created_at"),
+    CheckConstraint("schema_version = '1'", name="known_electrolysis_observation_schema"),
+    CheckConstraint("row_count >= 1", name="electrolysis_observation_has_rows"),
+    CheckConstraint("byte_size >= 0", name="electrolysis_observation_byte_size_non_negative"),
+    CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="electrolysis_observation_admissible_origin_mode"),
+)
+
+electrolysis_transformation_records = Table(
+    "electrolysis_transformation_records",
+    metadata,
+    Column("transformation_id", _ID, primary_key=True),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_electrolysis_observations.observation_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("record", JSONB, nullable=False),
+    UniqueConstraint(
+        "observation_id", "ordinal", name="uq_electrolysis_transform_observation_ordinal"
+    ),
+    CheckConstraint("ordinal >= 1", name="electrolysis_transform_ordinal_starts_at_one"),
+)
+
+electrolysis_structural_findings = Table(
+    "electrolysis_structural_findings",
+    metadata,
+    Column("finding_id", _ID, primary_key=True),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_electrolysis_observations.observation_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("finding", JSONB, nullable=False),
+)
+
+electrolysis_auxiliary_results = Table(
+    "electrolysis_auxiliary_results",
+    metadata,
+    Column("result_id", _ID, primary_key=True),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_electrolysis_observations.observation_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "source_artifact_id",
+        _ID,
+        ForeignKey("source_artifacts.source_artifact_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("method_name", String(128), nullable=False),
+    Column("method_version", String(64), nullable=False),
+    Column("body", JSONB, nullable=False),
+    *_timestamps("created_at"),
+)
+
 experiments = Table(
     "experiments",
     metadata,
@@ -665,7 +793,7 @@ experiments = Table(
     Column(
         "observation_id",
         _ID,
-        ForeignKey("normalised_cv_observations.observation_id", ondelete="RESTRICT"),
+        ForeignKey("normalised_observations.observation_id", ondelete="RESTRICT"),
         nullable=False,
         unique=True,
     ),
@@ -678,7 +806,10 @@ experiments = Table(
     *_timestamps("created_at", "updated_at"),
     CheckConstraint("schema_version = '1'", name="known_experiment_schema"),
     CheckConstraint("current_version >= 1", name="experiment_version_starts_at_one"),
-    CheckConstraint("technique = 'cyclic_voltammetry'", name="known_experiment_technique"),
+    CheckConstraint(
+        "technique IN ('cyclic_voltammetry','galvanostatic_electrolysis')",
+        name="known_experiment_technique",
+    ),
     CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="experiment_admissible_origin_mode"),
 )
 
@@ -904,7 +1035,7 @@ experiment_packages = Table(
         name="fk_experiment_packages_supersedes_package",
         ondelete="RESTRICT",
     ),
-    CheckConstraint("schema_version IN ('1','2')", name="known_experiment_package_schema"),
+    CheckConstraint("schema_version IN ('1','2','3')", name="known_experiment_package_schema"),
     CheckConstraint("archive_byte_size >= 1", name="experiment_package_not_empty"),
     UniqueConstraint("experiment_id", "experiment_version", name="uq_package_experiment_version"),
 )
@@ -987,6 +1118,10 @@ __all__ = [
     "cv_structural_findings",
     "cv_transformation_records",
     "derived_metrics",
+    "electrolysis_auxiliary_results",
+    "electrolysis_import_profiles",
+    "electrolysis_structural_findings",
+    "electrolysis_transformation_records",
     "events",
     "experiment_packages",
     "experiment_passports",
@@ -998,6 +1133,8 @@ __all__ = [
     "metadata",
     "metadata_assertions",
     "normalised_cv_observations",
+    "normalised_electrolysis_observations",
+    "normalised_observations",
     "observations",
     "record_relations",
     "source_artifacts",
