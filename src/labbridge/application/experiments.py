@@ -191,6 +191,11 @@ def _axis_assertion(
     series: NormalisedSeries,
 ) -> MetadataAssertion:
     field_name = "potential_axis" if series.role == "potential" else "current_axis"
+    parser_evidence = (
+        ()
+        if result.observation.parser_record_id is None
+        else (result.observation.parser_record_id,)
+    )
     return make_assertion(
         experiment_id=experiment_id,
         field_name=field_name,
@@ -205,6 +210,7 @@ def _axis_assertion(
         evidence_ids=(
             result.observation.source_artifact_id,
             result.observation.import_profile_id,
+            *parser_evidence,
             series.transformation_id,
         ),
         evidence_note=(
@@ -216,6 +222,9 @@ def _axis_assertion(
 def _initial_assertions(result: NormalisationResult) -> tuple[MetadataAssertion, ...]:
     observation = result.observation
     experiment_id = experiment_id_for_observation(observation.observation_id)
+    parser_evidence = (
+        () if observation.parser_record_id is None else (observation.parser_record_id,)
+    )
     assertions: list[MetadataAssertion] = [
         make_assertion(
             experiment_id=experiment_id,
@@ -234,10 +243,34 @@ def _initial_assertions(result: NormalisationResult) -> tuple[MetadataAssertion,
             origin="source_file",
             transformation="derived",
             value=AssertionValue(state="known", value=observation.observation_id),
-            evidence_ids=(observation.source_artifact_id, *observation.transformation_ids),
+            evidence_ids=(
+                observation.source_artifact_id,
+                *parser_evidence,
+                *observation.transformation_ids,
+            ),
             evidence_note="The Phase 2 transformation graph closes this observation to the source.",
         ),
     ]
+    if result.parser_record is not None:
+        assertions.append(
+            make_assertion(
+                experiment_id=experiment_id,
+                field_name="parser_record",
+                requirement_class="required",
+                origin="source_file",
+                transformation="parsed",
+                value=AssertionValue(state="known", value=result.parser_record.parser_record_id),
+                evidence_ids=(
+                    observation.source_artifact_id,
+                    result.parser_record.parser_record_id,
+                    observation.transformation_ids[0],
+                ),
+                evidence_note=(
+                    "The accepted parser record identifies the supported DTA variant and exact "
+                    "source field locations."
+                ),
+            )
+        )
     assertions.extend(
         _axis_assertion(experiment_id, result, series)
         for series in observation.series
@@ -260,6 +293,7 @@ def _initial_assertions(result: NormalisationResult) -> tuple[MetadataAssertion,
                 evidence_ids=(
                     observation.source_artifact_id,
                     observation.import_profile_id,
+                    *parser_evidence,
                     *observation.transformation_ids,
                 ),
                 evidence_note=(
@@ -463,6 +497,10 @@ class ExperimentService:
         profile = self._normalisations.get_profile(experiment.import_profile_id).profile
         source = self._sources.retrieve(experiment.source_artifact_id)
         previous = self._repository.latest_package(experiment_id)
+        producing_versions = dict(self._producing_versions)
+        if normalisation.parser_record is not None:
+            producing_versions["experiment_package"] = "2"
+            producing_versions["gamry_dta_parser"] = normalisation.parser_record.parser_version
         built = build_experiment_package(
             PackageInputs(
                 source_filename=source.artifact.filename,
@@ -474,9 +512,14 @@ class ExperimentService:
                 },
                 normalised_observation=normalisation.observation.model_dump(mode="json"),
                 transformation_graph=normalisation.graph.model_dump(mode="json"),
+                parser_record=(
+                    None
+                    if normalisation.parser_record is None
+                    else normalisation.parser_record.model_dump(mode="json")
+                ),
                 passport=passport,
             ),
-            producing_versions=self._producing_versions,
+            producing_versions=producing_versions,
             supersedes_package_id=(previous.package_id if previous is not None else None),
         )
         result, replayed = self._repository.store_package(

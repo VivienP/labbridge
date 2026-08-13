@@ -1,0 +1,110 @@
+{
+  "artifact_kind": "gamry_dta_cv_ingestion",
+  "capability_status": "implemented",
+  "data_origin": "synthetic",
+  "description": "Bounded Gamry DTA CV parsing with exact source-field locations, shared CV normalisation, Passport provenance, and an independently verified Package.",
+  "environment_id": "synthetic_gamry_cv_fixture",
+  "execution_mode": "replay",
+  "files": [
+    {
+      "byte_size": 12888,
+      "name": "experiment-package.zip",
+      "sha256": "506e0904ed1d853ca721273a288a528d2f78b9116cc912795ccb031f18a6301a"
+    },
+    {
+      "byte_size": 556,
+      "name": "fixture-provenance.json",
+      "sha256": "1e7ceb09888c70a58952b6e7de593763e72f3c4dd90db103bfda15cf2d3a696e"
+    },
+    {
+      "byte_size": 2460,
+      "name": "import-profile.json",
+      "sha256": "73da6679941def5cb837b185665a86801bc4da55c6977dd287560380b87e61bc"
+    },
+    {
+      "byte_size": 879,
+      "name": "LIMITATIONS.md",
+      "sha256": "122bf72ea59a0dfd7bf3815146f99cce221f44a141e4b96c206ed0569f24af90"
+    },
+    {
+      "byte_size": 4131,
+      "name": "normalised-observation.json",
+      "sha256": "cb29eb3814491669aa4c97f969f7bb3a30a70d4ceee686530a0fe54923ed8451"
+    },
+    {
+      "byte_size": 472,
+      "name": "package-verification.json",
+      "sha256": "2ccbf4cd1bd04c8b829400e7934e937b107e2645c98f2e9fb5a5b963564a22e9"
+    },
+    {
+      "byte_size": 2253,
+      "name": "parser-record.json",
+      "sha256": "97f9d97eda2bc127885d86348531d613565cc48f6dfcbb6b77ce1e58e97730cd"
+    },
+    {
+      "byte_size": 6314,
+      "name": "passport.html",
+      "sha256": "bd287669e09097a3fb5cd40ffd4ab5426c24e838b01273cdddd778e0534e22f9"
+    },
+    {
+      "byte_size": 25355,
+      "name": "passport.json",
+      "sha256": "61cd28c682ebe085a2b5f94451124664f30f204dd9e11df4410a5f1f1a776bda"
+    },
+    {
+      "byte_size": 191,
+      "name": "REPRODUCE.txt",
+      "sha256": "f374bcfad922e87e801b77eeec2372e9a9755baa07ca6117e29c685278ba2169"
+    },
+    {
+      "byte_size": 597,
+      "name": "source-artifact.json",
+      "sha256": "7fa7c08447eaa5838fa2a77bcaa30e975d9e7ccd03b9c388e264ec9f748180eb"
+    },
+    {
+      "byte_size": 1082,
+      "name": "structural-findings.json",
+      "sha256": "7ef97c221c4336f89a50aafedd0f44617257faeddcf7a4925939dac1da94e8ac"
+    },
+    {
+      "byte_size": 1526,
+      "name": "SUPPORT.md",
+      "sha256": "5f0524775a1de15be3642ed154a1e62f1cd993546d470ab41428ce94b536d6cc"
+    },
+    {
+      "byte_size": 537,
+      "name": "synthetic-gamry-cv.dta",
+      "sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b"
+    },
+    {
+      "byte_size": 4869,
+      "name": "transformation-graph.json",
+      "sha256": "e9565d5e9bb271d7fc62e1389000a2353a2cae8ae8a83bfd6ac8e34655afb23d"
+    },
+    {
+      "byte_size": 9833,
+      "name": "validation.json",
+      "sha256": "d3beda45916dbc5f15c45969d97fd35c41b0c4ac6c18f074e955921117a92c10"
+    },
+    {
+      "byte_size": 674,
+      "name": "verification.json",
+      "sha256": "3d789d63c58370ab29ed191ad52c2b83372b94990d52a6028f8df3d552b0c9c9"
+    }
+  ],
+  "files_digest": "6934c29d745951e60f93ef1a73cb6b195067c4aadd15223a7fa0c5f7929b5906",
+  "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+  "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "package_id": "experiment-package:16b5b290eaacdd068f4b82ffa061d426",
+  "parser_record_id": "parser-record:f3d7d5fad276f78be792e6032b46c429",
+  "passport_id": "passport:33f9f4da6efc4ee2c028cbc4ae18c4fe",
+  "producing_versions": {
+    "experiment_package": "2",
+    "gamry_dta_parser": "gamry-dta/1",
+    "labbridge": "0.1.0"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+  "source_filename": "synthetic-gamry-cv.dta",
+  "source_sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b"
+}

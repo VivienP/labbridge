@@ -8,18 +8,21 @@ from datetime import UTC, datetime
 from typing import Never
 
 import pytest
-from sqlalchemy import Engine, delete, func, select
+from sqlalchemy import Engine, delete, func, select, update
 
 from labbridge.application.cv_ingestion import (
     CVIngestionService,
     NormalisedObservationIntegrityError,
+    ParserRecordIntegrityError,
 )
 from labbridge.application.source_intake import IntakeSource, SourceArtifactService
 from labbridge.domain.cv import ColumnMapping, CVImportProfile, CVMetadata
+from labbridge.infrastructure.gamry_dta import GamryDtaParseError
 from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.cv import PostgresCVRecordRepository
 from labbridge.infrastructure.persistence.source_artifacts import PostgresSourceArtifactRepository
 from labbridge.infrastructure.persistence.tables import (
+    cv_parser_records,
     cv_structural_findings,
     cv_transformation_records,
     idempotency_keys,
@@ -87,6 +90,199 @@ def _profile() -> CVImportProfile:
         ),
         metadata=CVMetadata.unknown(),
     )
+
+
+def _dta_profile() -> CVImportProfile:
+    return CVImportProfile(
+        schema_version="1",
+        technique="cyclic_voltammetry",
+        environment_id="synthetic_gamry_cv_fixture",
+        encoding="utf-8",
+        delimiter="\t",
+        decimal_convention="point",
+        header_row=7,
+        missing_value_tokens=("",),
+        columns=(
+            ColumnMapping(source_column="Pt", role="ignored"),
+            ColumnMapping(source_column="T", role="time", source_unit="s", target_unit="s"),
+            ColumnMapping(
+                source_column="Vf",
+                role="potential",
+                source_unit="V vs. Ref.",
+                target_unit="V",
+            ),
+            ColumnMapping(source_column="Im", role="current", source_unit="A", target_unit="A"),
+            ColumnMapping(source_column="Vu", role="ignored"),
+            ColumnMapping(source_column="Sig", role="ignored"),
+            ColumnMapping(source_column="Ach", role="ignored"),
+            ColumnMapping(source_column="IERange", role="ignored"),
+            ColumnMapping(source_column="Over", role="ignored"),
+            ColumnMapping(source_column="Cycle", role="cycle", source_unit="#", target_unit="1"),
+            ColumnMapping(source_column="Temp", role="ignored"),
+        ),
+        metadata=CVMetadata.unknown(),
+    )
+
+
+def _dta_payload(version: str) -> bytes:
+    return (
+        "EXPLAIN\r\n"
+        "TAG\tCV\r\n"
+        "TITLE\tLABEL\tSynthetic CV\tTest Identifier\r\n"
+        f"FRAMEWORKVERSION\tQUANT\t{version}\tFramework Version\r\n"
+        "NOTES\tNOTES\t0\tSynthetic fixture\r\n"
+        "CURVE\tTABLE\t2\r\n"
+        "\tPt\tT\tVf\tIm\tVu\tSig\tAch\tIERange\tOver\tCycle\tTemp\r\n"
+        "\t#\ts\tV vs. Ref.\tA\tV\tV\tV\t#\tbits\t#\tdeg C\r\n"
+        "\t0\t0.00\t-0.240\t0.012\t0\t-0.24\t0\t9\t..........\t0\t25.0\r\n"
+        "\t1\t0.10\t0.120\t-0.031\t0\t0.12\t0\t9\t..........\t1\t25.0\r\n"
+    ).encode()
+
+
+def test_accepted_and_rejected_dta_parser_records_are_durable(
+    migrated: Engine, object_store: S3ObjectStore
+) -> None:
+    marker = uuid.uuid4().hex
+    now = datetime(2026, 8, 12, tzinfo=UTC)
+    source_service = SourceArtifactService(
+        PostgresSourceArtifactRepository(migrated), object_store, clock=lambda: now
+    )
+    accepted_source = source_service.intake(
+        IntakeSource(
+            intake_id=f"phase4-accepted:{marker}",
+            data=_dta_payload("7.07"),
+            filename=f"synthetic-gamry-{marker}.dta",
+            media_type="application/vnd.gamry.dta",
+            data_origin="synthetic",
+            execution_mode="replay",
+        )
+    )
+    rejected_source = source_service.intake(
+        IntakeSource(
+            intake_id=f"phase4-rejected:{marker}",
+            data=_dta_payload("7.08"),
+            filename=f"unsupported-gamry-{marker}.dta",
+            media_type="application/vnd.gamry.dta",
+            data_origin="synthetic",
+            execution_mode="replay",
+        )
+    )
+    records = PostgresCVRecordRepository(migrated, object_store, clock=lambda: now)
+    service = CVIngestionService(source_service, records, producing_version="0.1.0")
+    stored_profile = service.create_profile(_dta_profile())
+
+    with pytest.raises(GamryDtaParseError) as caught:
+        service.normalise(
+            rejected_source.artifact.source_artifact_id,
+            stored_profile.profile_id,
+            source_format="gamry_dta",
+        )
+    rejected_record_id = caught.value.parser_record_id
+    assert service.get_parser_record(rejected_record_id).record == caught.value.record
+
+    accepted = service.normalise(
+        accepted_source.artifact.source_artifact_id,
+        stored_profile.profile_id,
+        source_format="gamry_dta",
+    )
+    accepted_record = accepted.result.parser_record
+    assert accepted_record is not None
+    assert records.get_normalisation(accepted.result.observation.observation_id) == accepted.result
+    with migrated.connect() as connection:
+        rows = connection.execute(
+            select(
+                cv_parser_records.c.parser_record_id,
+                cv_parser_records.c.status,
+                cv_parser_records.c.observation_id,
+            ).where(
+                cv_parser_records.c.parser_record_id.in_(
+                    (rejected_record_id, accepted_record.parser_record_id)
+                )
+            )
+        ).all()
+    assert sorted((row.status, row.observation_id) for row in rows) == [
+        ("accepted", accepted.result.observation.observation_id),
+        ("rejected", None),
+    ]
+
+    tampered_body = caught.value.record.model_dump(mode="json")
+    tampered_body["support_statement"] = "tampered parser evidence"
+    with migrated.begin() as connection:
+        connection.execute(
+            update(cv_parser_records)
+            .where(cv_parser_records.c.parser_record_id == rejected_record_id)
+            .values(body=tampered_body)
+        )
+    with pytest.raises(ParserRecordIntegrityError):
+        service.get_parser_record(rejected_record_id)
+    with migrated.connect() as connection:
+        retained_tampered_body = connection.execute(
+            select(cv_parser_records.c.body).where(
+                cv_parser_records.c.parser_record_id == rejected_record_id
+            )
+        ).scalar_one()
+    assert retained_tampered_body == tampered_body
+
+    with migrated.begin() as connection:
+        observation_id = accepted.result.observation.observation_id
+        object_uri = connection.execute(
+            select(normalised_cv_observations.c.object_uri).where(
+                normalised_cv_observations.c.observation_id == observation_id
+            )
+        ).scalar_one()
+        connection.execute(
+            delete(cv_parser_records).where(
+                cv_parser_records.c.parser_record_id.in_(
+                    (rejected_record_id, accepted_record.parser_record_id)
+                )
+            )
+        )
+        connection.execute(
+            delete(cv_transformation_records).where(
+                cv_transformation_records.c.observation_id == observation_id
+            )
+        )
+        connection.execute(
+            delete(cv_structural_findings).where(
+                cv_structural_findings.c.observation_id == observation_id
+            )
+        )
+        connection.execute(
+            delete(normalised_cv_observations).where(
+                normalised_cv_observations.c.observation_id == observation_id
+            )
+        )
+        connection.execute(
+            delete(import_profiles).where(import_profiles.c.profile_id == stored_profile.profile_id)
+        )
+        connection.execute(
+            delete(idempotency_keys).where(
+                idempotency_keys.c.idempotency_key.in_(
+                    (
+                        f"source.intake:phase4-accepted:{marker}",
+                        f"source.intake:phase4-rejected:{marker}",
+                    )
+                )
+            )
+        )
+        source_ids = (
+            accepted_source.artifact.source_artifact_id,
+            rejected_source.artifact.source_artifact_id,
+        )
+        connection.execute(
+            delete(source_artifacts).where(source_artifacts.c.source_artifact_id.in_(source_ids))
+        )
+        connection.execute(
+            delete(storage_objects).where(
+                storage_objects.c.object_uri.in_(
+                    (
+                        object_uri,
+                        accepted_source.artifact.object_uri,
+                        rejected_source.artifact.object_uri,
+                    )
+                )
+            )
+        )
 
 
 def test_profile_observation_transformations_and_findings_are_retained(

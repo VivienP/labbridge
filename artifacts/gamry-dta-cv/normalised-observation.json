@@ -1,0 +1,156 @@
+{
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_gamry_cv_fixture",
+  "execution_mode": "replay",
+  "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+  "metadata": {
+    "contact_area": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "current_basis": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "cycle_information": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "electrode_role": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "geometric_area": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "potential_treatment": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "reference_scale": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "scan_rate": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    }
+  },
+  "normalisation_version": "0.1.0",
+  "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "parser_record_id": "parser-record:f3d7d5fad276f78be792e6032b46c429",
+  "parser_version": "gamry-dta/1",
+  "provenance": {
+    "environment_id": "synthetic_gamry_cv_fixture",
+    "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+    "parser_record_id": "parser-record:f3d7d5fad276f78be792e6032b46c429",
+    "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+    "source_sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b",
+    "transformation_ids": [
+      "transform:089c1d220a2014513851ab7f18130890",
+      "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+      "transform:776356820096f924d09af7a6dcc6b25b",
+      "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+      "transform:0b2cab138e25c06951c8574e3d8b3f83",
+      "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+    ]
+  },
+  "row_count": 4,
+  "schema_version": "1",
+  "series": [
+    {
+      "dtype": "decimal",
+      "role": "potential",
+      "schema_version": "1",
+      "series_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "shape": [
+        4
+      ],
+      "source_column": "Vf",
+      "source_unit": "V vs. Ref.",
+      "transformation_id": "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+      "unit": "V",
+      "values": [
+        "-0.240000",
+        "0.00000",
+        "0.120000",
+        "-0.100000"
+      ]
+    },
+    {
+      "dtype": "decimal",
+      "role": "current",
+      "schema_version": "1",
+      "series_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "shape": [
+        4
+      ],
+      "source_column": "Im",
+      "source_unit": "A",
+      "transformation_id": "transform:776356820096f924d09af7a6dcc6b25b",
+      "unit": "A",
+      "values": [
+        "0.0120000",
+        "0.00500000",
+        "-0.0310000",
+        "0.00200000"
+      ]
+    },
+    {
+      "dtype": "decimal",
+      "role": "time",
+      "schema_version": "1",
+      "series_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "shape": [
+        4
+      ],
+      "source_column": "T",
+      "source_unit": "s",
+      "transformation_id": "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+      "unit": "s",
+      "values": [
+        "0.00",
+        "0.10",
+        "0.20",
+        "0.30"
+      ]
+    },
+    {
+      "dtype": "decimal",
+      "role": "cycle",
+      "schema_version": "1",
+      "series_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "shape": [
+        4
+      ],
+      "source_column": "Cycle",
+      "source_unit": "#",
+      "transformation_id": "transform:0b2cab138e25c06951c8574e3d8b3f83",
+      "unit": "1",
+      "values": [
+        "0",
+        "0",
+        "1",
+        "1"
+      ]
+    }
+  ],
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+  "transformation_ids": [
+    "transform:089c1d220a2014513851ab7f18130890",
+    "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+    "transform:776356820096f924d09af7a6dcc6b25b",
+    "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+    "transform:0b2cab138e25c06951c8574e3d8b3f83",
+    "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+  ]
+}

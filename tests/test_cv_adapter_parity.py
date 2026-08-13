@@ -6,7 +6,15 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from cv_helpers import FixedSourceReader, MemoryCVRecords, cv_profile, cv_source
+from cv_helpers import (
+    FixedGamrySourceReader,
+    FixedSourceReader,
+    MemoryCVRecords,
+    cv_profile,
+    cv_source,
+    gamry_dta_profile,
+    gamry_dta_source,
+)
 from labbridge import cli
 from labbridge.api.app import create_app
 from labbridge.application.cv_ingestion import CVIngestionService
@@ -16,6 +24,7 @@ OK = 200
 CREATED = 201
 BAD_REQUEST = 400
 CONFLICT = 409
+UNPROCESSABLE_CONTENT = 422
 
 
 def _service() -> CVIngestionService:
@@ -71,6 +80,97 @@ def test_api_and_cli_return_the_same_normalised_observation_and_plot(
     assert json.loads(cli_normalised.output)["result"] == api_normalised.json()["result"]
     assert json.loads(cli_plot.output) == api_plot.json()
     assert api_plot.json()["environment_id"] == cv_profile().environment_id
+
+
+def test_api_and_cli_return_the_same_dta_parser_record(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    service = CVIngestionService(
+        FixedGamrySourceReader(), MemoryCVRecords(), producing_version="0.1.0"
+    )
+    client = TestClient(create_app(cv_service=service))
+    profile_response = client.post(
+        "/cv/import-profiles",
+        json=gamry_dta_profile().model_dump(mode="json"),
+        headers={"Idempotency-Key": "gamry-profile-1"},
+    )
+    profile_id = profile_response.json()["profile_id"]
+    api_normalised = client.post(
+        "/cv/normalisations",
+        json={
+            "source_artifact_id": gamry_dta_source().artifact.source_artifact_id,
+            "profile_id": profile_id,
+            "source_format": "gamry_dta",
+        },
+        headers={"Idempotency-Key": "gamry-normalise-1"},
+    )
+    assert api_normalised.status_code == CREATED
+    parser_record_id = api_normalised.json()["result"]["parser_record"]["parser_record_id"]
+    api_record = client.get(f"/cv/parser-records/{parser_record_id}")
+    assert api_record.status_code == OK
+
+    monkeypatch.setattr(cli, "_build_cv_service", lambda: service)
+    cli_normalised = runner.invoke(
+        cli.app,
+        [
+            "cv",
+            "normalise",
+            gamry_dta_source().artifact.source_artifact_id,
+            "--profile-id",
+            profile_id,
+            "--source-format",
+            "gamry_dta",
+            "--json",
+        ],
+    )
+    cli_record = runner.invoke(cli.app, ["cv", "parser-record", parser_record_id, "--json"])
+
+    assert cli_normalised.exit_code == 0, cli_normalised.output
+    assert cli_record.exit_code == 0, cli_record.output
+    assert json.loads(cli_normalised.output)["result"] == api_normalised.json()["result"]
+    assert json.loads(cli_record.output) == api_record.json()
+
+
+def test_api_and_cli_expose_the_same_rejected_dta_parser_record_id(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    service = CVIngestionService(
+        FixedGamrySourceReader(), MemoryCVRecords(), producing_version="0.1.0"
+    )
+    client = TestClient(create_app(cv_service=service))
+    rejected_profile = gamry_dta_profile().model_copy(update={"decimal_convention": "comma"})
+    profile_response = client.post(
+        "/cv/import-profiles",
+        json=rejected_profile.model_dump(mode="json"),
+        headers={"Idempotency-Key": "rejected-gamry-profile-1"},
+    )
+    profile_id = profile_response.json()["profile_id"]
+    api_rejected = client.post(
+        "/cv/normalisations",
+        json={
+            "source_artifact_id": gamry_dta_source().artifact.source_artifact_id,
+            "profile_id": profile_id,
+            "source_format": "gamry_dta",
+        },
+        headers={"Idempotency-Key": "rejected-gamry-normalise-1"},
+    )
+    assert api_rejected.status_code == UNPROCESSABLE_CONTENT
+    parser_record_id = api_rejected.json()["detail"]["parser_record_id"]
+
+    monkeypatch.setattr(cli, "_build_cv_service", lambda: service)
+    cli_rejected = runner.invoke(
+        cli.app,
+        [
+            "cv",
+            "normalise",
+            gamry_dta_source().artifact.source_artifact_id,
+            "--profile-id",
+            profile_id,
+            "--source-format",
+            "gamry_dta",
+        ],
+    )
+
+    assert cli_rejected.exit_code == 1
+    assert parser_record_id in cli_rejected.output
 
 
 def test_source_inspection_reports_headers_without_assigning_roles(monkeypatch) -> None:  # type: ignore[no-untyped-def]

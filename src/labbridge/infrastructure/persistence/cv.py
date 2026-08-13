@@ -11,14 +11,17 @@ from sqlalchemy.dialects.postgresql import insert
 from labbridge.application.cv_ingestion import (
     CVIdempotencyConflictError,
     NormalisedObservationIntegrityError,
+    ParserRecordIntegrityError,
 )
 from labbridge.domain.canonical import canonical_bytes
 from labbridge.domain.cv import CVImportProfile, import_profile_id
 from labbridge.domain.cv_observations import NormalisationResult
+from labbridge.domain.parser_diagnostics import ParserRecord
 from labbridge.evidence.manifest import canonical_json, digest
 from labbridge.infrastructure.objectstore import ObjectStore
 
 from .tables import (
+    cv_parser_records,
     cv_structural_findings,
     cv_transformation_records,
     idempotency_keys,
@@ -153,6 +156,66 @@ class PostgresCVRecordRepository:
             ).scalar_one_or_none()
         return CVImportProfile.model_validate(body) if body is not None else None
 
+    def _insert_parser_record(
+        self,
+        connection: Connection,
+        record: ParserRecord,
+        *,
+        observation_id: str | None,
+    ) -> bool:
+        if (record.status == "accepted") != (observation_id is not None):
+            raise ParserRecordIntegrityError(record.parser_record_id)
+        result = connection.execute(
+            insert(cv_parser_records)
+            .values(
+                parser_record_id=record.parser_record_id,
+                source_artifact_id=record.source_artifact_id,
+                profile_id=record.import_profile_id,
+                observation_id=observation_id,
+                source_format=record.source_format,
+                parser_version=record.parser_version,
+                status=record.status,
+                body=record.model_dump(mode="json"),
+                created_at=self._clock(),
+            )
+            .on_conflict_do_nothing(index_elements=[cv_parser_records.c.parser_record_id])
+        )
+        if result.rowcount != 0:
+            return False
+        existing = connection.execute(
+            select(cv_parser_records.c.observation_id, cv_parser_records.c.body).where(
+                cv_parser_records.c.parser_record_id == record.parser_record_id
+            )
+        ).one()
+        if existing.observation_id != observation_id or existing.body != record.model_dump(
+            mode="json"
+        ):
+            raise ParserRecordIntegrityError(record.parser_record_id)
+        return True
+
+    def put_parser_record(self, record: ParserRecord) -> bool:
+        if record.status != "rejected":
+            raise ParserRecordIntegrityError(record.parser_record_id)
+        with self._engine.begin() as connection:
+            return self._insert_parser_record(connection, record, observation_id=None)
+
+    def get_parser_record(self, parser_record_id: str) -> ParserRecord | None:
+        with self._engine.connect() as connection:
+            body = connection.execute(
+                select(cv_parser_records.c.body).where(
+                    cv_parser_records.c.parser_record_id == parser_record_id
+                )
+            ).scalar_one_or_none()
+        if body is None:
+            return None
+        try:
+            record = ParserRecord.model_validate(body)
+        except ValueError as error:
+            raise ParserRecordIntegrityError(parser_record_id) from error
+        if record.parser_record_id != parser_record_id:
+            raise ParserRecordIntegrityError(parser_record_id)
+        return record
+
     def put_normalisation(
         self, result: NormalisationResult, *, idempotency_key: str | None = None
     ) -> bool:
@@ -214,6 +277,12 @@ class PostgresCVRecordRepository:
                 )
             ).scalar_one_or_none()
             if exists is not None:
+                if result.parser_record is not None:
+                    self._insert_parser_record(
+                        connection,
+                        result.parser_record,
+                        observation_id=observation.observation_id,
+                    )
                 return True
             inserted = connection.execute(
                 insert(normalised_cv_observations)
@@ -255,6 +324,12 @@ class PostgresCVRecordRepository:
                         observation_id=observation.observation_id,
                         finding=finding.model_dump(mode="json"),
                     )
+                )
+            if result.parser_record is not None:
+                self._insert_parser_record(
+                    connection,
+                    result.parser_record,
+                    observation_id=observation.observation_id,
                 )
         return idempotent_replay
 

@@ -340,7 +340,7 @@ class SourceArtifact(BaseModel):
 Source capture does not inspect columns, assign units, identify a technique, or create an
 `Observation`.
 
-### 3.9 Generic CV import profile and normalised observation
+### 3.9 CV import profile, parser record, and normalised observation
 
 Generic CSV ingestion is controlled by one immutable, content-addressed `CVImportProfile`. The
 profile declares its schema version, technique, environment identity, encoding, delimiter, decimal convention, header row,
@@ -367,6 +367,21 @@ parameters, and output identities. The graph begins at the retained `SourceArtif
 the parsed table and mapped series, and closes at the normalised observation. Phase 2 findings cover
 only parsing, mapping, unit, structural, and lineage validity.
 
+Gamry DTA ingestion uses the same `CVImportProfile` and normalised observation contract. The
+supported variant is UTF-8 or explicitly declared UTF-8 BOM text with `TAG CV`, Framework `7.07`,
+exactly one `CURVE TABLE`, and the versioned columns and units listed in the Phase 4 support
+statement. Decimal syntax comes from the profile and is never detected. Other versions, techniques,
+table schemas, mixed table objects, truncated row counts, encoding conflicts, and locale conflicts
+fail closed.
+
+Every DTA parse, accepted or rejected, creates a content-addressed `ParserRecord`. It records the
+source artifact, profile, source format, parser implementation and version, supported variant,
+headers, declared result status, diagnostics, preserved-but-uninterpreted object types, and explicit
+exclusions. An accepted record additionally names every mapped field's source column, role, unit,
+header line, unit line, and inclusive data-line range. A rejected record contains no accepted field
+claims and at least one error diagnostic. Rejected records remain queryable even though no
+normalised observation is created.
+
 ### 3.10 Experiment Passport and verified Package
 
 An `Experiment` is an immutable aggregate version rooted in one Phase 2 normalised observation. Its
@@ -391,9 +406,12 @@ mutates, the Passport it supersedes.
 
 An `ExperimentPackage` is a deterministic ZIP with a closed manifest covering the source bytes,
 Phase 1 source record, Phase 2 profile, normalised observation and transformation graph, Passport
-JSON and HTML, findings, and lineage index. Independent verification rejects missing, changed,
+JSON and HTML, findings, and lineage index. Schema `2` additionally requires the accepted parser
+record and its producing parser version whenever the observation names a parser record; schema `1`
+remains the generic-CSV compatibility boundary. Independent verification rejects missing, changed,
 unexpected, duplicate, or unsafe members; checks Passport/report parity; and closes every active
-assertion and finding through the retained Phase 2 graph to the retained Phase 1 source identity.
+assertion and finding through the retained parser and Phase 2 graph to the retained Phase 1 source
+identity.
 
 ---
 
@@ -412,7 +430,8 @@ PostgreSQL is authoritative for:
 - budget reservations and consumption;
 - idempotency keys;
 - source-artifact lifecycle and provenance metadata;
-- versioned import profiles, normalised CV metadata, transformation records, and structural findings;
+- versioned import profiles, accepted and rejected parser records, normalised CV metadata,
+  transformation records, and structural findings;
 - immutable experiment versions, metadata assertions, validation findings, released Passports, and
   Experiment Package metadata;
 - state projections;

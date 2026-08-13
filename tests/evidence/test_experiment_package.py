@@ -7,8 +7,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from cv_helpers import cv_profile, cv_source
+from cv_helpers import (
+    cv_profile,
+    cv_source,
+    gamry_dta_profile,
+    gamry_dta_source,
+)
 from labbridge.application.cv_ingestion import normalise_cv
+from labbridge.application.experiments import experiment_from_normalisation
+from labbridge.domain.canonical import content_id
 from labbridge.domain.experiments import (
     AssertionValue,
     add_user_assertion,
@@ -23,6 +30,7 @@ from labbridge.evidence.experiment_package import (
     build_experiment_package,
     verify_experiment_package,
 )
+from labbridge.evidence.manifest import canonical_json, digest
 from labbridge.evidence.passport import (
     build_passport,
     render_passport_html,
@@ -140,6 +148,23 @@ def _rewrite_member(package_bytes: bytes, name: str, data: bytes | None) -> byte
     return output.getvalue()
 
 
+def _reclose_package_members(members: dict[str, bytes], manifest: dict[str, object]) -> bytes:
+    entries = [
+        {"name": name, "sha256": digest(data), "byte_size": len(data)}
+        for name, data in sorted(members.items())
+    ]
+    manifest["members"] = entries
+    manifest["members_digest"] = digest(canonical_json(entries))
+    core = {key: value for key, value in manifest.items() if key != "package_id"}
+    manifest["package_id"] = content_id("experiment-package", core)
+    members["manifest.json"] = canonical_json(manifest)
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in sorted(members.items()):
+            archive.writestr(name, data)
+    return output.getvalue()
+
+
 def test_json_and_html_share_findings_and_release_decision() -> None:
     passport = _passport()
 
@@ -227,6 +252,149 @@ def test_package_verifies_and_closes_every_passport_field_to_retained_evidence()
     assert verification.data_origin == "synthetic"
     assert verification.execution_mode == "replay"
     assert verification.environment_id == "synthetic_cv_fixture"
+
+
+def _dta_inputs() -> tuple[PackageInputs, str]:
+    source = gamry_dta_source()
+    profile = gamry_dta_profile()
+    normalisation = normalise_cv(
+        source,
+        profile,
+        producing_version="0.1.0",
+        source_format="gamry_dta",
+    )
+    assert normalisation.parser_record is not None
+    experiment = experiment_from_normalisation(normalisation)
+    validation = validate_experiment(experiment, validation_version="1")
+    passport = build_passport(
+        experiment,
+        validation,
+        released_at=RELEASED_AT,
+        release=True,
+        supersedes_passport_id=None,
+    )
+    return (
+        PackageInputs(
+            source_filename=source.artifact.filename,
+            source_bytes=source.data,
+            source_artifact={
+                "schema_version": "1",
+                **source.artifact.model_dump(mode="json"),
+            },
+            import_profile={
+                "profile_id": normalisation.observation.import_profile_id,
+                **profile.model_dump(mode="json"),
+            },
+            normalised_observation=normalisation.observation.model_dump(mode="json"),
+            transformation_graph=normalisation.graph.model_dump(mode="json"),
+            parser_record=normalisation.parser_record.model_dump(mode="json"),
+            passport=passport,
+        ),
+        normalisation.parser_record.parser_record_id,
+    )
+
+
+def test_dta_package_v2_verifies_parser_identity_and_passport_evidence() -> None:
+    inputs, parser_record_id = _dta_inputs()
+
+    package = build_experiment_package(
+        inputs,
+        producing_versions={
+            "labbridge": "0.1.0",
+            "experiment_package": "2",
+            "gamry_dta_parser": "gamry-dta/1",
+        },
+    )
+    verification = verify_experiment_package(package.archive_bytes)
+
+    assert package.metadata.schema_version == "2"
+    assert verification.lineage_closed is True
+    assert any(parser_record_id in item.evidence_ids for item in inputs.passport.assertions)
+    with zipfile.ZipFile(io.BytesIO(package.archive_bytes), "r") as archive:
+        assert "phase2/parser-record.json" in archive.namelist()
+
+
+def test_dta_package_rejects_parser_record_content_substitution() -> None:
+    inputs, _ = _dta_inputs()
+    assert inputs.parser_record is not None
+    forged = {
+        **inputs.parser_record,
+        "row_count": int(inputs.parser_record["row_count"]) + 1,
+    }
+    package = build_experiment_package(
+        inputs.model_copy(update={"parser_record": forged}),
+        producing_versions={
+            "labbridge": "0.1.0",
+            "experiment_package": "2",
+            "gamry_dta_parser": "gamry-dta/1",
+        },
+    )
+
+    with pytest.raises(ExperimentPackageVerificationError) as raised:
+        verify_experiment_package(package.archive_bytes)
+
+    assert raised.value.code == "package_lineage_open"
+
+
+@pytest.mark.parametrize(
+    ("omission", "expected_code"),
+    [
+        ("parser_member", "package_member_invalid"),
+        ("parser_version", "package_lineage_open"),
+        ("source_link", "package_lineage_open"),
+        ("profile_link", "package_lineage_open"),
+        ("observation_link", "package_lineage_open"),
+        ("graph_link", "package_lineage_open"),
+    ],
+)
+def test_dta_package_rejects_required_parser_evidence_omissions(
+    omission: str, expected_code: str
+) -> None:
+    inputs, parser_record_id = _dta_inputs()
+    package = build_experiment_package(
+        inputs,
+        producing_versions={
+            "labbridge": "0.1.0",
+            "experiment_package": "2",
+            "gamry_dta_parser": "gamry-dta/1",
+        },
+    )
+    with zipfile.ZipFile(io.BytesIO(package.archive_bytes), "r") as archive:
+        members = {
+            name: archive.read(name) for name in archive.namelist() if name != "manifest.json"
+        }
+        manifest = json.loads(archive.read("manifest.json"))
+
+    if omission == "parser_member":
+        members.pop("phase2/parser-record.json")
+    elif omission == "parser_version":
+        versions = dict(manifest["producing_versions"])
+        versions.pop("gamry_dta_parser")
+        manifest["producing_versions"] = versions
+    elif omission in {"source_link", "profile_link"}:
+        parser_record = json.loads(members["phase2/parser-record.json"])
+        parser_record.pop(
+            "source_artifact_id" if omission == "source_link" else "import_profile_id"
+        )
+        members["phase2/parser-record.json"] = canonical_json(parser_record)
+    elif omission == "observation_link":
+        observation = json.loads(members["phase2/normalised-observation.json"])
+        observation.pop("parser_record_id")
+        members["phase2/normalised-observation.json"] = canonical_json(observation)
+    else:
+        graph = json.loads(members["phase2/transformation-graph.json"])
+        dta_parse = next(item for item in graph["records"] if item["kind"] == "dta_parse")
+        dta_parse["output_ids"] = [
+            item for item in dta_parse["output_ids"] if item != parser_record_id
+        ]
+        members["phase2/transformation-graph.json"] = canonical_json(graph)
+
+    damaged = _reclose_package_members(members, manifest)
+
+    with pytest.raises(ExperimentPackageVerificationError) as raised:
+        verify_experiment_package(damaged)
+
+    assert raised.value.code == expected_code
 
 
 @pytest.mark.parametrize(

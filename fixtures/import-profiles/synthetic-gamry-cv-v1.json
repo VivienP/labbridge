@@ -1,0 +1,122 @@
+{
+  "schema_version": "1",
+  "technique": "cyclic_voltammetry",
+  "environment_id": "synthetic_gamry_cv_fixture",
+  "encoding": "utf-8",
+  "delimiter": "\t",
+  "decimal_convention": "point",
+  "header_row": 7,
+  "missing_value_tokens": [
+    ""
+  ],
+  "columns": [
+    {
+      "source_column": "Pt",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "T",
+      "role": "time",
+      "source_unit": "s",
+      "target_unit": "s"
+    },
+    {
+      "source_column": "Vf",
+      "role": "potential",
+      "source_unit": "V vs. Ref.",
+      "target_unit": "V"
+    },
+    {
+      "source_column": "Im",
+      "role": "current",
+      "source_unit": "A",
+      "target_unit": "A"
+    },
+    {
+      "source_column": "Vu",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "Sig",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "Ach",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "IERange",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "Over",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    },
+    {
+      "source_column": "Cycle",
+      "role": "cycle",
+      "source_unit": "#",
+      "target_unit": "1"
+    },
+    {
+      "source_column": "Temp",
+      "role": "ignored",
+      "source_unit": null,
+      "target_unit": null
+    }
+  ],
+  "metadata": {
+    "reference_scale": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "potential_treatment": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "current_basis": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "electrode_role": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "geometric_area": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "contact_area": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "scan_rate": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    },
+    "cycle_information": {
+      "state": "unknown",
+      "value": null,
+      "unit": null
+    }
+  }
+}
