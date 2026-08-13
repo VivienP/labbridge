@@ -38,15 +38,17 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Final
 
 from sqlalchemy import Connection, Engine, and_, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from labbridge.analysis import lsv
+from labbridge.domain.campaigns import retryable_failure
 from labbridge.domain.candidates import HerCandidate
 from labbridge.domain.provenance import Provenance, SourceRecord, SyntheticRoot
-from labbridge.domain.quantities import UNKNOWN_UNIT
+from labbridge.domain.quantities import UNKNOWN_UNIT, CostRecord, Quantity
 from labbridge.domain.results import QuantityDescriptor, metric_id, observation_id
 from labbridge.environments.her_replay import (
     AdapterSuccess,
@@ -58,7 +60,6 @@ from labbridge.infrastructure.objectstore import ObjectStore, StoredObject
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
-    budget_ledger,
     campaigns,
     derived_metrics,
     events,
@@ -67,7 +68,12 @@ from labbridge.infrastructure.persistence.tables import (
     work_items,
 )
 from labbridge.runtime import jobs
-from labbridge.runtime.events import append_event, current_sequence
+from labbridge.runtime.budgets import consume
+from labbridge.runtime.events import (
+    COMPLETE_STREAM_CONTRACT_VERSION,
+    append_event,
+    current_sequence,
+)
 from labbridge.runtime.heartbeat import DEFAULT_HEARTBEAT_SECONDS, Heartbeat
 from labbridge.runtime.reconciliation import ReconciliationReport, reconcile
 
@@ -93,6 +99,12 @@ class _LateResult:
     identity: str
     stored: StoredObject
     result: AdapterSuccess
+
+
+class TransientAdapterError(RuntimeError):
+    """An adapter failure explicitly classified as safe to retry."""
+
+    code = "adapter_transient"
 
 
 @dataclass(frozen=True)
@@ -136,32 +148,6 @@ def _campaign_of(connection: Connection, work_item_id: uuid.UUID) -> tuple[uuid.
     return row.campaign_id, row.data_origin, row.execution_mode
 
 
-def _record_cost(
-    connection: Connection, campaign_id: uuid.UUID, work_item_id: uuid.UUID, kind: str
-) -> None:
-    """Append one budget entry, inside the outcome's transaction.
-
-    Append-only: a reservation and its release are two rows, never an update of one, so the ledger
-    reconstructs how a budget was spent rather than only its current total (`docs/SPEC.md` §8).
-
-    The unit is `attempt`, not money. A replay costs no consumables and no compute worth pricing;
-    counting attempts is the honest measure of what this environment actually spends, and inventing
-    a currency amount would put a number in the ledger that means nothing.
-    """
-    connection.execute(
-        budget_ledger.insert().values(
-            entry_id=uuid.uuid4(),
-            campaign_id=campaign_id,
-            work_item_id=work_item_id,
-            kind=kind,
-            amount=1,
-            unit="attempt",
-            reason="one replay attempt against the HER environment",
-            recorded_at=func.now(),
-        )
-    )
-
-
 def _candidate_of(connection: Connection, work_item_id: uuid.UUID) -> HerCandidate:
     payload = connection.execute(
         select(work_items.c.candidate).where(work_items.c.work_item_id == work_item_id)
@@ -188,6 +174,8 @@ def _append_attempt_completed(
 ) -> uuid.UUID:
     row = connection.execute(
         select(
+            attempts.c.job_id,
+            attempts.c.ordinal,
             attempts.c.state,
             attempts.c.started_at,
             attempts.c.created_at,
@@ -212,6 +200,8 @@ def _append_attempt_completed(
         event_type="attempt.completed",
         payload={
             "work_item_id": lease.work_item_id,
+            "job_id": row.job_id,
+            "ordinal": row.ordinal,
             "campaign_id": campaign_id,
             "state": row.state,
             "status": row.status,
@@ -279,6 +269,7 @@ class Worker:
         clock: Callable[[], datetime] = _utc_now,
         lease_seconds: int = jobs.DEFAULT_LEASE_SECONDS,
         heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
+        actual_cost_policy: Callable[[AdapterSuccess, jobs.Lease], Decimal] | None = None,
     ) -> None:
         self._engine = engine
         self._adapter = adapter
@@ -291,6 +282,9 @@ class Worker:
         # the source of truth about ownership, which stays the database's answer.
         self._lease_seconds = lease_seconds
         self._heartbeat_seconds = heartbeat_seconds
+        self._actual_cost_policy = actual_cost_policy or (
+            lambda _result, lease: lease.reserved_amount
+        )
         self._started = False
 
     def start(self) -> ReconciliationReport:
@@ -393,6 +387,17 @@ class Worker:
         origin = self._adapter.environment.data_origin
         mode = self._adapter.environment.execution_mode
 
+        with self._engine.begin() as connection:
+            marked = connection.execute(
+                attempts.update()
+                .where(attempts.c.attempt_id == attempt_id, attempts.c.adapter_started_at.is_(None))
+                .values(adapter_started_at=func.now())
+            )
+            if marked.rowcount != 1:
+                raise RuntimeError(
+                    f"attempt {attempt_id} could not cross the adapter-start boundary"
+                )
+
         # The heartbeat runs on its own connection and covers everything slow: the adapter call and
         # the object upload. Its refusal is latched and re-raised here rather than left on the
         # thread, because a worker that kept going after losing its lease would arrive at
@@ -432,30 +437,41 @@ class Worker:
                 summary=str(error),
                 retryable=False,
             )
-        except Exception as error:
+        except TransientAdapterError as error:
             beating.stop()
-            # Every other failure. Catching broadly is deliberate: an exception that escapes here
-            # leaves the attempt `running`, the job leased by a process that is about to move on,
-            # and no record of why — which is the evidence loss invariant 2 forbids. The failure is
-            # classified retryable because a transport or storage fault usually is; a terminal one
-            # is recognised above by its type, not guessed at from a message.
             return self._record_failure(
                 lease,
                 attempt_id,
                 campaign_id,
                 origin,
                 mode,
-                failure_code="adapter_error",
-                summary=f"{type(error).__name__}: {error}",
+                failure_code=error.code,
+                summary=str(error),
                 retryable=True,
                 category="transport",
+                exception_type=type(error).__name__,
+            )
+        except Exception as error:
+            beating.stop()
+            # Unexpected exceptions are recorded, but never promoted to a transient failure. A
+            # retry requires an explicit stable adapter failure type.
+            return self._record_failure(
+                lease,
+                attempt_id,
+                campaign_id,
+                origin,
+                mode,
+                failure_code="unexpected_adapter_error",
+                summary=f"{type(error).__name__}: {error}",
+                retryable=False,
+                category="worker",
                 exception_type=type(error).__name__,
             )
 
         if isinstance(result, AdapterUnavailable):
             beating.stop()
-            # F-017: the location was never measured. Terminal, not retryable — trying again will
-            # not make an unmeasured location measured.
+            # F-017: this replay source has no LSV for the location. Terminal, not retryable —
+            # trying again cannot create a source member that is absent.
             return self._record_failure(
                 lease,
                 attempt_id,
@@ -546,6 +562,7 @@ class Worker:
         *,
         mode: str,
         provenance: Provenance,
+        actual_amount: Decimal,
     ) -> bool:
         """Try to become the accepted outcome for this work item. Report whether it worked.
 
@@ -572,11 +589,13 @@ class Worker:
                 status="succeeded",
                 observation_id=None,
                 failure=None,
-                cost={},
+                cost=self._budget_cost(lease, actual_amount=actual_amount),
                 data_origin=origin,
                 execution_mode=mode,
                 provenance=provenance.model_dump(mode="json"),
-                started_at=func.now(),
+                started_at=connection.execute(
+                    select(attempts.c.started_at).where(attempts.c.attempt_id == attempt_id)
+                ).scalar_one(),
                 finished_at=func.now(),
             )
             .on_conflict_do_nothing(
@@ -613,8 +632,9 @@ class Worker:
         two ways a result can be refused after the bytes have already landed: it lost the acceptance
         race, or it lost its lease.
         """
-        connection.execute(
-            observations.insert().values(
+        observation_row = connection.execute(
+            observations.insert()
+            .values(
                 observation_id=identity,
                 campaign_id=campaign_id,
                 work_item_id=lease.work_item_id,
@@ -633,7 +653,48 @@ class Worker:
                 provenance=provenance.model_dump(mode="json"),
                 received_at=func.now(),
             )
-        )
+            .returning(observations.c.received_at)
+        ).one()
+        contract_version = connection.execute(
+            select(campaigns.c.event_stream_contract_version).where(
+                campaigns.c.campaign_id == campaign_id
+            )
+        ).scalar_one()
+        if contract_version == COMPLETE_STREAM_CONTRACT_VERSION:
+            correlation_id, _ = jobs.event_context(connection, lease.job_id)
+            append_event(
+                connection,
+                campaign_id=campaign_id,
+                aggregate_id=attempt_id,
+                aggregate_type="attempt",
+                event_type="observation.retained",
+                payload={
+                    "observation_id": identity,
+                    "work_item_id": lease.work_item_id,
+                    "attempt_id": attempt_id,
+                    "media_type": result.media_type,
+                    "object_uri": stored.uri,
+                    "byte_size": stored.byte_size,
+                    "sha256": stored.sha256,
+                    "schema_version": result.schema_version,
+                    "signal_kind": result.signal_kind,
+                    "quantities": [d.model_dump(mode="json") for d in LSV_DESCRIPTORS],
+                    "status": "received",
+                    "status_reason": reason,
+                    "data_origin": origin,
+                    "execution_mode": mode,
+                    "provenance": provenance.model_dump(mode="json"),
+                    "received_at": observation_row.received_at,
+                },
+                expected_version=current_sequence(
+                    connection,
+                    campaign_id=campaign_id,
+                    aggregate_type="attempt",
+                    aggregate_id=attempt_id,
+                ),
+                correlation_id=correlation_id,
+                causation_id=_latest_attempt_event(connection, attempt_id),
+            )
 
     def _record_success(
         self,
@@ -647,6 +708,9 @@ class Worker:
         beating: Heartbeat,
     ) -> WorkOutcome:
         provenance = self._provenance(result)
+        actual_amount = Decimal(self._actual_cost_policy(result, lease))
+        if actual_amount <= 0:
+            raise ValueError("actual cost policy must return a positive amount")
         identity = observation_id(
             sha256=result.source_sha256,
             schema_version=result.schema_version,
@@ -705,6 +769,7 @@ class Worker:
                 provenance=provenance,
                 identity=identity,
                 stored=stored,
+                actual_amount=actual_amount,
             )
         except jobs.LeaseLostError:
             return self._record_lease_lost(
@@ -714,6 +779,7 @@ class Worker:
                 origin,
                 mode,
                 late=_LateResult(identity=identity, stored=stored, result=result),
+                actual_amount=actual_amount,
             )
 
     def _finalise(
@@ -728,6 +794,7 @@ class Worker:
         provenance: Provenance,
         identity: str,
         stored: StoredObject,
+        actual_amount: Decimal,
     ) -> WorkOutcome:
         """The finalisation transaction itself, extracted so the late-result path can wrap it."""
         with self._engine.begin() as connection:
@@ -750,6 +817,7 @@ class Worker:
                 origin,
                 mode=mode,
                 provenance=provenance,
+                actual_amount=actual_amount,
             ):
                 # No metric, no budget entry, no `observation.accepted` event — but the bytes this
                 # delivery received are retained under *its own* attempt, as a `received`
@@ -787,21 +855,24 @@ class Worker:
                     status="duplicate_suppressed",
                     provenance=provenance,
                     observation=identity,
+                    actual_amount=actual_amount,
                 )
-                # `cancelled` is the closest terminal attempt state the lifecycle offers. It is a
-                # compromise, recorded as one: nobody cancelled this attempt. The outcome status
-                # `duplicate_suppressed` carries the real meaning, and no documentation or metric
-                # may read this row as a user-requested cancellation.
                 connection.execute(
                     attempts.update()
                     .where(attempts.c.attempt_id == attempt_id)
-                    .values(state="cancelled")
+                    .values(state="duplicate_suppressed")
                 )
                 completed_event_id = _append_attempt_completed(
                     connection,
                     lease=lease,
                     attempt_id=attempt_id,
                     campaign_id=campaign_id,
+                )
+                consume(
+                    connection,
+                    lease.budget_reservation_id,
+                    attempt_id=attempt_id,
+                    actual_amount=actual_amount,
                 )
                 jobs.complete(connection, lease, causation_id=completed_event_id)
                 return WorkOutcome(lease.job_id, "duplicate_suppressed")
@@ -885,7 +956,12 @@ class Worker:
                     f"{identity}; refusing to commit an acceptance with no evidence"
                 )
             self._write_metrics(connection, identity, attempt_id, result, provenance)
-            _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
+            consume(
+                connection,
+                lease.budget_reservation_id,
+                attempt_id=attempt_id,
+                actual_amount=actual_amount,
+            )
             connection.execute(
                 attempts.update()
                 .where(attempts.c.attempt_id == attempt_id)
@@ -941,6 +1017,7 @@ class Worker:
         `instrument` would assert the instrument failed where the source records that no
         measurement was attempted (F-017).
         """
+        retryable = retryable_failure(failure_code)
         status = "failed_retryable" if retryable else "failed_terminal"
         provenance = self._provenance(None)
         with self._engine.begin() as connection:
@@ -997,16 +1074,68 @@ class Worker:
                     )
             # A failed attempt still consumed one, so the ledger records it. A budget that only
             # counted successes would let a campaign burn its allowance invisibly.
-            _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
+            consume(connection, lease.budget_reservation_id, attempt_id=attempt_id)
             if retryable:
                 # Backoff applied by the database, and the attempt cap enforced there too, so a
                 # failing dependency is retried without becoming a retry storm.
-                jobs.schedule_retry(
+                retry_result = jobs.schedule_retry(
                     connection,
                     lease,
                     failure={"failure_code": failure_code},
                     causation_id=causal_event_id,
                 )
+                if retry_result.status == "retry_cap_reached":
+                    reason = f"retry_cap_reached:{failure_code}"
+                    item_update = connection.execute(
+                        work_items.update()
+                        .where(
+                            work_items.c.work_item_id == lease.work_item_id,
+                            work_items.c.state.in_(("queued", "quarantined")),
+                        )
+                        .values(
+                            state="quarantined",
+                            quarantine_reason=reason,
+                            updated_at=func.now(),
+                        )
+                    )
+                    if item_update.rowcount == 1:
+                        _, retry_event_id = jobs.event_context(connection, lease.job_id)
+                        _append_work_item_state(
+                            connection,
+                            lease=lease,
+                            campaign_id=campaign_id,
+                            state="quarantined",
+                            causation_id=retry_event_id,
+                            reason=reason,
+                        )
+                elif retry_result.status in ("campaign_cancelled", "budget_exhausted"):
+                    reason = (
+                        "campaign_cancelled"
+                        if retry_result.status == "campaign_cancelled"
+                        else "campaign_budget_exhausted"
+                    )
+                    item_update = connection.execute(
+                        work_items.update()
+                        .where(
+                            work_items.c.work_item_id == lease.work_item_id,
+                            work_items.c.state.in_(("queued", "quarantined")),
+                        )
+                        .values(
+                            state="cancelled",
+                            quarantine_reason=None,
+                            updated_at=func.now(),
+                        )
+                    )
+                    if item_update.rowcount == 1:
+                        _, retry_event_id = jobs.event_context(connection, lease.job_id)
+                        _append_work_item_state(
+                            connection,
+                            lease=lease,
+                            campaign_id=campaign_id,
+                            state="cancelled",
+                            causation_id=retry_event_id,
+                            reason=reason,
+                        )
             else:
                 jobs.fail_terminally(
                     connection,
@@ -1025,6 +1154,7 @@ class Worker:
         mode: str,
         *,
         late: _LateResult | None = None,
+        actual_amount: Decimal | None = None,
     ) -> WorkOutcome:
         """F-008. The lease lapsed while the adapter ran, so this result is rejected — but the
         rejection has to leave a record, or the attempt disappears from the campaign's history.
@@ -1039,6 +1169,13 @@ class Worker:
         """
         provenance = self._provenance(late.result if late else None)
         with self._engine.begin() as connection:
+            existing = connection.execute(
+                select(attempt_outcomes.c.status, attempt_outcomes.c.observation_id)
+                .where(attempt_outcomes.c.attempt_id == attempt_id)
+                .with_for_update()
+            ).one_or_none()
+            if existing is not None and existing.status != "lease_lost":
+                return WorkOutcome(lease.job_id, existing.status)
             if late is not None:
                 self._retain_receipt(
                     connection,
@@ -1056,38 +1193,56 @@ class Worker:
                         "its result was refused; the bytes are retained as diagnostic evidence"
                     ),
                 )
-            self._write_outcome(
-                connection,
-                lease,
-                attempt_id,
-                campaign_id,
-                origin,
-                mode=mode,
-                status="lease_lost",
-                provenance=provenance,
-                observation=late.identity if late else None,
-                failure={
-                    "failure_code": "lease_lost",
-                    "category": "worker",
-                    "retryable": False,
-                    "summary": "the lease expired or was reclaimed before this execution reached "
-                    "finalisation, and the fencing token no longer matched; this result was not "
-                    "accepted",
-                    "exception_type": None,
-                },
-            )
+            if existing is None:
+                self._write_outcome(
+                    connection,
+                    lease,
+                    attempt_id,
+                    campaign_id,
+                    origin,
+                    mode=mode,
+                    status="lease_lost",
+                    provenance=provenance,
+                    observation=late.identity if late else None,
+                    failure={
+                        "failure_code": "lease_lost",
+                        "category": "worker",
+                        "retryable": False,
+                        "summary": "the lease expired or was reclaimed before this execution "
+                        "reached finalisation, and the fencing token no longer matched; this "
+                        "result was not accepted",
+                        "exception_type": None,
+                    },
+                    actual_amount=actual_amount,
+                )
+            elif late is not None and existing.observation_id is None:
+                connection.execute(
+                    attempt_outcomes.update()
+                    .where(
+                        attempt_outcomes.c.attempt_id == attempt_id,
+                        attempt_outcomes.c.status == "lease_lost",
+                        attempt_outcomes.c.observation_id.is_(None),
+                    )
+                    .values(observation_id=late.identity)
+                )
             connection.execute(
                 attempts.update()
                 .where(attempts.c.attempt_id == attempt_id)
                 .values(state="lease_lost")
             )
-            _record_cost(connection, campaign_id, lease.work_item_id, "consumed")
-            _append_attempt_completed(
+            consume(
                 connection,
-                lease=lease,
+                lease.budget_reservation_id,
                 attempt_id=attempt_id,
-                campaign_id=campaign_id,
+                actual_amount=actual_amount,
             )
+            if existing is None:
+                _append_attempt_completed(
+                    connection,
+                    lease=lease,
+                    attempt_id=attempt_id,
+                    campaign_id=campaign_id,
+                )
         return WorkOutcome(lease.job_id, "lease_lost", failure_code="lease_lost")
 
     def _write_metrics(
@@ -1162,7 +1317,11 @@ class Worker:
         provenance: Provenance,
         observation: str | None = None,
         failure: dict[str, object] | None = None,
+        actual_amount: Decimal | None = None,
     ) -> None:
+        started_at = connection.execute(
+            select(attempts.c.started_at).where(attempts.c.attempt_id == attempt_id)
+        ).scalar_one()
         connection.execute(
             attempt_outcomes.insert().values(
                 attempt_id=attempt_id,
@@ -1171,11 +1330,23 @@ class Worker:
                 status=status,
                 observation_id=observation,
                 failure=failure,
-                cost={},
+                cost=self._budget_cost(lease, actual_amount=actual_amount),
                 data_origin=origin,
                 execution_mode=mode,
                 provenance=provenance.model_dump(mode="json"),
-                started_at=func.now(),
+                started_at=started_at,
                 finished_at=func.now(),
             )
         )
+
+    @staticmethod
+    def _budget_cost(
+        lease: jobs.Lease, *, actual_amount: Decimal | None = None
+    ) -> dict[str, object]:
+        incurred = actual_amount if actual_amount is not None else lease.reserved_amount
+        return CostRecord(
+            budget_estimate=Quantity(value=lease.reserved_amount, unit=lease.budget_unit),
+            budget_reserved=Quantity(value=lease.reserved_amount, unit=lease.budget_unit),
+            budget_incurred=Quantity(value=incurred, unit=lease.budget_unit),
+            budget_actual=Quantity(value=incurred, unit=lease.budget_unit),
+        ).model_dump(mode="json")

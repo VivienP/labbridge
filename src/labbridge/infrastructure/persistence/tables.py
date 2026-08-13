@@ -103,14 +103,41 @@ campaigns = Table(
     Column("state", String(32), nullable=False),
     Column("declaration", JSONB, nullable=False),
     Column("declaration_hash", _HASH, nullable=False),
+    Column(
+        "hard_budget",
+        Numeric,
+        nullable=False,
+        server_default=text("999999999999999999"),
+    ),
+    Column("per_attempt_estimate", Numeric, nullable=False, server_default=text("1")),
+    Column("budget_unit", String(32), nullable=False, server_default=text("'attempt'")),
+    Column("max_attempts", Integer, nullable=False, server_default=text("3")),
+    Column(
+        "stopping_rule",
+        String(64),
+        nullable=False,
+        server_default=text("'hard_budget_exhausted'"),
+    ),
     Column("event_stream_contract_version", Integer, nullable=False, server_default=text("0")),
     Column("event_stream_last_position", BigInteger, nullable=False, server_default=text("0")),
     *_timestamps("created_at", "updated_at"),
     CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="admissible_origin_mode"),
     CheckConstraint(
-        "event_stream_contract_version IN (0, 1)", name="known_event_stream_contract_version"
+        "event_stream_contract_version IN (0, 1, 2)",
+        name="known_event_stream_contract_version",
     ),
     CheckConstraint("event_stream_last_position >= 0", name="event_stream_position_non_negative"),
+    CheckConstraint("hard_budget > 0", name="hard_budget_positive"),
+    CheckConstraint("per_attempt_estimate > 0", name="per_attempt_estimate_positive"),
+    CheckConstraint(
+        "per_attempt_estimate <= hard_budget", name="attempt_estimate_within_hard_budget"
+    ),
+    CheckConstraint("length(btrim(budget_unit)) > 0", name="budget_unit_present"),
+    CheckConstraint("max_attempts >= 1", name="max_attempts_positive"),
+    CheckConstraint(
+        "stopping_rule = 'hard_budget_exhausted'",
+        name="known_stopping_rule",
+    ),
     # Redundant on its own — campaign_id is already unique — but it is the target a child row's
     # composite foreign key needs. That is what forces every observation and outcome to carry the
     # *same* origin and mode as its campaign, rather than merely a separately-admissible pair.
@@ -135,6 +162,7 @@ work_items = Table(
     # One work item per candidate per campaign: re-proposing the same location is the same item, and
     # a repeat is a new attempt on it rather than a second item.
     UniqueConstraint("campaign_id", "candidate_id", name="uq_work_items_campaign_candidate"),
+    UniqueConstraint("work_item_id", "campaign_id", name="uq_work_items_campaign_identity"),
     CheckConstraint(
         "state <> 'quarantined' OR quarantine_reason IS NOT NULL",
         name="quarantine_states_its_reason",
@@ -174,6 +202,7 @@ jobs = Table(
     Column("last_event_id", UUID(as_uuid=True), nullable=True),
     *_timestamps("created_at", "updated_at"),
     UniqueConstraint("idempotency_key", name="uq_jobs_idempotency_key"),
+    UniqueConstraint("job_id", "work_item_id", name="uq_jobs_work_item_identity"),
     CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
     CheckConstraint("lease_generation >= 0", name="lease_generation_non_negative"),
     CheckConstraint(
@@ -211,8 +240,10 @@ attempts = Table(
     Column("ordinal", Integer, nullable=False),
     Column("state", String(32), nullable=False),
     Column("started_at", DateTime(timezone=True), nullable=True),
+    Column("adapter_started_at", DateTime(timezone=True), nullable=True),
     *_timestamps("created_at"),
     UniqueConstraint("work_item_id", "ordinal", name="uq_attempts_work_item_ordinal"),
+    UniqueConstraint("attempt_id", "work_item_id", "job_id", name="uq_attempts_execution_identity"),
     CheckConstraint("ordinal >= 1", name="ordinal_starts_at_one"),
 )
 
@@ -952,13 +983,113 @@ budget_ledger = Table(
         nullable=False,
     ),
     Column("work_item_id", UUID(as_uuid=True), nullable=True),
+    Column(
+        "job_id",
+        UUID(as_uuid=True),
+        nullable=True,
+    ),
+    Column(
+        "attempt_id",
+        UUID(as_uuid=True),
+        nullable=True,
+    ),
+    Column("lease_generation", BigInteger, nullable=True),
+    Column(
+        "reservation_entry_id",
+        UUID(as_uuid=True),
+        nullable=True,
+    ),
     # Append-only: a reservation and its release are two rows, never an update of one.
     Column("kind", String(16), nullable=False),
     Column("amount", Numeric, nullable=False),
     Column("unit", String(32), nullable=False),
     Column("reason", Text, nullable=False),
     *_timestamps("recorded_at"),
-    CheckConstraint("kind IN ('reserved','consumed','released')", name="known_ledger_kind"),
+    CheckConstraint(
+        "kind IN ('reserved','consumed','released','adjusted_up','adjusted_down')",
+        name="known_ledger_kind",
+    ),
+    CheckConstraint("amount > 0", name="ledger_amount_positive"),
+    CheckConstraint("length(btrim(unit)) > 0", name="ledger_unit_present"),
+    CheckConstraint(
+        "lease_generation IS NULL OR lease_generation >= 1",
+        name="ledger_generation_positive",
+    ),
+    CheckConstraint(
+        "(kind = 'reserved' AND reservation_entry_id IS NULL AND job_id IS NOT NULL "
+        "AND lease_generation IS NOT NULL AND attempt_id IS NULL) OR "
+        "(kind IN ('consumed','released','adjusted_up','adjusted_down') AND "
+        "((reservation_entry_id IS NULL AND job_id IS NULL AND lease_generation IS NULL) OR "
+        "(reservation_entry_id IS NOT NULL AND job_id IS NOT NULL "
+        "AND lease_generation IS NOT NULL)))",
+        name="ledger_entry_shape",
+    ),
+    ForeignKeyConstraint(
+        ["work_item_id", "campaign_id"],
+        ["work_items.work_item_id", "work_items.campaign_id"],
+        name="fk_budget_ledger_work_item_campaign",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["job_id", "work_item_id"],
+        ["jobs.job_id", "jobs.work_item_id"],
+        name="fk_budget_ledger_job_work_item",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        ["attempt_id", "work_item_id", "job_id"],
+        ["attempts.attempt_id", "attempts.work_item_id", "attempts.job_id"],
+        name="fk_budget_ledger_attempt_execution",
+        ondelete="RESTRICT",
+    ),
+    ForeignKeyConstraint(
+        [
+            "reservation_entry_id",
+            "campaign_id",
+            "work_item_id",
+            "job_id",
+            "lease_generation",
+        ],
+        [
+            "budget_ledger.entry_id",
+            "budget_ledger.campaign_id",
+            "budget_ledger.work_item_id",
+            "budget_ledger.job_id",
+            "budget_ledger.lease_generation",
+        ],
+        name="fk_budget_ledger_settlement_reservation_identity",
+        ondelete="RESTRICT",
+    ),
+    UniqueConstraint(
+        "entry_id",
+        "campaign_id",
+        "work_item_id",
+        "job_id",
+        "lease_generation",
+        name="uq_budget_ledger_reservation_identity",
+    ),
+)
+
+Index(
+    "uq_budget_ledger_reservation_execution",
+    budget_ledger.c.job_id,
+    budget_ledger.c.lease_generation,
+    unique=True,
+    postgresql_where=text("kind = 'reserved'"),
+)
+Index(
+    "uq_budget_ledger_single_settlement",
+    budget_ledger.c.reservation_entry_id,
+    unique=True,
+    postgresql_where=text("reservation_entry_id IS NOT NULL AND kind IN ('consumed','released')"),
+)
+Index(
+    "uq_budget_ledger_single_actual_adjustment",
+    budget_ledger.c.reservation_entry_id,
+    unique=True,
+    postgresql_where=text(
+        "reservation_entry_id IS NOT NULL AND kind IN ('adjusted_up','adjusted_down')"
+    ),
 )
 
 record_relations = Table(

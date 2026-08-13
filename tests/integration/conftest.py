@@ -122,9 +122,10 @@ _PURGE_ORDER: Final = (
     # attempt cannot go first. That reference is the whole point — it is what lets reconciliation
     # attribute an orphan to an execution.
     (storage_objects, "work_item"),
+    # Settlements name attempts and reservations name jobs, both under `RESTRICT`.
+    (budget_ledger, "campaign"),
     (attempts, "work_item"),
     (jobs, "work_item"),
-    (budget_ledger, "campaign"),
     (events, "campaign"),
     (work_items, "campaign"),
     # Before the campaign it references. The foreign key is `DEFERRABLE INITIALLY DEFERRED`, but

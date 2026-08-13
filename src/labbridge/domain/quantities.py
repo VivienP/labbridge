@@ -86,3 +86,8 @@ class CostRecord(_Model):
     actual_duration: Quantity | None = None
     consumable_cost: Money | None = None
     compute_cost: Money | None = None
+    budget_estimate: Quantity | None = None
+    budget_reserved: Quantity | None = None
+    budget_incurred: Quantity | None = None
+    budget_actual: Quantity | None = None
+    budget_released: Quantity | None = None

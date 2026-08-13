@@ -34,8 +34,13 @@ REGISTERED_EVENT_TYPES = {
     "attempt.started",
     "attempt.completed",
     "observation.accepted",
+    "observation.retained",
     "observation.invalidated",
     "observation.superseded",
+    "budget.reserved",
+    "budget.consumed",
+    "budget.released",
+    "budget.adjusted",
 }
 
 
@@ -239,6 +244,79 @@ def test_an_accepted_observation_event_requires_a_matching_provenance_root() -> 
         )
 
     assert type(caught.value).__name__ == "InvalidEventPayloadError"
+
+
+def test_retained_observation_and_budget_adjustment_are_registered_facts() -> None:
+    causation_id = uuid.uuid4()
+    attempt_id = uuid.uuid4()
+    work_item_id = uuid.uuid4()
+    reservation_id = uuid.uuid4()
+    retained = {
+        "observation_id": "obs:test",
+        "work_item_id": work_item_id,
+        "attempt_id": attempt_id,
+        "media_type": "text/csv",
+        "object_uri": "s3://labbridge/test",
+        "byte_size": 1,
+        "sha256": "a" * 64,
+        "schema_version": "1",
+        "signal_kind": "lsv",
+        "quantities": [],
+        "status": "received",
+        "status_reason": "refused after receipt",
+        "data_origin": "synthetic",
+        "execution_mode": "replay",
+        "provenance": {
+            "environment": {
+                "environment_id": "her",
+                "adapter_version": "1",
+                "data_origin": "synthetic",
+                "execution_mode": "replay",
+            },
+            "synthetic_root": {
+                "generator": "fixture",
+                "generator_version": "1",
+                "seed": 0,
+                "config_hash": "config",
+            },
+            "code_version": "1",
+            "config_hash": "config",
+        },
+        "received_at": "2026-08-01T00:00:00Z",
+    }
+
+    assert (
+        events.validate_event_payload(
+            event_type="observation.retained",
+            schema_version=1,
+            aggregate_type="attempt",
+            causation_id=causation_id,
+            payload=retained,
+        )["status"]
+        == "received"
+    )
+    assert (
+        events.validate_event_payload(
+            event_type="budget.adjusted",
+            schema_version=1,
+            aggregate_type="budget",
+            causation_id=causation_id,
+            payload={
+                "entry_id": uuid.uuid4(),
+                "work_item_id": work_item_id,
+                "job_id": uuid.uuid4(),
+                "attempt_id": attempt_id,
+                "lease_generation": 1,
+                "reservation_entry_id": reservation_id,
+                "kind": "adjusted_down",
+                "amount": "1",
+                "unit": "credit",
+                "reason": "late actual cost",
+                "recorded_at": "2026-08-01T00:00:00Z",
+            },
+        )["kind"]
+        == "adjusted_down"
+    )
 
 
 @pytest.mark.parametrize(

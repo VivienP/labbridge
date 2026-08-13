@@ -18,8 +18,10 @@ from sqlalchemy import Connection, Engine, func, inspect, select, text
 
 from labbridge.infrastructure.persistence.tables import (
     attempts,
+    budget_ledger,
     campaigns,
     idempotency_keys,
+    jobs,
     metadata,
     observations,
     work_items,
@@ -55,6 +57,7 @@ EXPECTED_TABLES = {
     "validation_runs",
     "work_items",
 }
+DEFAULT_MAX_ATTEMPTS = 3
 
 
 def _clear_all(engine: Engine) -> None:
@@ -80,10 +83,11 @@ def _clear_all(engine: Engine) -> None:
         "source_artifacts",
         # Before `attempts` and `work_items`: a staged object references both under `RESTRICT`.
         "storage_objects",
+        # Reservations and settlements reference attempts and jobs under `RESTRICT`.
+        "budget_ledger",
         "attempts",
         "jobs",
         "events",
-        "budget_ledger",
         "work_items",
         # Before `campaigns`: an idempotency record names the campaign it produced, under
         # `RESTRICT`, which PostgreSQL checks at the delete rather than at commit.
@@ -435,6 +439,379 @@ def test_an_existing_idempotency_record_is_resolved_to_the_campaign_it_returned(
                 ).all()
             )
         assert backfilled == {resolved: campaign_id, orphaned: None}
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_budget_reservation_migration_preserves_existing_campaign_and_ledger_rows(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    entry_id = uuid.uuid4()
+    try:
+        command.downgrade(alembic_config, "61d3f47b809a")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO campaigns "
+                    "(campaign_id,name,environment_id,adapter_version,data_origin,execution_mode,"
+                    "state,declaration,declaration_hash,event_stream_contract_version,"
+                    "event_stream_last_position,created_at,updated_at) VALUES "
+                    "(:campaign_id,'legacy budget','her','1','synthetic','replay','active','{}',"
+                    ":digest,1,0,now(),now())"
+                ),
+                {"campaign_id": campaign_id, "digest": "a" * 64},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO budget_ledger "
+                    "(entry_id,campaign_id,kind,amount,unit,reason,recorded_at) VALUES "
+                    "(:entry_id,:campaign_id,'consumed',0,'','legacy outcome',now())"
+                ),
+                {"entry_id": entry_id, "campaign_id": campaign_id},
+            )
+
+        command.upgrade(alembic_config, "head")
+        with engine.begin() as connection:
+            campaign = connection.execute(
+                select(
+                    campaigns.c.hard_budget,
+                    campaigns.c.per_attempt_estimate,
+                    campaigns.c.budget_unit,
+                    campaigns.c.max_attempts,
+                    campaigns.c.stopping_rule,
+                ).where(campaigns.c.campaign_id == campaign_id)
+            ).one()
+            ledger = connection.execute(
+                select(budget_ledger).where(budget_ledger.c.entry_id == entry_id)
+            ).one()
+
+        assert campaign.hard_budget > campaign.per_attempt_estimate
+        assert campaign.budget_unit == "attempt"
+        assert campaign.max_attempts == DEFAULT_MAX_ATTEMPTS
+        assert campaign.stopping_rule == "hard_budget_exhausted"
+        assert ledger.kind == "consumed"
+        assert ledger.amount == 0
+        assert ledger.unit == ""
+        assert ledger.reservation_entry_id is None
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_budget_reservation_migration_downgrade_keeps_legacy_rows(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    entry_id = uuid.uuid4()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                campaigns.insert().values(
+                    campaign_id=campaign_id,
+                    name="downgrade budget",
+                    environment_id="her",
+                    adapter_version="1",
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    state="active",
+                    declaration={},
+                    declaration_hash="d" * 64,
+                    hard_budget=10,
+                    per_attempt_estimate=1,
+                    budget_unit="attempt",
+                    max_attempts=3,
+                    stopping_rule="hard_budget_exhausted",
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                budget_ledger.insert().values(
+                    entry_id=entry_id,
+                    campaign_id=campaign_id,
+                    kind="consumed",
+                    amount=1,
+                    unit="attempt",
+                    reason="legacy-compatible settlement",
+                    recorded_at=func.now(),
+                )
+            )
+
+        command.downgrade(alembic_config, "61d3f47b809a")
+        columns = {column["name"] for column in inspect(engine).get_columns("campaigns")}
+        with engine.begin() as connection:
+            campaign_count = connection.execute(
+                text("SELECT count(*) FROM campaigns WHERE campaign_id = :campaign_id"),
+                {"campaign_id": campaign_id},
+            ).scalar_one()
+            entry_count = connection.execute(
+                text("SELECT count(*) FROM budget_ledger WHERE entry_id = :entry_id"),
+                {"entry_id": entry_id},
+            ).scalar_one()
+
+        assert "hard_budget" not in columns
+        assert campaign_count == 1
+        assert entry_count == 1
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_budget_reservation_downgrade_preserves_linked_append_only_rows(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    work_item_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+    attempt_id = uuid.uuid4()
+    reservation_id = uuid.uuid4()
+    settlement_id = uuid.uuid4()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                campaigns.insert().values(
+                    campaign_id=campaign_id,
+                    name="linked downgrade budget",
+                    environment_id="her",
+                    adapter_version="1",
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    state="active",
+                    declaration={},
+                    declaration_hash="e" * 64,
+                    hard_budget=10,
+                    per_attempt_estimate=1,
+                    budget_unit="attempt",
+                    max_attempts=3,
+                    stopping_rule="hard_budget_exhausted",
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                work_items.insert().values(
+                    work_item_id=work_item_id,
+                    campaign_id=campaign_id,
+                    candidate_id="candidate:linked-downgrade",
+                    candidate={"kind": "migration-test"},
+                    state="accepted",
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                jobs.insert().values(
+                    job_id=job_id,
+                    work_item_id=work_item_id,
+                    state="succeeded",
+                    available_at=func.now(),
+                    lease_generation=1,
+                    attempt_count=1,
+                    max_attempts=3,
+                    command_version="1",
+                    idempotency_key=f"migration:{job_id}",
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                attempts.insert().values(
+                    attempt_id=attempt_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    ordinal=1,
+                    state="succeeded",
+                    started_at=func.now(),
+                    adapter_started_at=func.now(),
+                    created_at=func.now(),
+                )
+            )
+            connection.execute(
+                budget_ledger.insert().values(
+                    entry_id=reservation_id,
+                    campaign_id=campaign_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    attempt_id=None,
+                    lease_generation=1,
+                    reservation_entry_id=None,
+                    kind="reserved",
+                    amount=1,
+                    unit="attempt",
+                    reason="estimate reserved",
+                    recorded_at=func.now(),
+                )
+            )
+            connection.execute(
+                budget_ledger.insert().values(
+                    entry_id=settlement_id,
+                    campaign_id=campaign_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    attempt_id=attempt_id,
+                    lease_generation=1,
+                    reservation_entry_id=reservation_id,
+                    kind="consumed",
+                    amount=2,
+                    unit="attempt",
+                    reason="actual cost incurred",
+                    recorded_at=func.now(),
+                )
+            )
+
+        command.downgrade(alembic_config, "61d3f47b809a")
+        ledger_columns = {column["name"] for column in inspect(engine).get_columns("budget_ledger")}
+        with engine.begin() as connection:
+            rows = (
+                connection.execute(
+                    text(
+                        "SELECT entry_id,kind,amount,unit,reason FROM budget_ledger "
+                        "WHERE entry_id IN (:reservation_id,:settlement_id) ORDER BY amount"
+                    ),
+                    {"reservation_id": reservation_id, "settlement_id": settlement_id},
+                )
+                .mappings()
+                .all()
+            )
+
+        assert [(row["kind"], row["amount"], row["unit"], row["reason"]) for row in rows] == [
+            ("reserved", 1, "attempt", "estimate reserved"),
+            ("consumed", 2, "attempt", "actual cost incurred"),
+        ]
+        assert {
+            "job_id",
+            "attempt_id",
+            "lease_generation",
+            "reservation_entry_id",
+        }.isdisjoint(ledger_columns)
+    finally:
+        _clear_all(engine)
+        command.upgrade(alembic_config, "head")
+
+
+def test_budget_reservation_downgrade_refuses_to_rewrite_actual_adjustments(
+    engine: Engine, alembic_config: Config
+) -> None:
+    _clear_all(engine)
+    campaign_id = uuid.uuid4()
+    work_item_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+    attempt_id = uuid.uuid4()
+    reservation_id = uuid.uuid4()
+    entry_id = uuid.uuid4()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                campaigns.insert().values(
+                    campaign_id=campaign_id,
+                    name="adjustment downgrade refusal",
+                    environment_id="her",
+                    adapter_version="1",
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    state="active",
+                    declaration={},
+                    declaration_hash="f" * 64,
+                    hard_budget=10,
+                    per_attempt_estimate=1,
+                    budget_unit="attempt",
+                    max_attempts=3,
+                    stopping_rule="hard_budget_exhausted",
+                    event_stream_contract_version=1,
+                    event_stream_last_position=0,
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                work_items.insert().values(
+                    work_item_id=work_item_id,
+                    campaign_id=campaign_id,
+                    candidate_id="candidate:adjustment-downgrade",
+                    candidate={"kind": "migration-test"},
+                    state="accepted",
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                jobs.insert().values(
+                    job_id=job_id,
+                    work_item_id=work_item_id,
+                    state="succeeded",
+                    available_at=func.now(),
+                    lease_generation=1,
+                    attempt_count=1,
+                    max_attempts=3,
+                    command_version="1",
+                    idempotency_key=f"adjustment-migration:{job_id}",
+                    created_at=func.now(),
+                    updated_at=func.now(),
+                )
+            )
+            connection.execute(
+                attempts.insert().values(
+                    attempt_id=attempt_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    ordinal=1,
+                    state="lease_lost",
+                    started_at=func.now(),
+                    adapter_started_at=func.now(),
+                    created_at=func.now(),
+                )
+            )
+            connection.execute(
+                budget_ledger.insert().values(
+                    entry_id=reservation_id,
+                    campaign_id=campaign_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    lease_generation=1,
+                    kind="reserved",
+                    amount=1,
+                    unit="attempt",
+                    reason="estimate reserved",
+                    recorded_at=func.now(),
+                )
+            )
+            connection.execute(
+                budget_ledger.insert().values(
+                    entry_id=entry_id,
+                    campaign_id=campaign_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    attempt_id=attempt_id,
+                    lease_generation=1,
+                    reservation_entry_id=reservation_id,
+                    kind="adjusted_up",
+                    amount=1,
+                    unit="attempt",
+                    reason="late actual adjustment retained",
+                    recorded_at=func.now(),
+                )
+            )
+
+        with pytest.raises(Exception, match="actual-cost adjustment ledger rows exist"):
+            command.downgrade(alembic_config, "61d3f47b809a")
+
+        with engine.begin() as connection:
+            retained = connection.execute(
+                select(budget_ledger.c.kind, budget_ledger.c.amount).where(
+                    budget_ledger.c.entry_id == entry_id
+                )
+            ).one()
+        assert retained.kind == "adjusted_up"
+        assert retained.amount == 1
     finally:
         _clear_all(engine)
         command.upgrade(alembic_config, "head")

@@ -32,10 +32,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import boto3
 import pytest
+from botocore.config import Config as BotoConfig
 from sqlalchemy import Connection, Engine, func, select, text
-from worker_subprocess import KILL_STAGES
 
+from labbridge.application.campaigns import CampaignControlService
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.idempotency import work_item_instruction_key
 from labbridge.domain.quantities import Quantity
@@ -47,6 +49,7 @@ from labbridge.infrastructure.her_ingestion.fixture import (
 )
 from labbridge.infrastructure.her_ingestion.provenance import write_document
 from labbridge.infrastructure.objectstore import S3ObjectStore
+from labbridge.infrastructure.persistence.config import ObjectStoreSettings
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
@@ -57,9 +60,12 @@ from labbridge.infrastructure.persistence.tables import (
     storage_objects,
     work_items,
 )
-from labbridge.runtime.events import append_event
+from labbridge.runtime.budgets import PostgresCampaignControlRepository
+from labbridge.runtime.events import append_event, current_sequence
 from labbridge.runtime.jobs import claim, enqueue, expire_lease_now, recover_expired_leases
 from labbridge.runtime.worker import Worker
+
+from .worker_subprocess import KILL_STAGES
 
 pytestmark = pytest.mark.integration
 
@@ -134,11 +140,63 @@ def kill_worker_at(
         process.wait(timeout=30)
 
 
+def start_resumable_worker_at(
+    stage: str,
+    fixture_root: Path,
+    tmp_path: Path,
+    *,
+    worker_name: str = "worker-cancel-boundary",
+) -> tuple[subprocess.Popen[bytes], Path, Path]:
+    """Start a real worker and return it only after it is durably paused at ``stage``."""
+    state_path = tmp_path / f"cancel-{stage}.json"
+    resume_path = tmp_path / f"resume-{stage}"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("worker_subprocess.py")),
+            str(fixture_root),
+            str(state_path),
+            stage,
+        ],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "LABBRIDGE_WORKER_NAME": worker_name,
+            "LABBRIDGE_LEASE_SECONDS": "60",
+            "LABBRIDGE_RESUME_PATH": str(resume_path),
+            "PYTHONPATH": os.pathsep.join(
+                (
+                    str(REPO_ROOT / ".venv" / "Lib" / "site-packages"),
+                    str(REPO_ROOT / "src"),
+                    str(REPO_ROOT),
+                )
+            ),
+        },
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        state = _read_state(state_path)
+        if state.get("reached"):
+            return process, state_path, resume_path
+        if process.poll() is not None:
+            _, err = process.communicate()
+            raise AssertionError(
+                "worker subprocess exited before the cancellation boundary: "
+                f"{err.decode(errors='replace')}"
+            )
+        time.sleep(0.05)
+    process.kill()
+    process.wait(timeout=30)
+    raise AssertionError("worker subprocess never reached the cancellation boundary")
+
+
 def _read_state(path: Path) -> dict[str, Any]:
     """Read the child's published state, tolerating the moment between write and rename."""
     try:
         return dict(json.loads(path.read_text(encoding="utf-8")))
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, PermissionError, json.JSONDecodeError):
         return {}
 
 
@@ -203,8 +261,14 @@ def campaign(
         purge_campaign(connection, campaign_id)
 
 
-def _submit(engine: Engine, campaign_id: uuid.UUID, adapter: HerReplayAdapter) -> uuid.UUID:
-    key = adapter.known_locations()[0]
+def _submit(
+    engine: Engine,
+    campaign_id: uuid.UUID,
+    adapter: HerReplayAdapter,
+    *,
+    location_index: int = 0,
+) -> uuid.UUID:
+    key = adapter.known_locations()[location_index]
     candidate = HerCandidate(
         library_id=key.library_id,
         measurement_area_id=key.measurement_area_id,
@@ -298,6 +362,83 @@ async def test_a_crash_after_upload_loses_no_outcome_and_creates_no_duplicate(
     # Both attempts are recorded: the dead one and the one that finished. A retry is a new attempt,
     # never a rewrite of the previous one (docs/SPEC.md §7.3).
     assert attempt_count == TWO_ATTEMPTS
+
+
+async def test_cancelling_a_campaign_allows_only_the_already_leased_process_to_finish(
+    *,
+    migrated: Engine,
+    adapter: HerReplayAdapter,
+    object_store: S3ObjectStore,
+    campaign: uuid.UUID,
+    crash_fixture_root: Path,
+    tmp_path: Path,
+) -> None:
+    """F-034: cancellation crosses a real process boundary without revoking its existing lease."""
+    leased_work_item_id = _submit(migrated, campaign, adapter)
+    unleased_work_item_id = _submit(migrated, campaign, adapter, location_index=1)
+
+    with _only_claimable(migrated, leased_work_item_id):
+        process, state_path, resume_path = start_resumable_worker_at(
+            "after_adapter_return_before_upload", crash_fixture_root, tmp_path
+        )
+        try:
+            with migrated.begin() as connection:
+                version = current_sequence(
+                    connection,
+                    campaign_id=campaign,
+                    aggregate_type="campaign",
+                    aggregate_id=campaign,
+                )
+            result = CampaignControlService(PostgresCampaignControlRepository(migrated)).cancel(
+                campaign,
+                expected_version=version,
+                idempotency_key=f"cancel-live-lease-{campaign}",
+            )
+            assert result.state == "cancelled"
+
+            resume_path.write_text("resume\n", encoding="utf-8")
+            stdout, stderr = process.communicate(timeout=90)
+            assert process.returncode == 0, (stdout, stderr)
+            state = _read_state(state_path)
+            assert state["resumed"] is True
+            assert state["committed"] is True
+            assert state["outcome_status"] == "succeeded"
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=30)
+
+    with migrated.begin() as connection:
+        campaign_state = connection.execute(
+            select(campaigns.c.state).where(campaigns.c.campaign_id == campaign)
+        ).scalar_one()
+        projected_states = dict(
+            connection.execute(
+                select(work_items.c.work_item_id, work_items.c.state).where(
+                    work_items.c.work_item_id.in_((leased_work_item_id, unleased_work_item_id))
+                )
+            ).all()
+        )
+        job_states = dict(
+            connection.execute(
+                select(jobs.c.work_item_id, jobs.c.state).where(
+                    jobs.c.work_item_id.in_((leased_work_item_id, unleased_work_item_id))
+                )
+            ).all()
+        )
+
+    assert campaign_state == "cancelled"
+    assert projected_states == {
+        leased_work_item_id: "accepted",
+        unleased_work_item_id: "cancelled",
+    }
+    assert job_states == {
+        leased_work_item_id: "succeeded",
+        unleased_work_item_id: "cancelled",
+    }
+    assert (
+        await Worker(migrated, adapter, object_store, name="worker-after-cancel").run_once() is None
+    )
 
 
 async def test_the_orphaned_object_is_visible_as_pending_rather_than_lost(
@@ -412,6 +553,23 @@ async def test_every_kill_stage_leaves_a_recoverable_state(
     if stage in {"after_upload_before_outcome_transaction", "after_commit_before_acknowledgement"}:
         assert state["object_keys"]
         assert object_store.exists(state["object_keys"][0])
+    if stage == "during_object_upload":
+        assert state["multipart_part_count"] == ONE
+        assert not object_store.exists(state["object_keys"][0])
+        settings = ObjectStoreSettings()
+        client = boto3.client(
+            "s3",
+            endpoint_url=settings.endpoint_url,
+            aws_access_key_id=settings.access_key,
+            aws_secret_access_key=settings.secret_key,
+            config=BotoConfig(signature_version="s3v4"),
+            region_name=settings.region,
+        )
+        client.abort_multipart_upload(
+            Bucket=object_store.bucket,
+            Key=state["object_keys"][0],
+            UploadId=state["multipart_upload_id"],
+        )
 
     # Recovery, exactly as a restarting worker performs it. The wait is real rather than mocked:
     # the lease expiry is evaluated by the database, so it has to actually elapse.

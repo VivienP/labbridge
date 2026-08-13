@@ -17,11 +17,13 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, func, select
+from sqlalchemy import Engine, delete, func, select, update
 
 from labbridge.api import create_app
-from labbridge.domain.idempotency import MAX_IDEMPOTENCY_KEY_LENGTH
+from labbridge.domain.idempotency import MAX_IDEMPOTENCY_KEY_LENGTH, request_fingerprint
 from labbridge.infrastructure.persistence.tables import (
+    attempt_outcomes,
+    attempts,
     campaigns,
     events,
     idempotency_keys,
@@ -40,6 +42,7 @@ UNPROCESSABLE = 422
 TWO_CANDIDATES = 2
 ONE_CAMPAIGN = 1
 ONE_EVENT = 1
+FIVE_OUTCOMES = 5
 #: Enough concurrency that a check-then-insert would lose more than once, so a passing run is not
 #: an accident of two threads happening to serialise.
 CONCURRENT_SUBMISSIONS = 6
@@ -143,6 +146,37 @@ def test_a_repeated_request_returns_the_same_campaign_and_creates_nothing(
         ).scalar_one()
     assert item_count == TWO_CANDIDATES
     assert job_count == TWO_CANDIDATES
+
+
+def test_pre_budget_fingerprint_replays_but_a_changed_body_still_conflicts(
+    client: TestClient, migrated: Engine
+) -> None:
+    key = f"legacy-key:{uuid.uuid4().hex}"
+    created = _submit(client, key)
+    campaign_id = uuid.UUID(created.json()["campaign_id"])
+    with migrated.begin() as connection:
+        declaration = dict(
+            connection.execute(
+                select(campaigns.c.declaration).where(campaigns.c.campaign_id == campaign_id)
+            ).scalar_one()
+        )
+        declaration.pop("budget")
+        connection.execute(
+            update(idempotency_keys)
+            .where(
+                idempotency_keys.c.scope == "campaigns.create",
+                idempotency_keys.c.idempotency_key == key,
+            )
+            .values(request_hash=request_fingerprint(declaration))
+        )
+
+    replay = _submit(client, key)
+    conflict = _submit(client, key, name="changed legacy request")
+
+    assert replay.status_code == REPLAYED
+    assert replay.json()["campaign_id"] == str(campaign_id)
+    assert conflict.status_code == CONFLICT
+    assert conflict.json()["detail"]["code"] == "idempotency_key_reused"
 
 
 def _campaign_footprint(engine: Engine, campaign_id: uuid.UUID) -> dict[str, int]:
@@ -301,6 +335,93 @@ def test_reading_back_a_campaign_reports_its_origin_and_counts(client: TestClien
     assert body["execution_mode"] == "replay"
     assert body["work_items"] == TWO_CANDIDATES
     assert body["succeeded"] == 0
+    assert body["budget"]["unit"] == "attempt"
+    assert body["budget"]["hard_limit"] == "6"
+    assert body["attempts"]["total"] == 0
+    assert body["attempts"]["by_status"] == {}
+    assert body["attempts"]["failure_codes"] == {}
+
+
+def test_campaign_view_counts_every_outcome_and_failure_code(
+    client: TestClient, migrated: Engine
+) -> None:
+    created = _submit(client, f"key:{uuid.uuid4().hex}")
+    campaign_id = uuid.UUID(created.json()["campaign_id"])
+    with migrated.begin() as connection:
+        work_item_id, job_id = connection.execute(
+            select(work_items.c.work_item_id, jobs.c.job_id)
+            .join(jobs)
+            .where(work_items.c.campaign_id == campaign_id)
+            .limit(1)
+        ).one()
+        for ordinal, outcome_status in enumerate(
+            ("failed_retryable", "timed_out", "corrupted", "lease_lost", "duplicate_suppressed"),
+            start=1,
+        ):
+            attempt_id = uuid.uuid4()
+            connection.execute(
+                attempts.insert().values(
+                    attempt_id=attempt_id,
+                    work_item_id=work_item_id,
+                    job_id=job_id,
+                    ordinal=ordinal,
+                    state=outcome_status,
+                    started_at=func.now(),
+                    created_at=func.now(),
+                )
+            )
+            connection.execute(
+                attempt_outcomes.insert().values(
+                    attempt_id=attempt_id,
+                    work_item_id=work_item_id,
+                    campaign_id=campaign_id,
+                    status=outcome_status,
+                    failure=(
+                        {
+                            "failure_code": f"code_{outcome_status}",
+                            "category": "worker",
+                            "retryable": outcome_status == "failed_retryable",
+                            "summary": outcome_status,
+                            "exception_type": None,
+                        }
+                        if outcome_status
+                        in {"failed_retryable", "timed_out", "corrupted", "lease_lost"}
+                        else None
+                    ),
+                    cost={},
+                    data_origin="synthetic",
+                    execution_mode="replay",
+                    provenance={},
+                    started_at=func.now(),
+                    finished_at=func.now(),
+                )
+            )
+
+    view = client.get(f"/campaigns/{campaign_id}")
+    body = view.json()
+
+    with migrated.begin() as connection:
+        attempt_ids = select(attempts.c.attempt_id).where(attempts.c.work_item_id == work_item_id)
+        connection.execute(
+            delete(attempt_outcomes).where(attempt_outcomes.c.attempt_id.in_(attempt_ids))
+        )
+        connection.execute(delete(attempts).where(attempts.c.work_item_id == work_item_id))
+
+    assert view.status_code == REPLAYED
+    assert body["attempts"]["total"] == FIVE_OUTCOMES
+    assert body["attempts"]["by_status"] == {
+        "corrupted": 1,
+        "duplicate_suppressed": 1,
+        "failed_retryable": 1,
+        "lease_lost": 1,
+        "timed_out": 1,
+    }
+    assert body["attempts"]["failure_codes"] == {
+        "code_corrupted": 1,
+        "code_failed_retryable": 1,
+        "code_lease_lost": 1,
+        "code_timed_out": 1,
+    }
 
 
 def test_an_unknown_campaign_is_a_typed_not_found(client: TestClient) -> None:

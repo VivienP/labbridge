@@ -55,6 +55,7 @@ SPEC_ATTEMPT_TRANSITIONS = {
         "failed_terminal",
         "corrupted",
         "lease_lost",
+        "duplicate_suppressed",
         "cancelled",
     },
     "succeeded": set(),
@@ -63,6 +64,7 @@ SPEC_ATTEMPT_TRANSITIONS = {
     "failed_terminal": set(),
     "corrupted": set(),
     "lease_lost": set(),
+    "duplicate_suppressed": set(),
     "cancelled": set(),
 }
 SPEC_CAMPAIGN_TRANSITIONS = {

@@ -37,6 +37,7 @@ from labbridge.infrastructure.objectstore import S3ObjectStore
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
     attempts,
+    budget_ledger,
     campaigns,
     events,
     jobs,
@@ -54,6 +55,7 @@ from labbridge.runtime.jobs import (
     enqueue,
     expire_lease_now,
     heartbeat,
+    mark_running,
     recover_expired_leases,
 )
 from labbridge.runtime.reconciliation import reconcile
@@ -252,6 +254,97 @@ def test_a_worker_that_stops_heartbeating_is_reclaimed(
     assert state.state == "available"
     assert state.lease_owner is None
     assert state.lease_token is None
+
+
+def test_recovery_releases_a_reservation_when_no_attempt_was_started(
+    migrated: Engine, campaign: uuid.UUID, adapter: HerReplayAdapter
+) -> None:
+    _submit(migrated, campaign, adapter)
+    with migrated.begin() as connection:
+        lease = claim(connection, owner="worker-before-attempt")
+        assert lease is not None
+        expire_lease_now(connection, lease.job_id)
+        recover_expired_leases(connection)
+        ledger = connection.execute(
+            select(budget_ledger)
+            .where(budget_ledger.c.job_id == lease.job_id)
+            .order_by(budget_ledger.c.recorded_at)
+        ).all()
+
+    assert [entry.kind for entry in ledger] == ["reserved", "released"]
+    assert "before an attempt" in ledger[1].reason
+
+
+@pytest.mark.parametrize(
+    ("adapter_started", "settlement_kind", "reason_fragment"),
+    [
+        (False, "released", "before the durable adapter-start boundary"),
+        (True, "consumed", "durable attempt outcome"),
+    ],
+)
+def test_reconciliation_settles_once_according_to_the_adapter_start_boundary(
+    migrated: Engine,
+    campaign: uuid.UUID,
+    adapter: HerReplayAdapter,
+    object_store: S3ObjectStore,
+    *,
+    adapter_started: bool,
+    settlement_kind: str,
+    reason_fragment: str,
+) -> None:
+    work_item_id = _submit(migrated, campaign, adapter)
+    attempt_id = uuid.uuid4()
+    with migrated.begin() as connection:
+        lease = claim(connection, owner=f"worker-boundary-{adapter_started}")
+        assert lease is not None
+        mark_running(connection, lease)
+        attempt_row = connection.execute(
+            attempts.insert()
+            .values(
+                attempt_id=attempt_id,
+                work_item_id=work_item_id,
+                job_id=lease.job_id,
+                ordinal=1,
+                state="running",
+                started_at=func.now(),
+                adapter_started_at=func.now() if adapter_started else None,
+                created_at=func.now(),
+            )
+            .returning(attempts.c.started_at, attempts.c.created_at)
+        ).one()
+        context = connection.execute(
+            select(jobs.c.event_correlation_id, jobs.c.last_event_id).where(
+                jobs.c.job_id == lease.job_id
+            )
+        ).one()
+        append_event(
+            connection,
+            campaign_id=campaign,
+            aggregate_id=attempt_id,
+            aggregate_type="attempt",
+            event_type="attempt.started",
+            payload={
+                "work_item_id": work_item_id,
+                "job_id": lease.job_id,
+                "ordinal": 1,
+                "state": "running",
+                "started_at": attempt_row.started_at,
+                "created_at": attempt_row.created_at,
+            },
+            expected_version=0,
+            correlation_id=context.event_correlation_id,
+            causation_id=context.last_event_id,
+        )
+        expire_lease_now(connection, lease.job_id)
+        reconcile(connection, object_store)
+        ledger = connection.execute(
+            select(budget_ledger)
+            .where(budget_ledger.c.job_id == lease.job_id)
+            .order_by(budget_ledger.c.recorded_at)
+        ).all()
+
+    assert [entry.kind for entry in ledger] == ["reserved", settlement_kind]
+    assert reason_fragment in ledger[1].reason
 
 
 def test_reclaiming_a_lease_advances_the_fencing_token(
@@ -717,6 +810,105 @@ def test_reconciliation_leaves_accepted_evidence_exactly_as_it_found_it(
         assert row.sha256 == original.sha256
         assert row.byte_size == original.byte_size
         assert row.committed_at == original.committed_at
+
+
+@pytest.mark.parametrize(
+    ("actual_cost", "adjustment_kind", "campaign_state", "job_state"),
+    [
+        (Decimal("1"), "adjusted_down", "active", "available"),
+        (Decimal("3"), "adjusted_up", "budget_exhausted", "cancelled"),
+    ],
+)
+def test_reconciled_attempt_later_retains_its_late_bytes_idempotently(
+    migrated: Engine,
+    campaign: uuid.UUID,
+    adapter: HerReplayAdapter,
+    object_store: S3ObjectStore,
+    actual_cost: Decimal,
+    adjustment_kind: str,
+    campaign_state: str,
+    job_state: str,
+) -> None:
+    with migrated.begin() as connection:
+        connection.execute(
+            campaigns.update()
+            .where(campaigns.c.campaign_id == campaign)
+            .values(hard_budget=4, per_attempt_estimate=2, budget_unit="attempt")
+        )
+    work_item_id = _submit(migrated, campaign, adapter)
+
+    class ReconcileAfterUpload:
+        bucket = object_store.bucket
+
+        def put_and_verify(self, key: str, data: bytes, *, media_type: str):  # type: ignore[no-untyped-def]
+            stored = object_store.put_and_verify(key, data, media_type=media_type)
+            with migrated.begin() as connection:
+                job_id = connection.execute(
+                    select(jobs.c.job_id)
+                    .where(jobs.c.work_item_id == work_item_id)
+                    .with_for_update()
+                ).scalar_one()
+                expire_lease_now(connection, job_id)
+                reconcile(connection, self)  # type: ignore[arg-type]
+            return stored
+
+        def exists(self, key: str) -> bool:
+            return object_store.exists(key)
+
+        def get(self, key: str) -> bytes:
+            return object_store.get(key)
+
+    worker = Worker(
+        migrated,
+        adapter,
+        ReconcileAfterUpload(),  # type: ignore[arg-type]
+        name="worker-late-after-reconcile",
+        actual_cost_policy=lambda _result, _lease: actual_cost,
+    )
+    outcome = asyncio.run(worker.run_once())
+
+    assert outcome is not None
+    assert outcome.status == "lease_lost"
+    with migrated.begin() as connection:
+        outcome_rows = connection.execute(
+            select(attempt_outcomes).where(attempt_outcomes.c.work_item_id == work_item_id)
+        ).all()
+        receipts = connection.execute(
+            select(observations).where(observations.c.work_item_id == work_item_id)
+        ).all()
+        accepted_events = connection.execute(
+            select(func.count())
+            .select_from(events)
+            .where(
+                events.c.campaign_id == campaign,
+                events.c.event_type == "observation.accepted",
+            )
+        ).scalar_one()
+        ledger = connection.execute(
+            select(budget_ledger)
+            .where(budget_ledger.c.work_item_id == work_item_id)
+            .order_by(budget_ledger.c.recorded_at)
+        ).all()
+        projected_campaign_state = connection.execute(
+            select(campaigns.c.state).where(campaigns.c.campaign_id == campaign)
+        ).scalar_one()
+        projected_job_state = connection.execute(
+            select(jobs.c.state).where(jobs.c.work_item_id == work_item_id)
+        ).scalar_one()
+
+    assert len(outcome_rows) == 1
+    assert outcome_rows[0].status == "lease_lost"
+    assert len(receipts) == 1
+    assert outcome_rows[0].observation_id == receipts[0].observation_id
+    assert receipts[0].status == "received"
+    object_key = receipts[0].object_uri.removeprefix(f"s3://{object_store.bucket}/")
+    assert object_store.exists(object_key)
+    assert accepted_events == 0
+    assert [entry.kind for entry in ledger] == ["reserved", "consumed", adjustment_kind]
+    assert Decimal(ledger[-1].amount) == Decimal("1")
+    assert str(actual_cost) in ledger[-1].reason
+    assert projected_campaign_state == campaign_state
+    assert projected_job_state == job_state
 
 
 def test_duplicate_suppressed_bytes_are_retained_and_classified(

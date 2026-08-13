@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Annotated, Any, Final
 
 from fastapi import FastAPI, Header, HTTPException, Response, status
@@ -32,9 +33,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Connection, Engine, create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from labbridge.application.campaigns import CampaignControlResult, CampaignControlService
 from labbridge.application.cv_ingestion import CVIngestionService
 from labbridge.application.experiments import ExperimentService
 from labbridge.application.source_intake import SourceArtifactService
+from labbridge.domain.campaigns import CampaignDeclaration
 from labbridge.domain.candidates import HerCandidate, candidate_id
 from labbridge.domain.idempotency import (
     IdempotencyConflictError,
@@ -55,6 +58,11 @@ from labbridge.infrastructure.persistence.tables import (
     work_items,
 )
 from labbridge.infrastructure.source_wiring import build_source_service
+from labbridge.runtime.budgets import (
+    BudgetError,
+    PostgresCampaignControlRepository,
+    budget_usage,
+)
 from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 
@@ -84,6 +92,13 @@ class CampaignRequest(BaseModel):
     data_origin: DataOrigin
     execution_mode: ExecutionMode
     candidates: list[HerCandidate] = Field(min_length=1)
+    budget: CampaignDeclaration | None = None
+
+
+class CampaignControlRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int = Field(ge=1)
 
 
 class CampaignCreated(BaseModel):
@@ -91,6 +106,22 @@ class CampaignCreated(BaseModel):
     work_items: int
     #: True when this request matched an earlier one by idempotency key and nothing new was created.
     replayed: bool
+
+
+class CampaignBudgetView(BaseModel):
+    hard_limit: Decimal
+    unit: str
+    reserved: Decimal
+    consumed: Decimal
+    released: Decimal
+    outstanding: Decimal
+    remaining: Decimal
+
+
+class CampaignAttemptsView(BaseModel):
+    total: int
+    by_status: dict[str, int]
+    failure_codes: dict[str, int]
 
 
 class CampaignView(BaseModel):
@@ -102,6 +133,8 @@ class CampaignView(BaseModel):
     work_items: int
     succeeded: int
     failed: int
+    budget: CampaignBudgetView
+    attempts: CampaignAttemptsView
 
 
 def _error(code: str, message: str, http_status: int) -> HTTPException:
@@ -158,7 +191,12 @@ def _experiment_service_provider(
 
 
 def _replay(
-    connection: Connection, response: Response, *, key: str, request_hash: str
+    connection: Connection,
+    response: Response,
+    *,
+    key: str,
+    request_hash: str,
+    legacy_request_hash: str | None = None,
 ) -> CampaignCreated:
     """Answer a request whose key was already reserved, or refuse it as a conflict.
 
@@ -184,14 +222,15 @@ def _replay(
             idempotency_keys.c.idempotency_key == key,
         )
     ).one()
-    try:
-        check_request_fingerprint(key=key, stored=stored.request_hash, offered=request_hash)
-    except IdempotencyConflictError as error:
-        raise _error(
-            error.code,
-            "this Idempotency-Key was used with a different request body",
-            status.HTTP_409_CONFLICT,
-        ) from error
+    if stored.request_hash not in {request_hash, legacy_request_hash}:
+        try:
+            check_request_fingerprint(key=key, stored=stored.request_hash, offered=request_hash)
+        except IdempotencyConflictError as error:
+            raise _error(
+                error.code,
+                "this Idempotency-Key was used with a different request body",
+                status.HTTP_409_CONFLICT,
+            ) from error
     body: dict[str, Any] = stored.response or {}
     if stored.campaign_id is None or "work_items" not in body:
         raise _error(
@@ -290,7 +329,16 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
 
-        declaration = request.model_dump(mode="json")
+        budget = request.budget or CampaignDeclaration(
+            hard_budget=len(request.candidates) * 3,
+            per_attempt_estimate=1,
+            budget_unit="attempt",
+            max_attempts=3,
+            stopping_rule="hard_budget_exhausted",
+        )
+        declaration = request.model_dump(mode="json", exclude={"budget"})
+        legacy_request_hash = request_fingerprint(declaration) if request.budget is None else None
+        declaration["budget"] = budget.model_dump(mode="json")
         request_hash = request_fingerprint(declaration)
         campaign_uuid = uuid.uuid4()
         stored_response = {
@@ -316,7 +364,13 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
                 .returning(idempotency_keys.c.idempotency_key)
             ).one_or_none()
             if reserved is None:
-                return _replay(connection, response, key=key, request_hash=request_hash)
+                return _replay(
+                    connection,
+                    response,
+                    key=key,
+                    request_hash=request_hash,
+                    legacy_request_hash=legacy_request_hash,
+                )
 
             correlation_id = uuid.uuid4()
             connection.execute(
@@ -330,7 +384,12 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
                     state="active",
                     declaration=declaration,
                     declaration_hash=request_hash,
-                    event_stream_contract_version=1,
+                    hard_budget=budget.hard_budget,
+                    per_attempt_estimate=budget.per_attempt_estimate,
+                    budget_unit=budget.budget_unit,
+                    max_attempts=budget.max_attempts,
+                    stopping_rule=budget.stopping_rule,
+                    event_stream_contract_version=2,
                     event_stream_last_position=0,
                     created_at=func.now(),
                     updated_at=func.now(),
@@ -397,11 +456,66 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
                     command_version=COMMAND_VERSION,
                     correlation_id=correlation_id,
                     causation_id=work_item_event.event_id,
+                    max_attempts=budget.max_attempts,
                 )
 
         return CampaignCreated(
             campaign_id=campaign_uuid, work_items=len(request.candidates), replayed=False
         )
+
+    def _control_campaign(
+        campaign_id: uuid.UUID,
+        request: CampaignControlRequest,
+        idempotency_key: str | None,
+        action: str,
+    ) -> CampaignControlResult:
+        service = CampaignControlService(PostgresCampaignControlRepository(_engine()))
+        try:
+            operation = getattr(service, action)
+            result: CampaignControlResult = operation(
+                campaign_id,
+                expected_version=request.expected_version,
+                idempotency_key=idempotency_key,
+            )
+            return result
+        except IdempotencyKeyError as error:
+            raise _error(error.code, str(error), status.HTTP_400_BAD_REQUEST) from error
+        except IdempotencyConflictError as error:
+            raise _error(error.code, str(error), status.HTTP_409_CONFLICT) from error
+        except BudgetError as error:
+            http_status = (
+                status.HTTP_404_NOT_FOUND
+                if error.code == "campaign_not_found"
+                else status.HTTP_409_CONFLICT
+            )
+            raise _error(error.code, str(error), http_status) from error
+        except ValueError as error:
+            code = getattr(error, "code", "campaign_control_conflict")
+            raise _error(code, str(error), status.HTTP_409_CONFLICT) from error
+
+    @app.post("/campaigns/{campaign_id}/pause")
+    def pause_campaign(
+        campaign_id: uuid.UUID,
+        request: CampaignControlRequest,
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ) -> CampaignControlResult:
+        return _control_campaign(campaign_id, request, idempotency_key, "pause")
+
+    @app.post("/campaigns/{campaign_id}/resume")
+    def resume_campaign(
+        campaign_id: uuid.UUID,
+        request: CampaignControlRequest,
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ) -> CampaignControlResult:
+        return _control_campaign(campaign_id, request, idempotency_key, "resume")
+
+    @app.post("/campaigns/{campaign_id}/cancel")
+    def cancel_campaign(
+        campaign_id: uuid.UUID,
+        request: CampaignControlRequest,
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ) -> CampaignControlResult:
+        return _control_campaign(campaign_id, request, idempotency_key, "cancel")
 
     @app.get("/campaigns/{campaign_id}")
     def read_campaign(campaign_id: uuid.UUID) -> CampaignView:
@@ -434,6 +548,19 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
                     attempt_outcomes.c.status == "failed_terminal",
                 )
             ).scalar_one()
+            outcome_rows = connection.execute(
+                select(attempt_outcomes.c.status, attempt_outcomes.c.failure).where(
+                    attempt_outcomes.c.campaign_id == campaign_id
+                )
+            ).all()
+            by_status: dict[str, int] = {}
+            failure_codes: dict[str, int] = {}
+            for outcome in outcome_rows:
+                by_status[outcome.status] = by_status.get(outcome.status, 0) + 1
+                if outcome.failure and outcome.failure.get("failure_code"):
+                    code = str(outcome.failure["failure_code"])
+                    failure_codes[code] = failure_codes.get(code, 0) + 1
+            usage = budget_usage(connection, campaign_id)
 
         return CampaignView(
             campaign_id=campaign_id,
@@ -444,6 +571,20 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
             work_items=int(item_count),
             succeeded=int(succeeded),
             failed=int(failed),
+            budget=CampaignBudgetView(
+                hard_limit=usage.hard_limit,
+                unit=usage.unit,
+                reserved=usage.reserved,
+                consumed=usage.consumed,
+                released=usage.released,
+                outstanding=usage.outstanding,
+                remaining=usage.remaining,
+            ),
+            attempts=CampaignAttemptsView(
+                total=len(outcome_rows),
+                by_status=by_status,
+                failure_codes=failure_codes,
+            ),
         )
 
     return app

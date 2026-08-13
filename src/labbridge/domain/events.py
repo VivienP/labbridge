@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import ClassVar, Final, Literal, Self
 from uuid import UUID
 
@@ -203,6 +204,7 @@ class JobProjectionPayload(_EventPayload):
     lease_token: UUID | None = None
     lease_expires_at: AwareDatetime | None = None
     heartbeat_at: AwareDatetime | None = None
+    lease_generation: int | None = Field(default=None, ge=0)
     attempt_count: int = Field(ge=0)
     max_attempts: int = Field(ge=1)
     command_version: str = Field(min_length=1)
@@ -223,6 +225,8 @@ class AttemptStartedPayload(_EventPayload):
 
 class AttemptCompletedPayload(_EventPayload):
     work_item_id: UUID
+    job_id: UUID | None = None
+    ordinal: int | None = Field(default=None, ge=1)
     campaign_id: UUID
     state: AttemptState
     status: AttemptStatus
@@ -267,7 +271,7 @@ class AttemptCompletedPayload(_EventPayload):
         return self
 
 
-class ObservationAcceptedPayload(_EventPayload):
+class ObservationRecordedPayload(_EventPayload):
     observation_id: str = Field(min_length=1)
     work_item_id: UUID
     attempt_id: UUID
@@ -286,7 +290,7 @@ class ObservationAcceptedPayload(_EventPayload):
     received_at: AwareDatetime
 
     @model_validator(mode="after")
-    def _accepted_observation_has_one_matching_root(self) -> Self:
+    def _observation_has_one_matching_root(self) -> Self:
         environment = self.provenance.environment
         if (self.data_origin, self.execution_mode) != (
             environment.data_origin,
@@ -294,7 +298,40 @@ class ObservationAcceptedPayload(_EventPayload):
         ):
             raise ValueError("observation origin and mode must match its provenance environment")
         if not self.provenance.has_root:
-            raise ValueError("an accepted observation must resolve to one provenance root")
+            raise ValueError("an observation must resolve to one provenance root")
+        return self
+
+
+class ObservationAcceptedPayload(ObservationRecordedPayload):
+    pass
+
+
+class ObservationRetainedPayload(ObservationRecordedPayload):
+    pass
+
+
+class BudgetEntryPayload(_EventPayload):
+    entry_id: UUID
+    work_item_id: UUID
+    job_id: UUID
+    attempt_id: UUID | None = None
+    lease_generation: int = Field(ge=1)
+    reservation_entry_id: UUID | None = None
+    kind: Literal["reserved", "consumed", "released", "adjusted_up", "adjusted_down"]
+    amount: Decimal = Field(gt=0)
+    unit: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    recorded_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def _reservation_shape_matches_kind(self) -> Self:
+        if self.kind == "reserved":
+            if self.reservation_entry_id is not None or self.attempt_id is not None:
+                raise ValueError(
+                    "a reservation cannot settle another reservation or name an attempt"
+                )
+        elif self.reservation_entry_id is None:
+            raise ValueError("a budget settlement or adjustment requires reservation_entry_id")
         return self
 
 
@@ -357,6 +394,11 @@ def _definitions() -> dict[tuple[str, int], EventDefinition]:
         ),
         ("attempt.completed", 1): EventDefinition(AttemptCompletedPayload, "attempt"),
         ("observation.accepted", 1): EventDefinition(ObservationAcceptedPayload, "attempt"),
+        ("observation.retained", 1): EventDefinition(ObservationRetainedPayload, "attempt"),
+        ("budget.reserved", 1): EventDefinition(BudgetEntryPayload, "budget"),
+        ("budget.consumed", 1): EventDefinition(BudgetEntryPayload, "budget"),
+        ("budget.released", 1): EventDefinition(BudgetEntryPayload, "budget"),
+        ("budget.adjusted", 1): EventDefinition(BudgetEntryPayload, "budget"),
         ("observation.invalidated", 1): EventDefinition(ObservationRelationPayload, "campaign"),
         ("observation.superseded", 1): EventDefinition(ObservationRelationPayload, "campaign"),
     }
@@ -393,7 +435,7 @@ def registered_event_types() -> frozenset[tuple[str, int]]:
     return frozenset(EVENT_REGISTRY)
 
 
-def validate_event_payload(
+def validate_event_payload(  # noqa: PLR0912
     *,
     event_type: str,
     schema_version: int,
@@ -428,6 +470,28 @@ def validate_event_payload(
         raise InvalidEventPayloadError(
             event_type, schema_version, "observation.accepted requires status accepted"
         )
+    if isinstance(validated, ObservationRetainedPayload) and validated.status not in (
+        "received",
+        "corrupted",
+    ):
+        raise InvalidEventPayloadError(
+            event_type,
+            schema_version,
+            "observation.retained requires status received or corrupted",
+        )
+    if isinstance(validated, BudgetEntryPayload):
+        expected_kind = {
+            "budget.reserved": frozenset({"reserved"}),
+            "budget.consumed": frozenset({"consumed"}),
+            "budget.released": frozenset({"released"}),
+            "budget.adjusted": frozenset({"adjusted_up", "adjusted_down"}),
+        }[event_type]
+        if validated.kind not in expected_kind:
+            raise InvalidEventPayloadError(
+                event_type,
+                schema_version,
+                f"event requires kind in {sorted(expected_kind)}, got `{validated.kind}`",
+            )
     if isinstance(validated, ObservationRelationPayload):
         expected_predicate = {
             "observation.invalidated": "invalidates",
@@ -440,9 +504,7 @@ def validate_event_payload(
                 f"event requires predicate `{expected_predicate}`, got `{validated.predicate}`",
             )
     if isinstance(validated, AttemptCompletedPayload):
-        expected_state = (
-            "cancelled" if validated.status == "duplicate_suppressed" else validated.status
-        )
+        expected_state = validated.status
         if validated.state != expected_state:
             raise InvalidEventPayloadError(
                 event_type,
