@@ -720,9 +720,9 @@ export interface components {
             supersedes_version?: number | null;
             /**
              * Technique
-             * @constant
+             * @enum {string}
              */
-            technique: "cyclic_voltammetry";
+            technique: "cyclic_voltammetry" | "galvanostatic_electrolysis";
             /** Transformation Ids */
             transformation_ids: string[];
             /** Version */
@@ -765,7 +765,7 @@ export interface components {
              * Schema Version
              * @enum {string}
              */
-            schema_version: "1" | "2";
+            schema_version: "1" | "2" | "3";
             /** Supersedes Package Id */
             supersedes_package_id?: string | null;
         };
@@ -821,9 +821,9 @@ export interface components {
             supersedes_passport_id?: string | null;
             /**
              * Technique
-             * @constant
+             * @enum {string}
              */
-            technique: "cyclic_voltammetry";
+            technique: "cyclic_voltammetry" | "galvanostatic_electrolysis";
             /** Transformation Ids */
             transformation_ids: string[];
             /** Validation Id */
