@@ -538,3 +538,45 @@ techniques, multiple curves, proprietary binary formats, automatic locale or uni
 reference-electrode interpretation, current-density normalisation, live instrument control, or
 compatibility with vendor files outside the pinned fixture variants. Each wider variant requires a
 new explicit contract, fixture, diagnostics, and differential proof before acceptance.
+
+---
+
+## ADR-018 — Keep EchemDB exchange behind a versioned evidence adapter
+
+**Status:** accepted
+
+**Decision:** Phase 6 exports one CV observation through evidence adapter `echemdb-cv/1`. The
+LabBridge domain model remains unchanged and contains no EchemDB classes or field names. The adapter
+targets EchemDB metadata-schema `0.8.3` at commit
+`f48f583f83b1de9f5601d05dae5e5fcd1c25a3f0`, Data Package profile `2.0`, and Frictionless
+`5.19.0`. Validation also pins `jsonschema` `4.26.0` and `referencing` `0.37.0`; the exact external
+schema bytes are vendored for offline verification, and the EchemDB schema licence is retained beside
+its vendored file.
+
+Required target fields without source evidence are accepted only as known `user_supplied`
+assertions. Export traces qualify those values as explicit external metadata that is not
+source-declared. An `inferred` assertion cannot enter those fields. Unsupported or unknown metadata
+is omitted, while the mapping report records every omission, companion-only field, and lossy
+projection.
+
+### Consequences
+
+- every descriptor leaf and CSV cell has a trace to a LabBridge assertion, series, or observation;
+- the companion manifest retains experiment, observation, source-artifact, transformation, origin,
+  execution-mode, assertion, and series identities that the target schema cannot represent;
+- `figureDescription.type` is supplied by an explicit assertion and recorded as a lossy projection
+  because it cannot preserve `data_origin` and `execution_mode` as independent dimensions;
+- potential values, current values, units, signs, reference scales, electrode roles, areas, scan
+  rates, electrolyte compositions, and cycle meaning are never inferred or converted by the
+  adapter;
+- schema checks run from vendored bytes, and the Frictionless validator must report the exact pinned
+  installed version before an artifact is valid;
+- the field inventory, machine-readable mapping, human-readable mapping table, validation output,
+  external versions, source bytes, and reproduction command are closed by one artifact manifest.
+
+### Limits
+
+This decision demonstrates only the project-owned synthetic CV fixture and the exact versions above.
+It does not claim compatibility with other EchemDB metadata-schema versions, other Data Package
+profiles, other Frictionless versions, other techniques, EchemDB ingestion or publication, or
+scientific completeness of the explicit fixture declarations.

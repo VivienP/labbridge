@@ -39,6 +39,9 @@ dependencies = [
     "alembic>=1.13",          # migrations; never bypassed (AI_CONTRACT.md section 10)
     "psycopg[binary]>=3.2",   # PostgreSQL driver
     "boto3>=1.34",            # S3-compatible object storage: MinIO locally, S3 in production
+    "frictionless==5.19.0",  # Phase 6 exchange validation; compatibility is version-scoped
+    "jsonschema==4.26.0",    # pinned EchemDB metadata-schema validator
+    "referencing==0.37.0",   # offline registry for the pinned Data Package profile
 ]
 
 [project.optional-dependencies]

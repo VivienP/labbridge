@@ -1,0 +1,15 @@
+{
+  "byte_size": 537,
+  "committed_at": "2026-08-13T08:00:00Z",
+  "created_at": "2026-08-13T08:00:00Z",
+  "data_origin": "synthetic",
+  "execution_mode": "replay",
+  "filename": "synthetic-gamry-cv.dta",
+  "media_type": "application/vnd.gamry.dta",
+  "object_uri": "s3://labbridge/source-artifacts/sha256/01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b",
+  "quarantine_reason": null,
+  "schema_version": "1",
+  "sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b",
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+  "state": "committed"
+}

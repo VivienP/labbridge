@@ -1,0 +1,184 @@
+{
+  "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "records": [
+    {
+      "implementation": "labbridge.infrastructure.gamry_dta.parse_gamry_dta",
+      "implementation_version": "gamry-dta/1",
+      "input_ids": [
+        "source:df37fd96994c27215c5dc78121877348"
+      ],
+      "kind": "dta_parse",
+      "output_ids": [
+        "parser-record:f3d7d5fad276f78be792e6032b46c429",
+        "dta-table:9dab6791806229c870e9efcebcfd50e5"
+      ],
+      "parameters": [
+        {
+          "name": "decimal_convention",
+          "value": "point"
+        },
+        {
+          "name": "encoding",
+          "value": "utf-8"
+        },
+        {
+          "name": "header_row",
+          "value": "7"
+        },
+        {
+          "name": "supported_variant",
+          "value": "gamry-dta-cv-framework-7.07-curve-v1"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:089c1d220a2014513851ab7f18130890"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "gamry-dta/1",
+      "input_ids": [
+        "dta-table:9dab6791806229c870e9efcebcfd50e5"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "cv-series:485233f1efa674e847ae06876d438804"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "potential"
+        },
+        {
+          "name": "source_column",
+          "value": "Vf"
+        },
+        {
+          "name": "source_unit",
+          "value": "V vs. Ref."
+        },
+        {
+          "name": "target_unit",
+          "value": "V"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "gamry-dta/1",
+      "input_ids": [
+        "dta-table:9dab6791806229c870e9efcebcfd50e5"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "cv-series:85b63d3d9627033e012ea1c240fea017"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "current"
+        },
+        {
+          "name": "source_column",
+          "value": "Im"
+        },
+        {
+          "name": "source_unit",
+          "value": "A"
+        },
+        {
+          "name": "target_unit",
+          "value": "A"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:776356820096f924d09af7a6dcc6b25b"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "gamry-dta/1",
+      "input_ids": [
+        "dta-table:9dab6791806229c870e9efcebcfd50e5"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "cv-series:737b8f99812f85b95f57720c77f551fd"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "time"
+        },
+        {
+          "name": "source_column",
+          "value": "T"
+        },
+        {
+          "name": "source_unit",
+          "value": "s"
+        },
+        {
+          "name": "target_unit",
+          "value": "s"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:0d93d5c30e44ba6d57cf12ab2eabf79d"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "gamry-dta/1",
+      "input_ids": [
+        "dta-table:9dab6791806229c870e9efcebcfd50e5"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "cv-series:f6b14f0048b25b622f0b77fd99f8e826"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "cycle"
+        },
+        {
+          "name": "source_column",
+          "value": "Cycle"
+        },
+        {
+          "name": "source_unit",
+          "value": "#"
+        },
+        {
+          "name": "target_unit",
+          "value": "1"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:0b2cab138e25c06951c8574e3d8b3f83"
+    },
+    {
+      "implementation": "labbridge.application.cv_ingestion.normalise_cv",
+      "implementation_version": "0.1.0",
+      "input_ids": [
+        "cv-series:485233f1efa674e847ae06876d438804",
+        "cv-series:85b63d3d9627033e012ea1c240fea017",
+        "cv-series:737b8f99812f85b95f57720c77f551fd",
+        "cv-series:f6b14f0048b25b622f0b77fd99f8e826"
+      ],
+      "kind": "observation_assembly",
+      "output_ids": [
+        "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20"
+      ],
+      "parameters": [
+        {
+          "name": "observation_schema_version",
+          "value": "1"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+    }
+  ],
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348"
+}
