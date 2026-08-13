@@ -64,7 +64,7 @@ def engine() -> Iterator[Engine]:
     except Exception as error:
         pytest.skip(
             f"PostgreSQL unreachable at {settings.host}:{settings.port} ({error}). "
-            "Start it with `docker compose up -d`."
+            "Start it with `docker compose --profile infrastructure up -d`."
         )
     yield engine
     engine.dispose()
@@ -95,7 +95,7 @@ def object_store() -> Iterator[S3ObjectStore]:
     except Exception as error:
         pytest.skip(
             f"MinIO unreachable at {settings.endpoint_url} ({error}). "
-            "Start it with `docker compose up -d`."
+            "Start it with `docker compose --profile infrastructure up -d`."
         )
     yield store
 

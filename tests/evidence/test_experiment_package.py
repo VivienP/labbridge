@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import warnings
 import zipfile
 from datetime import UTC, datetime
 
@@ -145,6 +146,20 @@ def _rewrite_member(package_bytes: bytes, name: str, data: bytes | None) -> byte
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for member in sorted(members):
             archive.writestr(member, members[member])
+    return output.getvalue()
+
+
+def _duplicate_member(package_bytes: bytes, name: str) -> bytes:
+    output = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(package_bytes), "r") as source,
+        zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive,
+    ):
+        for info in source.infolist():
+            archive.writestr(info.filename, source.read(info.filename))
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Duplicate name:", category=UserWarning)
+            archive.writestr(name, source.read(name))
     return output.getvalue()
 
 
@@ -507,6 +522,8 @@ def test_package_rejects_user_assertion_with_absent_evidence() -> None:
         ("missing", "package_member_missing"),
         ("modified", "package_member_sha256_mismatch"),
         ("unexpected", "package_member_unexpected"),
+        ("duplicate", "package_member_duplicate"),
+        ("unsafe", "package_member_path_invalid"),
         ("manifest", "package_manifest_digest_mismatch"),
     ],
 )
@@ -521,6 +538,10 @@ def test_package_tampering_fails_with_a_specific_code(mutation: str, expected_co
         damaged = _rewrite_member(package.archive_bytes, "passport/passport.html", b"changed")
     elif mutation == "unexpected":
         damaged = _rewrite_member(package.archive_bytes, "unexpected.txt", b"unexpected")
+    elif mutation == "duplicate":
+        damaged = _duplicate_member(package.archive_bytes, "passport/passport.html")
+    elif mutation == "unsafe":
+        damaged = _rewrite_member(package.archive_bytes, "../unsafe.txt", b"unsafe")
     else:
         with zipfile.ZipFile(io.BytesIO(package.archive_bytes), "r") as archive:
             manifest = json.loads(archive.read("manifest.json"))

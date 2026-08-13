@@ -687,14 +687,20 @@ def test_reconciliation_leaves_accepted_evidence_exactly_as_it_found_it(
     assert outcome.status == "succeeded"
     with migrated.begin() as connection:
         before = connection.execute(
-            select(storage_objects).where(storage_objects.c.state == "committed")
+            select(storage_objects).where(
+                storage_objects.c.work_item_id == work_item_id,
+                storage_objects.c.state == "committed",
+            )
         ).all()
     assert before
 
     with migrated.begin() as connection:
         reconcile(connection, object_store)
         after = connection.execute(
-            select(storage_objects).where(storage_objects.c.state == "committed")
+            select(storage_objects).where(
+                storage_objects.c.work_item_id == work_item_id,
+                storage_objects.c.state == "committed",
+            )
         ).all()
         accepted = connection.execute(
             select(func.count())
