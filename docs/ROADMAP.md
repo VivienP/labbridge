@@ -45,7 +45,7 @@ verification.
 | Experiment metadata origin/transformation model | `implemented` | Versioned append-only schema, migration, application service, and tests |
 | Deterministic validation report and Experiment Passport | `implemented` | JSON/HTML reports and reproducible candidate artifact under `artifacts/experiment-passport` |
 | Experiment Package | `implemented` | Closed ZIP manifest, independent CLI verifier, tamper tests, and candidate artifact |
-| Single-user interactive CV demo | `planned` | No frontend, demo API, browser proof, screenshot, or demo asset |
+| Single-user interactive CV demo | `implemented` | Closed candidate artifact under `artifacts/cv-passport-demo`; required human acceptance records remain outstanding |
 | Gamry DTA ingestion | `implemented` | Bounded Framework 7.07 CV parser, retained diagnostics, shared pipeline, and candidate artifact under `artifacts/gamry-dta-cv` |
 | Galvanostatic electrolysis support | `planned` | Technique contract not implemented |
 | EchemDB-aligned CV export | `implemented` | Versioned adapter, mapping report, pinned validation, and candidate artifact under `artifacts/echemdb-cv-exchange` |
@@ -301,7 +301,13 @@ signatures, a scalar quality score, and frontend implementation.
 
 ## Phase 3.5 — single-user CV Passport demo
 
-**Status:** `planned`.
+**Status:** `implemented`.
+
+Implementation evidence covers the bounded presentation adapter, versioned OpenAPI/type drift gate,
+locked local assets, explicit mapping, backend-owned plot and finding rendering, append-only operator
+assertion flow, Passport supersession, Package download/verification path, deterministic build gate,
+clean-copy acceptance script, and tested failure states. Promotion to `demonstrated` remains prohibited
+until the closed browser artifact is reproduced and both human acceptance records below exist.
 
 ### Objective
 
@@ -393,6 +399,15 @@ validation rule, generates a Passport, or assembles a Package.
 A committed synthetic fixture, browser-test trace, screenshot or short demo recording, exact demo
 command, built-asset manifest, downloaded Experiment Package, and independent CLI verification output.
 Only this artifact can promote the demo from `implemented` to `demonstrated`.
+
+The unresolved demo field is `reference_scale`. The workflow may retain an operator-declared `RHE`
+value as `user_supplied`, but LabBridge does not infer it, validate it as physically correct, or use it
+to convert plotted potential values. A recorded human electrochemistry domain review must approve
+whether the missing field is blocker- or warning-level evidence and confirm consistent API, UI,
+Passport, Package, and artifact semantics before promotion. The same promotion also requires one
+recorded unfamiliar-viewer run demonstrating 60-90 second completion and comprehension of the
+raw-to-Package chain plus the distinct meanings of completeness, integrity, scientific validity, and
+reproducibility.
 
 ### Out of scope
 

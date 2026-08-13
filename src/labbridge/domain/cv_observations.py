@@ -145,7 +145,9 @@ class CVLineage(_Model):
     transformation_ids: tuple[str, ...] = Field(min_length=1)
 
     @model_serializer(mode="wrap")
-    def _serialize_compatible(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+    def _serialize_compatible(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
         payload = cast(dict[str, object], handler(self))
         if self.parser_record_id is None:
             payload.pop("parser_record_id", None)
@@ -176,7 +178,9 @@ class NormalisedCVObservation(_Model):
         return self
 
     @model_serializer(mode="wrap")
-    def _serialize_compatible(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+    def _serialize_compatible(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
         payload = cast(dict[str, object], handler(self))
         if self.parser_record_id is None:
             payload.pop("parser_record_id", None)
@@ -249,7 +253,9 @@ class NormalisationResult(_Model):
         return self
 
     @model_serializer(mode="wrap")
-    def _serialize_compatible(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+    def _serialize_compatible(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
         payload = cast(dict[str, object], handler(self))
         if self.parser_record is None:
             payload.pop("parser_record", None)

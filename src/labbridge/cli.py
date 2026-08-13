@@ -927,3 +927,7 @@ def reconcile_command() -> None:
             f"[yellow]{len(report.unreachable)} object(s) could not be read and were left "
             "unclassified[/yellow]"
         )
+
+
+if __name__ == "__main__":
+    app()

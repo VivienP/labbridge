@@ -460,12 +460,20 @@ class ExperimentService:
         validation = validate_experiment(experiment, validation_version=VALIDATION_VERSION)
         key = self._key(idempotency_key)
         previous = self._repository.latest_passport(experiment_id)
+        if previous is not None and previous.experiment_version == expected_version:
+            same_version_release = True
+            released_at = previous.released_at
+            supersedes_passport_id = previous.supersedes_passport_id
+        else:
+            same_version_release = False
+            released_at = self._clock()
+            supersedes_passport_id = previous.passport_id if previous is not None else None
         passport = build_passport(
             experiment,
             validation,
-            released_at=self._clock(),
+            released_at=released_at,
             release=True,
-            supersedes_passport_id=(previous.passport_id if previous is not None else None),
+            supersedes_passport_id=supersedes_passport_id,
         )
         result, replayed = self._repository.store_passport(
             passport,
@@ -475,7 +483,7 @@ class ExperimentService:
                 {"experiment_id": experiment_id, "expected_version": expected_version}
             ),
         )
-        return StoredPassport(result, replayed)
+        return StoredPassport(result, replayed or same_version_release)
 
     def create_package(
         self,
@@ -493,10 +501,18 @@ class ExperimentService:
             raise PassportNotFoundError(passport_id)
         if passport.experiment_version != expected_version:
             raise ValueError("Passport does not match the expected experiment version")
+        previous = self._repository.latest_package(experiment_id)
+        same_version_release = (
+            previous is not None and previous.experiment_version == expected_version
+        )
+        if same_version_release:
+            assert previous is not None
+            if previous.passport_id != passport_id:
+                raise ValueError("released Package names another Passport for this version")
+            self.download_package(previous.package_id)
         normalisation = self._normalisations.get_normalisation(experiment.observation_id).result
         profile = self._normalisations.get_profile(experiment.import_profile_id).profile
         source = self._sources.retrieve(experiment.source_artifact_id)
-        previous = self._repository.latest_package(experiment_id)
         producing_versions = dict(self._producing_versions)
         if normalisation.parser_record is not None:
             producing_versions["experiment_package"] = "2"
@@ -520,7 +536,13 @@ class ExperimentService:
                 passport=passport,
             ),
             producing_versions=producing_versions,
-            supersedes_package_id=(previous.package_id if previous is not None else None),
+            supersedes_package_id=(
+                previous.supersedes_package_id
+                if same_version_release and previous is not None
+                else previous.package_id
+                if previous is not None
+                else None
+            ),
         )
         result, replayed = self._repository.store_package(
             built.metadata,
@@ -535,7 +557,7 @@ class ExperimentService:
                 }
             ),
         )
-        return StoredPackage(result, replayed)
+        return StoredPackage(result, replayed or same_version_release)
 
     def download_package(self, package_id: str) -> bytes:
         stored = self._repository.get_package(package_id)

@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "ce9789758504346de52c089604cbf60fe404b8073bc5aab8149595ad47651f58",
+  "data_origin": "synthetic",
+  "environment_id": "cv_passport_demo",
+  "execution_mode": "replay",
+  "experiment_id": "experiment:e65dd044048a07b22e0e16d4b4979cf4",
+  "experiment_version": 2,
+  "lineage_closed": true,
+  "package_id": "experiment-package:3f694588eb9c8814a81c0ebbc8adb5ee",
+  "passport_id": "passport:0e1524652c88c942572d68f83d62d7ca",
+  "verified": true
+}
