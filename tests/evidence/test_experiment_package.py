@@ -44,6 +44,8 @@ OBSERVATION_ID = NORMALISATION.observation.observation_id
 TRANSFORM_ID = NORMALISATION.observation.transformation_ids[-1]
 RELEASED_AT = datetime(2026, 8, 12, 20, 0, tzinfo=UTC)
 SUPERSEDING_VERSION = 2
+SCHEMA_1_GOLDEN_ARCHIVE_SHA256 = "90d0162ed15b9a92c3e3ba1098aa278166fead9afd829f4cab52e71873ff58df"
+SCHEMA_2_GOLDEN_ARCHIVE_SHA256 = "5b0001e3c5d3a76ecb2d68db15f703f24fab89f80cd2c8c2d8df217fe15ad8bf"
 
 
 def _assertion(
@@ -242,9 +244,17 @@ def test_package_verifies_and_closes_every_passport_field_to_retained_evidence()
         _inputs(_passport()),
         producing_versions={"labbridge": "0.1.0", "experiment_package": "1"},
     )
+    repeated = build_experiment_package(
+        _inputs(_passport()),
+        producing_versions={"labbridge": "0.1.0", "experiment_package": "1"},
+    )
 
     verification = verify_experiment_package(package.archive_bytes)
 
+    assert repeated.archive_bytes == package.archive_bytes
+    assert digest(package.archive_bytes) == SCHEMA_1_GOLDEN_ARCHIVE_SHA256
+    with zipfile.ZipFile(io.BytesIO(package.archive_bytes), "r") as archive:
+        assert "producer_kind" not in json.loads(archive.read("manifest.json"))
     assert verification.verified is True
     assert verification.package_id == package.package_id
     assert verification.passport_id == package.passport_id
@@ -308,6 +318,7 @@ def test_dta_package_v2_verifies_parser_identity_and_passport_evidence() -> None
     verification = verify_experiment_package(package.archive_bytes)
 
     assert package.metadata.schema_version == "2"
+    assert digest(package.archive_bytes) == SCHEMA_2_GOLDEN_ARCHIVE_SHA256
     assert verification.lineage_closed is True
     assert any(parser_record_id in item.evidence_ids for item in inputs.passport.assertions)
     with zipfile.ZipFile(io.BytesIO(package.archive_bytes), "r") as archive:
@@ -535,3 +546,33 @@ def test_package_tampering_fails_with_a_specific_code(mutation: str, expected_co
         verify_experiment_package(damaged)
 
     assert raised.value.code == expected_code
+
+
+def test_package_rejects_extreme_zip_compression_before_reading_members() -> None:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", b"0" * 1_000_000)
+
+    with pytest.raises(ExperimentPackageVerificationError) as raised:
+        verify_experiment_package(output.getvalue())
+
+    assert raised.value.code == "package_archive_limits_exceeded"
+
+
+def test_package_rejects_duplicate_manifest_entry_names() -> None:
+    package = build_experiment_package(
+        _inputs(_passport()),
+        producing_versions={"labbridge": "0.1.0", "experiment_package": "1"},
+    )
+    with zipfile.ZipFile(io.BytesIO(package.archive_bytes)) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+    manifest["members"].append(dict(manifest["members"][0]))
+    manifest["members_digest"] = digest(canonical_json(manifest["members"]))
+    core = {key: value for key, value in manifest.items() if key != "package_id"}
+    manifest["package_id"] = content_id("experiment-package", core)
+    damaged = _rewrite_member(package.archive_bytes, "manifest.json", canonical_json(manifest))
+
+    with pytest.raises(ExperimentPackageVerificationError) as raised:
+        verify_experiment_package(damaged)
+
+    assert raised.value.code == "package_manifest_invalid"

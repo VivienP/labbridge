@@ -167,7 +167,7 @@ class AdapterSuccess:
 
 @dataclass(frozen=True)
 class AdapterUnavailable:
-    """F-017. The location was never measured. This is data, not an error to work around."""
+    """F-017. The source has no LSV for the location; no value may be fabricated."""
 
     kind: Literal["unavailable"] = field(default="unavailable", init=False)
     failure_code: str = "source_location_unavailable"
@@ -271,7 +271,7 @@ class HerReplayAdapter:
         return AdapterUnavailable(
             reason=(
                 f"library `{candidate.library_id}` area `{candidate.measurement_area_id}` has no "
-                "recorded LSV in this source; the location was not measured"
+                f"LSV in this {self.environment.data_origin} replay source"
             )
         )
 
