@@ -1,0 +1,155 @@
+{
+  "observation_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e",
+  "records": [
+    {
+      "implementation": "labbridge.infrastructure.electrolysis_csv.parse_electrolysis_csv",
+      "implementation_version": "1",
+      "input_ids": [
+        "source:c0f58f1620c4f47e242543199641b10f"
+      ],
+      "kind": "csv_parse",
+      "output_ids": [
+        "electrolysis-csv-table:28d58cb50e51a0ad7fe5f7bdc78b7c45"
+      ],
+      "parameters": [
+        {
+          "name": "decimal_convention",
+          "value": "point"
+        },
+        {
+          "name": "delimiter",
+          "value": ","
+        },
+        {
+          "name": "encoding",
+          "value": "utf-8"
+        },
+        {
+          "name": "header_row",
+          "value": "1"
+        },
+        {
+          "name": "missing_value_tokens",
+          "value": "|NA"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:23ad340c615a93d7405dd09a8a503ac6"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "1",
+      "input_ids": [
+        "electrolysis-csv-table:28d58cb50e51a0ad7fe5f7bdc78b7c45"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "electrolysis-series:4f4132c4c66cae4a642b58e2554bba88"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "potential"
+        },
+        {
+          "name": "source_column",
+          "value": "working_potential_V"
+        },
+        {
+          "name": "source_unit",
+          "value": "V"
+        },
+        {
+          "name": "target_unit",
+          "value": "V"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:80870c93a9c044c5b52c10ab3f82d17f"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "1",
+      "input_ids": [
+        "electrolysis-csv-table:28d58cb50e51a0ad7fe5f7bdc78b7c45"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "electrolysis-series:be07a245d33202a4dcdc41b4d36af79f"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "current"
+        },
+        {
+          "name": "source_column",
+          "value": "applied_current_mA"
+        },
+        {
+          "name": "source_unit",
+          "value": "mA"
+        },
+        {
+          "name": "target_unit",
+          "value": "A"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:7a3225c64fa93d7a8fbd951277c65d40"
+    },
+    {
+      "implementation": "labbridge.infrastructure.cv_csv.unit_conversion",
+      "implementation_version": "1",
+      "input_ids": [
+        "electrolysis-csv-table:28d58cb50e51a0ad7fe5f7bdc78b7c45"
+      ],
+      "kind": "column_mapping",
+      "output_ids": [
+        "electrolysis-series:5332f2b056d611e8636378ad9deef838"
+      ],
+      "parameters": [
+        {
+          "name": "role",
+          "value": "time"
+        },
+        {
+          "name": "source_column",
+          "value": "elapsed_s"
+        },
+        {
+          "name": "source_unit",
+          "value": "s"
+        },
+        {
+          "name": "target_unit",
+          "value": "s"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:6ae518fc293641ea33d14d5e00023aec"
+    },
+    {
+      "implementation": "labbridge.application.electrolysis_ingestion.normalise_electrolysis",
+      "implementation_version": "0.1.0",
+      "input_ids": [
+        "electrolysis-series:4f4132c4c66cae4a642b58e2554bba88",
+        "electrolysis-series:be07a245d33202a4dcdc41b4d36af79f",
+        "electrolysis-series:5332f2b056d611e8636378ad9deef838"
+      ],
+      "kind": "observation_assembly",
+      "output_ids": [
+        "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e"
+      ],
+      "parameters": [
+        {
+          "name": "observation_schema_version",
+          "value": "1"
+        }
+      ],
+      "schema_version": "1",
+      "transformation_id": "transform:1c15c7f327d8b885a20330e2010e8a15"
+    }
+  ],
+  "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f"
+}

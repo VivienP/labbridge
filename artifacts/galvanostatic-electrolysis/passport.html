@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Experiment Passport passport:887d95b0e3849b62b4cd778d3d3460dc</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;
+padding:0 1rem;color:#202124}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #bbb;padding:.45rem;text-align:left}
+code{overflow-wrap:anywhere}.decision{padding:.75rem;border:2px solid #555}
+</style>
+</head>
+<body>
+<h1>Experiment Passport passport:887d95b0e3849b62b4cd778d3d3460dc</h1>
+<p><strong>Origin and mode:</strong> synthetic + replay</p>
+<p><strong>Technique:</strong> galvanostatic_electrolysis</p>
+<p><strong>Experiment version:</strong> 1</p>
+<p class="decision"><strong>Release decision: eligible</strong><br>
+Blocking: 0;
+warnings: 1;
+unknowns: 4</p>
+<h2>Metadata assertions</h2>
+<table><thead><tr><th>Field</th><th>Value state</th><th>Origin</th><th>Transformation</th>
+<th>Requirement</th><th>Assertion</th></tr></thead><tbody><tr><td>source_artifact</td><td>source:c0f58f1620c4f47e242543199641b10f</td><td>source_file</td><td>none</td><td>required</td><td><code>assertion:8c88d9cfdef3f776eaee47c7c7f85f5e</code></td></tr><tr><td>observation</td><td>electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e</td><td>source_file</td><td>derived</td><td>required</td><td><code>assertion:853147eb61fff54d6071a0dedde574fa</code></td></tr><tr><td>potential_axis</td><td>working_potential_V V</td><td>user_supplied</td><td>parsed</td><td>required</td><td><code>assertion:59a9ca794a3bd564e8fca2949651567c</code></td></tr><tr><td>current_axis</td><td>applied_current_mA A</td><td>user_supplied</td><td>unit_converted</td><td>required</td><td><code>assertion:3d61f1b8856bccfb7c71891e55fe1088</code></td></tr><tr><td>current_quantity_kind</td><td>current</td><td>user_supplied</td><td>none</td><td>required</td><td><code>assertion:c4828d75a1e8aace26900627349f4621</code></td></tr><tr><td>time_axis</td><td>elapsed_s s</td><td>user_supplied</td><td>parsed</td><td>required</td><td><code>assertion:6dd6840247c4d1132b0580a126c49f02</code></td></tr><tr><td>current_sign_convention</td><td>unknown</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:c6cbaa50dd870653294a994f0d11378a</code></td></tr><tr><td>current_basis</td><td>total_current</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:87c4b0fd153f24418b999f1578f3cd06</code></td></tr><tr><td>electrode_area</td><td>not_applicable</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:22e758c2ff9a799770a768c4bf2e178f</code></td></tr><tr><td>cell_geometry</td><td>unknown</td><td>user_supplied</td><td>none</td><td>recommended</td><td><code>assertion:60913f24c196035e2064b48ca268fb91</code></td></tr><tr><td>reference_scale</td><td>unknown</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:4af485baf6b3d1b3c70614df7e0e94ba</code></td></tr><tr><td>potential_treatment</td><td>unknown</td><td>user_supplied</td><td>none</td><td>conditional</td><td><code>assertion:1533c00a356fb32c17c15ff11d7258a0</code></td></tr><tr><td>sampling_interval</td><td>60 s</td><td>user_supplied</td><td>none</td><td>recommended</td><td><code>assertion:ab255a7d68159afe192526939c0c520f</code></td></tr><tr><td>interruptions</td><td>none_declared</td><td>user_supplied</td><td>none</td><td>recommended</td><td><code>assertion:42a5894a6dffd95a93bcfae391738821</code></td></tr><tr><td>chemical_analysis</td><td>unavailable</td><td>user_supplied</td><td>none</td><td>optional</td><td><code>assertion:b1711151cb5d73cff91b1d571861277d</code></td></tr><tr><td>scan_rate</td><td>not_applicable</td><td>user_supplied</td><td>none</td><td>optional</td><td><code>assertion:5bfd8ff2c49b4400f5b04a30fde28ac0</code></td></tr><tr><td>cycle_information</td><td>not_applicable</td><td>user_supplied</td><td>none</td><td>optional</td><td><code>assertion:aec9fcaff735e52a2cb2fd7a54c7a82c</code></td></tr></tbody></table>
+<h2>Validation findings</h2><ul><li><strong>unknown</strong> <code>validation-finding:7e3c34a744bef5e26ec75eb610f25291</code> — cell_geometry remains unknown; the Passport does not infer it. Resolution: Append a user-supplied cell_geometry assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>unknown</strong> <code>validation-finding:5acd36b0287540527a6e39794910f0c2</code> — current_sign_convention remains unknown; the Passport does not infer it. Resolution: Append a user-supplied current_sign_convention assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>unknown</strong> <code>validation-finding:b5e15761b4cfdc1deefb6263719b8558</code> — potential_treatment remains unknown; the Passport does not infer it. Resolution: Append a user-supplied potential_treatment assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>unknown</strong> <code>validation-finding:5ae9a6d3bd6d3c4ddf1d4b281bf9a194</code> — reference_scale remains unknown; the Passport does not infer it. Resolution: Append a user-supplied reference_scale assertion if additional retained evidence is available; otherwise keep this finding visible.</li><li><strong>warning</strong> <code>validation-finding:d4182f96e49f2c4800440edfe1ac3ca4</code> — chemical_analysis remains unavailable; the Passport does not infer it. Resolution: Append a user-supplied chemical_analysis assertion if additional retained evidence is available; otherwise keep this finding visible.</li></ul>
+<h2>Electrical and chemical scope</h2><p>Recorded electrical time series: time, current, and potential with explicit units. Chemical/product quantification: unavailable. This Passport does not report conversion, selectivity, yield, or Faradaic efficiency.</p>
+<h2>Lineage anchors</h2>
+<p>Source artifact: <code>source:c0f58f1620c4f47e242543199641b10f</code><br>
+Normalised observation: <code>electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e</code><br>
+Import profile: <code>electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc</code></p>
+<h2>Limitations</h2>
+<p>This Passport records evidence completeness and declared metadata. It does not claim scientific
+validity, data quality, reproducibility, or fitness for a journal.</p>
+</body>
+</html>

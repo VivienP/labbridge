@@ -47,7 +47,7 @@ verification.
 | Experiment Package | `implemented` | Closed ZIP manifest, independent CLI verifier, tamper tests, and candidate artifact |
 | Single-user interactive CV demo | `planned` | No frontend, demo API, browser proof, screenshot, or demo asset |
 | Gamry DTA ingestion | `implemented` | Bounded Framework 7.07 CV parser, retained diagnostics, shared pipeline, and candidate artifact under `artifacts/gamry-dta-cv` |
-| Galvanostatic electrolysis support | `planned` | Technique contract not implemented |
+| Galvanostatic electrolysis support | `implemented` | Explicit electrical profile, PostgreSQL/MinIO persistence, Package schema `3`, and candidate artifact under `artifacts/galvanostatic-electrolysis` |
 | EchemDB-aligned CV export | `implemented` | Versioned adapter, mapping report, pinned validation, and candidate artifact under `artifacts/echemdb-cv-exchange` |
 | Enzymatic-biosensor simulator | `deferred` | Scientific contract retained in `SIMULATOR_MODEL.md` |
 
@@ -465,7 +465,7 @@ and compatibility claims beyond the tested variants.
 
 ## Phase 5 — galvanostatic electrolysis package
 
-**Status:** `planned`.
+**Status:** `implemented`.
 
 ### Objective
 

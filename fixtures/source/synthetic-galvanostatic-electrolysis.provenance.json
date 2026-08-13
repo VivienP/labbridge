@@ -1,0 +1,9 @@
+{
+  "data_origin": "synthetic",
+  "execution_mode": "replay",
+  "fixture_generation": "independently authored deterministic tabular fixture",
+  "redistribution": "project-owned synthetic content",
+  "scientific_scope": "electrical time-series contract testing only",
+  "source_archive_relation": "none",
+  "technique": "galvanostatic_electrolysis"
+}

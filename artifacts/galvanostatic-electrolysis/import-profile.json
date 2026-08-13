@@ -1,0 +1,82 @@
+{
+  "auxiliary_results": [],
+  "columns": [
+    {
+      "role": "time",
+      "source_column": "elapsed_s",
+      "source_unit": "s",
+      "target_unit": "s"
+    },
+    {
+      "role": "current",
+      "source_column": "applied_current_mA",
+      "source_unit": "mA",
+      "target_unit": "A"
+    },
+    {
+      "role": "potential",
+      "source_column": "working_potential_V",
+      "source_unit": "V",
+      "target_unit": "V"
+    }
+  ],
+  "decimal_convention": "point",
+  "delimiter": ",",
+  "encoding": "utf-8",
+  "environment_id": "synthetic_galvanostatic_fixture",
+  "header_row": 1,
+  "metadata": {
+    "cell_geometry": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "chemical_analysis": {
+      "state": "unavailable",
+      "unit": null,
+      "value": null
+    },
+    "current_basis": {
+      "state": "known",
+      "unit": null,
+      "value": "total_current"
+    },
+    "current_sign_convention": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "electrode_area": {
+      "state": "not_applicable",
+      "unit": null,
+      "value": null
+    },
+    "interruptions": {
+      "state": "known",
+      "unit": null,
+      "value": "none_declared"
+    },
+    "potential_treatment": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "reference_scale": {
+      "state": "unknown",
+      "unit": null,
+      "value": null
+    },
+    "sampling_interval": {
+      "state": "known",
+      "unit": "s",
+      "value": "60"
+    }
+  },
+  "missing_value_tokens": [
+    "",
+    "NA"
+  ],
+  "profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+  "schema_version": "1",
+  "technique": "galvanostatic_electrolysis"
+}

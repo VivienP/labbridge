@@ -1,0 +1,30 @@
+[
+  {
+    "code": "csv.structure.valid",
+    "finding_id": "finding:9b32e54485c011f95bdd3a7b4d74fde5",
+    "message": "CSV rows and headers are valid.",
+    "status": "pass",
+    "subject_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e"
+  },
+  {
+    "code": "electrolysis.electrical_axes.valid",
+    "finding_id": "finding:cbf75875282b4eea801a7cf6f17637bb",
+    "message": "Required time, current, and potential axes are explicitly mapped.",
+    "status": "pass",
+    "subject_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e"
+  },
+  {
+    "code": "unit.mapping.valid",
+    "finding_id": "finding:bf40f583c1b31a87916d75256c1c2e00",
+    "message": "Every electrical column has a supported explicit unit mapping.",
+    "status": "pass",
+    "subject_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e"
+  },
+  {
+    "code": "lineage.closed",
+    "finding_id": "finding:b4768158c05d8c318ad352452efcfc4d",
+    "message": "Every normalised electrical series closes to the retained source artifact.",
+    "status": "pass",
+    "subject_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e"
+  }
+]
