@@ -483,3 +483,58 @@ consumed a real adapter call and appends no entry.
 The attempt lifecycle has no `duplicate_suppressed` state, so a suppressed attempt is recorded as
 `cancelled` while its outcome carries the real meaning. That is a temporary compromise, recorded as
 one: no documentation or metric may read those attempt rows as user-requested cancellations.
+
+---
+
+## ADR-017 — Use a bounded in-repository parser for the first Gamry DTA CV variant
+
+**Status:** accepted
+
+**Decision:** Phase 4 uses a small, fail-closed parser owned by LabBridge for one pinned textual
+Gamry DTA CV variant. It does not add `echemdb-converters` as a runtime dependency. Every attempt
+creates a content-addressed parser record; accepted records enter the common CV transformation,
+Passport, and Package contracts, while rejected records remain queryable without creating a partial
+observation. A DTA-backed Experiment Package uses schema `2` and contains the parser record.
+
+### Context
+
+The documented `echemdb-converters` 0.4.1 Gamry loader was evaluated before implementation. Its
+loader locates the first `CURVE` table and delegates table parsing to general tabular tooling. That
+is useful for conversion workflows, but the inspected version does not enforce the Phase 4 boundary:
+one technique, one Framework version, one table schema, an exact declared row count, rejection of
+mixed table objects, durable failure diagnostics, and exact line locations for every accepted field.
+Wrapping it would still require a second strict parser around its output while adding pandas,
+clevercsv, unitpackage, and their transitive surface to this path.
+
+The relevant inspected sources are the
+[`gamryloader.py`](https://github.com/echemdb/echemdb-converters/blob/main/echemdbconverters/gamryloader.py)
+implementation, its
+[`pyproject.toml`](https://github.com/echemdb/echemdb-converters/blob/main/pyproject.toml), and Gamry's
+documented [DTA object format](https://help.gamry.com/Framework/general-information_datafileformat.html).
+The decision is about the inspected version and required contract, not a general quality judgment
+about the converter project.
+
+### Consequences
+
+- the accepted variant is `TAG CV`, Framework `7.07`, exactly one `CURVE TABLE`, and the pinned
+  column/unit layout in `artifacts/gamry-dta-cv/SUPPORT.md`;
+- encoding and decimal convention come only from the immutable import profile;
+- declared row counts, headers, units, leading DTA table fields, numeric cells, and trailing content
+  are checked without dialect detection or row repair;
+- `Vf`, `Im`, `T`, and `Cycle` enter the same explicit mapping and unit-conversion code used by
+  generic CSV; `TITLE`, `NOTES`, and ignored table columns are preserved or named but not interpreted;
+- `V vs. Ref.` converts the numeric potential dimension to volts without assigning a reference
+  electrode or potential scale;
+- accepted and rejected parser records are durable PostgreSQL evidence tied to exact Phase 1 bytes;
+- DTA observations expose the same API, CLI, validation, Passport, and Package operations as generic
+  CSV, with no vendor-only observation or report model;
+- Package schema `1` remains verifiable for existing generic CSV evidence; schema `2` requires the
+  parser member and producing parser version.
+
+### Limits
+
+This decision does not claim support for other Gamry Framework versions, other electrochemical
+techniques, multiple curves, proprietary binary formats, automatic locale or unit detection,
+reference-electrode interpretation, current-density normalisation, live instrument control, or
+compatibility with vendor files outside the pinned fixture variants. Each wider variant requires a
+new explicit contract, fixture, diagnostics, and differential proof before acceptance.

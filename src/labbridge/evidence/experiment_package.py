@@ -21,12 +21,14 @@ from labbridge.domain.cv_observations import (
     transformation_record_id,
 )
 from labbridge.domain.identity import DataOrigin, ExecutionMode
+from labbridge.domain.parser_diagnostics import ParserRecord
 from labbridge.domain.source_artifacts import source_artifact_id
 
 from .manifest import canonical_json, digest
 from .passport import ExperimentPassport, render_passport_html, render_passport_json
 
-PACKAGE_SCHEMA_VERSION = "1"
+PACKAGE_SCHEMA_VERSION = "2"
+LEGACY_PACKAGE_SCHEMA_VERSION = "1"
 MANIFEST_MEMBER = "manifest.json"
 
 
@@ -41,6 +43,7 @@ class PackageInputs(BaseModel):
     import_profile: dict[str, object]
     normalised_observation: dict[str, object]
     transformation_graph: dict[str, object]
+    parser_record: dict[str, object] | None = None
     passport: ExperimentPassport
 
 
@@ -50,7 +53,7 @@ class ExperimentPackage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     package_id: str = Field(min_length=1)
-    schema_version: Literal["1"]
+    schema_version: Literal["1", "2"]
     passport_id: str = Field(min_length=1)
     experiment_id: str = Field(min_length=1)
     experiment_version: int = Field(ge=1)
@@ -124,7 +127,7 @@ def _source_member_name(filename: str) -> str:
 
 def _lineage_payload(inputs: PackageInputs) -> dict[str, object]:
     passport = inputs.passport
-    return {
+    payload: dict[str, object] = {
         "schema_version": "1",
         "source_artifact_id": passport.source_artifact_id,
         "observation_id": passport.observation_id,
@@ -149,6 +152,9 @@ def _lineage_payload(inputs: PackageInputs) -> dict[str, object]:
             for item in passport.findings
         ],
     }
+    if inputs.parser_record is not None:
+        payload["parser_record_id"] = inputs.parser_record.get("parser_record_id")
+    return payload
 
 
 def build_experiment_package(
@@ -174,10 +180,17 @@ def build_experiment_package(
         ),
         "lineage.json": canonical_json(_lineage_payload(inputs)),
     }
+    schema_version = (
+        PACKAGE_SCHEMA_VERSION
+        if inputs.parser_record is not None
+        else LEGACY_PACKAGE_SCHEMA_VERSION
+    )
+    if inputs.parser_record is not None:
+        members["phase2/parser-record.json"] = canonical_json(inputs.parser_record)
     entries = [_member_entry(name, data) for name, data in sorted(members.items())]
     core: dict[str, object] = {
         "artifact_kind": "experiment_package",
-        "schema_version": PACKAGE_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "passport_id": passport.passport_id,
         "experiment_id": passport.experiment_id,
         "experiment_version": passport.experiment_version,
@@ -195,7 +208,7 @@ def build_experiment_package(
     archive_bytes = _zip(members)
     metadata = ExperimentPackage(
         package_id=package_id,
-        schema_version=PACKAGE_SCHEMA_VERSION,
+        schema_version=schema_version,
         passport_id=passport.passport_id,
         experiment_id=passport.experiment_id,
         experiment_version=passport.experiment_version,
@@ -430,8 +443,77 @@ def _verify_phase_evidence_identity(  # noqa: PLR0912 - each branch rejects one 
         )
 
 
+def _verify_parser_evidence(
+    *,
+    members: dict[str, bytes],
+    manifest: dict[str, object],
+    source: dict[str, object],
+    observation: dict[str, object],
+    profile: dict[str, object],
+    graph: dict[str, object],
+    schema_version: str,
+) -> str | None:
+    member_name = "phase2/parser-record.json"
+    if schema_version == LEGACY_PACKAGE_SCHEMA_VERSION:
+        if member_name in members or observation.get("parser_record_id") is not None:
+            raise ExperimentPackageVerificationError(
+                "package_schema_mismatch",
+                "Package schema 1 cannot carry a parser record",
+            )
+        return None
+    parser_body = _json_member(members, member_name)
+    try:
+        record = ParserRecord.model_validate(parser_body)
+    except ValueError as error:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "the retained parser record does not match its schema"
+        ) from error
+    if record.status != "accepted":
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "a released Package cannot use a rejected parser record"
+        )
+    raw_provenance = observation.get("provenance")
+    provenance_parser_record_id = (
+        raw_provenance.get("parser_record_id") if isinstance(raw_provenance, dict) else None
+    )
+    if (
+        record.source_artifact_id != source.get("source_artifact_id")
+        or record.import_profile_id != profile.get("profile_id")
+        or record.parser_record_id != observation.get("parser_record_id")
+        or record.parser_record_id != provenance_parser_record_id
+        or record.parser_version != observation.get("parser_version")
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open",
+            "parser, source, profile, observation, and provenance identities differ",
+        )
+    records = graph.get("records")
+    if not isinstance(records, list) or not any(
+        isinstance(item, dict)
+        and item.get("kind") == "dta_parse"
+        and record.parser_record_id in item.get("output_ids", [])
+        for item in records
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "the transformation graph omits the parser record"
+        )
+    versions = manifest.get("producing_versions")
+    if not isinstance(versions, dict) or (
+        versions.get("experiment_package") != PACKAGE_SCHEMA_VERSION
+        or versions.get("gamry_dta_parser") != record.parser_version
+    ):
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "Package producing versions omit the DTA parser"
+        )
+    return record.parser_record_id
+
+
 def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage defect
-    members: dict[str, bytes], passport: ExperimentPassport
+    members: dict[str, bytes],
+    passport: ExperimentPassport,
+    *,
+    manifest: dict[str, object],
+    schema_version: str,
 ) -> None:
     source = _json_member(members, "phase1/source-artifact.json")
     source_members = [name for name in members if name.startswith("source/")]
@@ -449,6 +531,15 @@ def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage
     graph = _json_member(members, "phase2/transformation-graph.json")
     lineage = _json_member(members, "lineage.json")
     _verify_phase_evidence_identity(source, observation, profile, graph, passport)
+    parser_record_id = _verify_parser_evidence(
+        members=members,
+        manifest=manifest,
+        source=source,
+        observation=observation,
+        profile=profile,
+        graph=graph,
+        schema_version=schema_version,
+    )
     available = {passport.source_artifact_id}
     records = graph.get("records")
     if not isinstance(records, list):
@@ -492,6 +583,8 @@ def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage
         *transformation_ids,
         *assertion_ids,
     }
+    if parser_record_id is not None:
+        evidence_universe.add(parser_record_id)
     for assertion in passport.assertions:
         if not set(assertion.evidence_ids).issubset(evidence_universe):
             raise ExperimentPackageVerificationError(
@@ -516,12 +609,21 @@ def _verify_lineage(  # noqa: PLR0912 - each branch rejects one distinct lineage
         raise ExperimentPackageVerificationError(
             "package_lineage_open", "lineage inventory does not name the retained source"
         )
+    if lineage.get("parser_record_id") != parser_record_id:
+        raise ExperimentPackageVerificationError(
+            "package_lineage_open", "lineage inventory does not match the parser record"
+        )
 
 
 def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
     """Verify package closure, report parity, and lineage without a database or object store."""
     members = _open_members(package_bytes)
     manifest = _manifest(members)
+    schema_version = manifest.get("schema_version")
+    if schema_version not in {LEGACY_PACKAGE_SCHEMA_VERSION, PACKAGE_SCHEMA_VERSION}:
+        raise ExperimentPackageVerificationError(
+            "package_schema_unsupported", "the Package schema version is not supported"
+        )
     _verify_members(members, manifest)
     core = {key: value for key, value in manifest.items() if key != "package_id"}
     expected_package_id = content_id("experiment-package", core)
@@ -555,7 +657,12 @@ def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
             raise ExperimentPackageVerificationError(
                 "package_report_contract_mismatch", f"HTML omits finding {finding_id}"
             )
-    _verify_lineage(members, passport)
+    _verify_lineage(
+        members,
+        passport,
+        manifest=manifest,
+        schema_version=str(schema_version),
+    )
     return PackageVerification(
         verified=True,
         package_id=expected_package_id,
@@ -571,6 +678,7 @@ def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
 
 
 __all__ = [
+    "LEGACY_PACKAGE_SCHEMA_VERSION",
     "PACKAGE_SCHEMA_VERSION",
     "BuiltExperimentPackage",
     "ExperimentPackage",

@@ -13,6 +13,7 @@ from labbridge.application.cv_ingestion import (
 )
 from labbridge.domain.cv import CVImportProfile, import_profile_id
 from labbridge.domain.cv_observations import NormalisationResult
+from labbridge.domain.parser_diagnostics import ParserRecord
 
 
 @dataclass
@@ -26,6 +27,7 @@ class MemoryRecords(CVRecordRepository):
     def __init__(self) -> None:
         self.profiles: dict[str, CVImportProfile] = {}
         self.results: dict[str, NormalisationResult] = {}
+        self.parser_records: dict[str, ParserRecord] = {}
 
     def put_profile(
         self, item: CVImportProfile, *, idempotency_key: str | None = None
@@ -46,10 +48,22 @@ class MemoryRecords(CVRecordRepository):
         identity = result.observation.observation_id
         replayed = identity in self.results
         self.results.setdefault(identity, result)
+        if result.parser_record is not None:
+            self.parser_records.setdefault(
+                result.parser_record.parser_record_id, result.parser_record
+            )
         return replayed
 
     def get_normalisation(self, observation_id: str) -> NormalisationResult | None:
         return self.results.get(observation_id)
+
+    def put_parser_record(self, record: ParserRecord) -> bool:
+        replayed = record.parser_record_id in self.parser_records
+        self.parser_records.setdefault(record.parser_record_id, record)
+        return replayed
+
+    def get_parser_record(self, parser_record_id: str) -> ParserRecord | None:
+        return self.parser_records.get(parser_record_id)
 
 
 def service() -> CVIngestionService:

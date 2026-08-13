@@ -1,0 +1,90 @@
+{
+  "diagnostics": [
+    {
+      "code": "dta_supported_variant",
+      "locations": [
+        {
+          "line_end": 12,
+          "line_start": 6,
+          "object_tag": "TABLE",
+          "object_type": "CURVE"
+        }
+      ],
+      "message": "the source matches the bounded Gamry DTA CV variant",
+      "severity": "info"
+    }
+  ],
+  "exclusions": [
+    "Additional or mixed TABLE objects",
+    "Techniques other than cyclic voltammetry",
+    "Framework versions other than 7.07",
+    "Column or unit layouts outside the declared CURVE schema",
+    "Implicit locale, unit, reference-scale, or electrode-area interpretation"
+  ],
+  "fields": [
+    {
+      "data_end_line": 12,
+      "data_start_line": 9,
+      "header_line": 7,
+      "role": "potential",
+      "source_column": "Vf",
+      "source_unit": "V vs. Ref.",
+      "unit_line": 8
+    },
+    {
+      "data_end_line": 12,
+      "data_start_line": 9,
+      "header_line": 7,
+      "role": "current",
+      "source_column": "Im",
+      "source_unit": "A",
+      "unit_line": 8
+    },
+    {
+      "data_end_line": 12,
+      "data_start_line": 9,
+      "header_line": 7,
+      "role": "time",
+      "source_column": "T",
+      "source_unit": "s",
+      "unit_line": 8
+    },
+    {
+      "data_end_line": 12,
+      "data_start_line": 9,
+      "header_line": 7,
+      "role": "cycle",
+      "source_column": "Cycle",
+      "source_unit": "#",
+      "unit_line": 8
+    }
+  ],
+  "headers": [
+    "Pt",
+    "T",
+    "Vf",
+    "Im",
+    "Vu",
+    "Sig",
+    "Ach",
+    "IERange",
+    "Over",
+    "Cycle",
+    "Temp"
+  ],
+  "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+  "parser_name": "labbridge-gamry-dta",
+  "parser_record_id": "parser-record:f3d7d5fad276f78be792e6032b46c429",
+  "parser_version": "gamry-dta/1",
+  "preserved_uninterpreted": [
+    "NOTES",
+    "TITLE"
+  ],
+  "row_count": 4,
+  "schema_version": "1",
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+  "source_format": "gamry_dta",
+  "status": "accepted",
+  "support_statement": "Gamry DTA cyclic-voltammetry files with TAG CV, Framework 7.07, and one CURVE table using the declared Phase 4 column schema are supported.",
+  "supported_variant": "gamry-dta-cv-framework-7.07-curve-v1"
+}

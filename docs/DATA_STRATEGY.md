@@ -127,6 +127,25 @@ A typed representation that:
 - does not alter scientific values except explicit unit conversion;
 - retains missing and unavailable measurements as explicit states.
 
+#### Vendor-format parser evidence
+
+A vendor parser is an interpretation layer, not a source replacement. The exact vendor file remains
+the raw source artifact. Each attempted interpretation MUST retain a content-addressed parser record
+that names the source bytes, explicit import profile, parser version, supported variant, decision,
+and source locations used for accepted fields. Rejection MUST retain a stable error diagnostic and
+MUST NOT create a partial normalised observation.
+
+The Phase 4 Gamry boundary accepts only the documented Framework `7.07` CV `CURVE` layout pinned by
+the redistributable synthetic fixture. `TITLE`, `NOTES`, and other non-table object types may be
+preserved as uninterpreted labels; their contents assign no scientific meaning. The source string
+`V vs. Ref.` remains distinct from a reference-electrode identity. A potential value may be stored
+in volts while the reference scale stays `unknown`; no RHE, SHE, Ag/AgCl, correction, or compensation
+state follows from the unit string.
+
+Equivalent DTA and generic CSV inputs converge only after independent explicit profiles map their
+source columns and units into the common CV roles. Equality of normalised values does not collapse
+their source artifacts, parser records, transformation graphs, or provenance.
+
 #### Derived layer
 
 Versioned metrics and analytical outputs. Source-provided fits and LabBridge-computed fits remain distinguishable.

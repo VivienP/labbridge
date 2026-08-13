@@ -136,6 +136,26 @@ The committed artifact under [`artifacts/cv-ingestion`](artifacts/cv-ingestion) 
 Phase 1 source bytes and contains the profile, normalised observation, transformation graph,
 structural findings, explicit environment identity, closed manifest, and verification record.
 
+The bounded Phase 4 Gamry path selects its source format explicitly and uses the same profile,
+normalisation, Passport, and Package services:
+
+```bash
+labbridge source intake fixtures/source/synthetic-gamry-cv.dta \
+  --intake-id synthetic-gamry-cv-v1 \
+  --media-type application/vnd.gamry.dta \
+  --data-origin synthetic \
+  --execution-mode replay
+labbridge cv profile-create fixtures/import-profiles/synthetic-gamry-cv-v1.json --json
+labbridge cv normalise <source-artifact-id> --profile-id <profile-id> \
+  --source-format gamry_dta --json
+labbridge cv parser-record <parser-record-id> --json
+python scripts/reproduce_gamry_dta_cv.py --output build/gamry-dta-cv
+```
+
+The candidate artifact under [`artifacts/gamry-dta-cv`](artifacts/gamry-dta-cv) lists the exact
+Framework 7.07 CV table boundary and exclusions. It retains source-field locations and parser
+diagnostics without inferring a reference scale, potential correction, or electrode area.
+
 The Phase 3 service, HTTP API, and CLI share the same validation, Passport, and Package operations:
 
 ```bash
@@ -218,6 +238,7 @@ or operational experiment proves it), or `deferred`.
 | Evidence bundles, local bundle checks, and full stored-object verification | `implemented` |
 | Opaque source intake, exact-byte retrieval, and integrity verification | `demonstrated` |
 | Explicit generic CV CSV ingestion and closed normalisation lineage | `demonstrated` |
+| Bounded Gamry DTA Framework 7.07 CV ingestion and retained parser diagnostics | `implemented` |
 | Append-only Experiment assertions and deterministic release validation | `implemented` |
 | JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
 | Biosensor simulator and fault injection | `planned` |
@@ -232,7 +253,9 @@ demonstrated separately under [`artifacts/cv-ingestion`](artifacts/cv-ingestion)
 parser, mapping, unit, structural, identity, and lineage behaviour for the committed profile; it does
 not claim electrochemical validity or infer unavailable experimental context. The Phase 3 candidate
 artifact is under [`artifacts/experiment-passport`](artifacts/experiment-passport); its status remains
-`implemented` until the artifact is committed and verified from the resulting clean checkout.
+`implemented` until the artifact is committed and verified from the resulting clean checkout. The
+Phase 4 candidate under [`artifacts/gamry-dta-cv`](artifacts/gamry-dta-cv) follows the same boundary:
+its code, tests, and candidate Package justify `implemented`, not `demonstrated`, in this worktree.
 
 ## Limitations
 
