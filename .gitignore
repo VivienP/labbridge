@@ -24,6 +24,7 @@ dist/
 venv/
 
 # Tooling
+.cache/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

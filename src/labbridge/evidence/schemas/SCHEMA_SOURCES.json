@@ -1,0 +1,23 @@
+{
+  "data_package_profile": {
+    "datapackage_sha256": "a9ef0fc168b3402ae7aa7d22bbcb798e0db6b639e7ee15ff4aa177463cea7112",
+    "datapackage_url": "https://datapackage.org/profiles/2.0/datapackage.json",
+    "dataresource_sha256": "067d769b44b22178615620d37ac4e9f732cf0459c5540255cbba2480aa91c35a",
+    "dataresource_url": "https://datapackage.org/profiles/2.0/dataresource.json",
+    "version": "2.0"
+  },
+  "echemdb_metadata_schema": {
+    "commit": "f48f583f83b1de9f5601d05dae5e5fcd1c25a3f0",
+    "license": "GPL-3.0-or-later",
+    "license_sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809",
+    "schema_sha256": "8e9f652d129bbce5b38c8c8092a715d185b7ff8eef7d9a1f7273ed128a73c8ce",
+    "source_url": "https://github.com/echemdb/metadata-schema/tree/0.8.3",
+    "version": "0.8.3"
+  },
+  "schema_version": "1",
+  "validators": {
+    "frictionless": "5.19.0",
+    "jsonschema": "4.26.0",
+    "referencing": "0.37.0"
+  }
+}

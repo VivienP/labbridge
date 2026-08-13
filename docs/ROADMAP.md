@@ -48,7 +48,7 @@ verification.
 | Single-user interactive CV demo | `planned` | No frontend, demo API, browser proof, screenshot, or demo asset |
 | Gamry DTA ingestion | `implemented` | Bounded Framework 7.07 CV parser, retained diagnostics, shared pipeline, and candidate artifact under `artifacts/gamry-dta-cv` |
 | Galvanostatic electrolysis support | `planned` | Technique contract not implemented |
-| EchemDB-compatible export | `planned` | Mapping and validation proof do not exist |
+| EchemDB-aligned CV export | `implemented` | Versioned adapter, mapping report, pinned validation, and candidate artifact under `artifacts/echemdb-cv-exchange` |
 | Enzymatic-biosensor simulator | `deferred` | Scientific contract retained in `SIMULATOR_MODEL.md` |
 
 The source-capture capability is `demonstrated` only at the opaque byte-retention boundary. The
@@ -78,7 +78,7 @@ delivery plan consistent across the public documentation.
 - define the difference between metadata origin and transformation;
 - make explicit mapping and units mandatory for generic CSV ingestion;
 - bound the meaning of validation, reproducibility checks, and publication readiness;
-- document EchemDB alignment as a future mapping exercise rather than present compatibility.
+- keep EchemDB claims version-scoped; Phase 6 supersedes the earlier future-only mapping boundary.
 
 ### Acceptance criteria
 
@@ -517,7 +517,7 @@ attribution, and unsupported efficiency calculations.
 
 ## Phase 6 — EchemDB-aligned exchange package
 
-**Status:** `planned`.
+**Status:** `implemented` for the pinned CV candidate; not a general compatibility claim.
 
 ### Objective
 

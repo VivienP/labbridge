@@ -1,0 +1,1046 @@
+{
+  "adapter_version": "echemdb-cv/1",
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_gamry_cv_fixture",
+  "execution_mode": "replay",
+  "experiment": {
+    "active_assertion_ids": [
+      "assertion:89b5e05d874227c210c1b96b87c14f6e",
+      "assertion:bf85684558fe7f74113d49ee1b8e5820",
+      "assertion:097027fac07aee7f6059f98f3aab58ce",
+      "assertion:19dcc3d128f3971734b36f92b23f0257",
+      "assertion:04db1306686c08720422d792630504cc",
+      "assertion:dd07d3b87fe40aca063d5f97c4d2c21b",
+      "assertion:c57c64b6862d469784f24b01a0b6df3e",
+      "assertion:d8e5f6f6306ee75d32d769d8065e45eb",
+      "assertion:336f96e8d29af29fca24a92c77a2343d",
+      "assertion:d0e26e4bb19853c3ad96757aa202cbf0",
+      "assertion:80b5091d87041ab5f16c89dc319869f2",
+      "assertion:9e290305d6dae7bc0d10b239fdaf1115",
+      "assertion:6821d0377c3fe5dd173dbf121b8ce70e",
+      "assertion:873d9b9b0947ad050bcbc1d27f699a4a",
+      "assertion:e3a7f51dab80bf4335f22fc61cba95b1",
+      "assertion:401e78d63ebb5cbbcb290359ef878c97",
+      "assertion:fbeba32ecabbd4bbc55ed13f0e5c9559",
+      "assertion:a91aa52a5777178fcfdfb9faa42bb865",
+      "assertion:e51f91e561026893d172a0e6f2b7166b",
+      "assertion:b215d5678673f62e1b9f63321b1651c2",
+      "assertion:ef854f753ab6a7bf5849bb3b379fc803",
+      "assertion:0d5227b9ec71449417108f40a8252811"
+    ],
+    "assertions": [
+      {
+        "assertion_id": "assertion:89b5e05d874227c210c1b96b87c14f6e",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348"
+        ],
+        "evidence_note": "Exact Phase 1 source bytes are retained under this identity.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "source_artifact",
+        "inference": null,
+        "origin": "source_file",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "source:df37fd96994c27215c5dc78121877348"
+        }
+      },
+      {
+        "assertion_id": "assertion:bf85684558fe7f74113d49ee1b8e5820",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The Phase 2 transformation graph closes this observation to the source.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "observation",
+        "inference": null,
+        "origin": "source_file",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "derived",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20"
+        }
+      },
+      {
+        "assertion_id": "assertion:097027fac07aee7f6059f98f3aab58ce",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890"
+        ],
+        "evidence_note": "The accepted parser record identifies the supported DTA variant and exact source field locations.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "parser_record",
+        "inference": null,
+        "origin": "source_file",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "parsed",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "parser-record:f3d7d5fad276f78be792e6032b46c429"
+        }
+      },
+      {
+        "assertion_id": "assertion:19dcc3d128f3971734b36f92b23f0257",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55"
+        ],
+        "evidence_note": "The explicit Phase 2 import profile assigns this source column, role, and unit.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "potential_axis",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "unit_converted",
+        "value": {
+          "state": "known",
+          "unit": "V",
+          "value": "Vf"
+        }
+      },
+      {
+        "assertion_id": "assertion:04db1306686c08720422d792630504cc",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:776356820096f924d09af7a6dcc6b25b"
+        ],
+        "evidence_note": "The explicit Phase 2 import profile assigns this source column, role, and unit.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "current_axis",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "parsed",
+        "value": {
+          "state": "known",
+          "unit": "A",
+          "value": "Im"
+        }
+      },
+      {
+        "assertion_id": "assertion:dd07d3b87fe40aca063d5f97c4d2c21b",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "reference_scale",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "conditional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:c57c64b6862d469784f24b01a0b6df3e",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "potential_treatment",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "conditional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:d8e5f6f6306ee75d32d769d8065e45eb",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "current_basis",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "conditional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:336f96e8d29af29fca24a92c77a2343d",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "electrode_role",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "conditional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:d0e26e4bb19853c3ad96757aa202cbf0",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "geometric_area",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "conditional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:80b5091d87041ab5f16c89dc319869f2",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "contact_area",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "conditional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:9e290305d6dae7bc0d10b239fdaf1115",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "scan_rate",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "recommended",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:6821d0377c3fe5dd173dbf121b8ce70e",
+        "evidence_ids": [
+          "source:df37fd96994c27215c5dc78121877348",
+          "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+          "parser-record:f3d7d5fad276f78be792e6032b46c429",
+          "transform:089c1d220a2014513851ab7f18130890",
+          "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+          "transform:776356820096f924d09af7a6dcc6b25b",
+          "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+          "transform:0b2cab138e25c06951c8574e3d8b3f83",
+          "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+        ],
+        "evidence_note": "The user-supplied Phase 2 profile declares this metadata state without inferring context from the source file.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "cycle_information",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "recommended",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "unknown",
+          "unit": null,
+          "value": null
+        }
+      },
+      {
+        "assertion_id": "assertion:873d9b9b0947ad050bcbc1d27f699a4a",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit exchange metadata for the project-owned synthetic fixture; the DTA source does not declare a publication citation key.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.source.citation_key",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "labbridge_synthetic_gamry_cv"
+        }
+      },
+      {
+        "assertion_id": "assertion:e3a7f51dab80bf4335f22fc61cba95b1",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit exchange metadata for the project-owned synthetic fixture; the DTA source does not declare this repository URL.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.source.url",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "https://github.com/VivienP/labbridge/blob/14921d701e512bb70816e55c844293f90e6bb8d0/fixtures/source/synthetic-gamry-cv.dta"
+        }
+      },
+      {
+        "assertion_id": "assertion:401e78d63ebb5cbbcb290359ef878c97",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit exchange classification for the project-owned synthetic electrochemical fixture; it is not parsed from the DTA source.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.system.type",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "electrochemical"
+        }
+      },
+      {
+        "assertion_id": "assertion:fbeba32ecabbd4bbc55ed13f0e5c9559",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit exchange classification for the project-owned synthetic fixture; electrolyte composition is unknown and is not inferred.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.electrolyte.type",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "aqueous"
+        }
+      },
+      {
+        "assertion_id": "assertion:a91aa52a5777178fcfdfb9faa42bb865",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit exchange projection for synthetic replay data; LabBridge data_origin and execution_mode remain separate in the companion manifest.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.figure.type",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "simulated"
+        }
+      },
+      {
+        "assertion_id": "assertion:e51f91e561026893d172a0e6f2b7166b",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit exchange label for the project-owned CV fixture; the adapter does not infer technique acronyms from column values.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.measurement_type",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "optional",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "CV"
+        }
+      },
+      {
+        "assertion_id": "assertion:b215d5678673f62e1b9f63321b1651c2",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit declaration that adapter version 1 emits an empty curation process list; no curation process is inferred.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.curation.process",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "empty"
+        }
+      },
+      {
+        "assertion_id": "assertion:ef854f753ab6a7bf5849bb3b379fc803",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit declaration that adapter version 1 emits an empty experimental object; no setup metadata is inferred.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.experimental",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "empty"
+        }
+      },
+      {
+        "assertion_id": "assertion:0d5227b9ec71449417108f40a8252811",
+        "evidence_ids": [
+          "experiment:5bae829786b0f187239a7da5f1e121c2"
+        ],
+        "evidence_note": "Explicit declaration that adapter version 1 emits an empty electrode list; no electrode identity or role is inferred.",
+        "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+        "field_name": "exchange.electrodes",
+        "inference": null,
+        "origin": "user_supplied",
+        "requirement_class": "required",
+        "schema_version": "1",
+        "supersedes_assertion_id": null,
+        "supplements_assertion_id": null,
+        "transformation": "none",
+        "value": {
+          "state": "known",
+          "unit": null,
+          "value": "empty"
+        }
+      }
+    ],
+    "data_origin": "synthetic",
+    "environment_id": "synthetic_gamry_cv_fixture",
+    "execution_mode": "replay",
+    "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+    "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+    "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+    "schema_version": "1",
+    "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+    "supersedes_version": 9,
+    "technique": "cyclic_voltammetry",
+    "transformation_ids": [
+      "transform:089c1d220a2014513851ab7f18130890",
+      "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+      "transform:776356820096f924d09af7a6dcc6b25b",
+      "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+      "transform:0b2cab138e25c06951c8574e3d8b3f83",
+      "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+    ],
+    "version": 10
+  },
+  "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+  "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "parser_record_id": "parser-record:f3d7d5fad276f78be792e6032b46c429",
+  "schema_version": "1",
+  "series": [
+    {
+      "role": "potential",
+      "series_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_column": "Vf",
+      "source_unit": "V vs. Ref.",
+      "transformation_id": "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+      "unit": "V"
+    },
+    {
+      "role": "current",
+      "series_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_column": "Im",
+      "source_unit": "A",
+      "transformation_id": "transform:776356820096f924d09af7a6dcc6b25b",
+      "unit": "A"
+    },
+    {
+      "role": "time",
+      "series_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_column": "T",
+      "source_unit": "s",
+      "transformation_id": "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+      "unit": "s"
+    },
+    {
+      "role": "cycle",
+      "series_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_column": "Cycle",
+      "source_unit": "#",
+      "transformation_id": "transform:0b2cab138e25c06951c8574e3d8b3f83",
+      "unit": "1"
+    }
+  ],
+  "source_artifact": {
+    "byte_size": 537,
+    "committed_at": "2026-08-13T08:00:00Z",
+    "created_at": "2026-08-13T08:00:00Z",
+    "data_origin": "synthetic",
+    "execution_mode": "replay",
+    "filename": "synthetic-gamry-cv.dta",
+    "media_type": "application/vnd.gamry.dta",
+    "object_uri": "s3://labbridge/source-artifacts/sha256/01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b",
+    "quarantine_reason": null,
+    "sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b",
+    "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+    "state": "committed"
+  },
+  "traces": [
+    {
+      "external_path": "/$schema",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/name",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/profile",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/header/Cycle",
+      "qualifier": "Retained normalised series source column.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/header/Im",
+      "qualifier": "Retained normalised series source column.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/header/T",
+      "qualifier": "Retained normalised series source column.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/header/Vf",
+      "qualifier": "Retained normalised series source column.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/0/Cycle",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/0/Im",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/0/T",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/0/Vf",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/1/Cycle",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/1/Im",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/1/T",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/1/Vf",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/2/Cycle",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/2/Im",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/2/T",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/2/Vf",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/3/Cycle",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/3/Im",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/3/T",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/data/rows/3/Vf",
+      "qualifier": "Retained normalised observation value.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/encoding",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/format",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/mediatype",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/curation/process",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:b215d5678673f62e1b9f63321b1651c2",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/echemdbSchemaVersion",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/experimental",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:ef854f753ab6a7bf5849bb3b379fc803",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/0/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/0/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/0/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/1/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/1/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/1/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/2/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/2/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/2/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/3/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/3/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/fields/3/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/measurementType",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:e51f91e561026893d172a0e6f2b7166b",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/figureDescription/type",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:a91aa52a5777178fcfdfb9faa42bb865",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/source/citationKey",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:873d9b9b0947ad050bcbc1d27f699a4a",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/source/originalFilename",
+      "qualifier": "Resolved through the asserted retained source artifact identity.",
+      "source_id": "assertion:89b5e05d874227c210c1b96b87c14f6e",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/source/url",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:e3a7f51dab80bf4335f22fc61cba95b1",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/system/electrodes",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:0d5227b9ec71449417108f40a8252811",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/system/electrolyte/type",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:fbeba32ecabbd4bbc55ed13f0e5c9559",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/metadata/echemdb/system/type",
+      "qualifier": "Explicit user-supplied external metadata; not source-declared.",
+      "source_id": "assertion:401e78d63ebb5cbbcb290359ef878c97",
+      "source_kind": "assertion"
+    },
+    {
+      "external_path": "/resources/0/name",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/path",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/0/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/0/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/0/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:485233f1efa674e847ae06876d438804",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/1/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/1/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/1/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:85b63d3d9627033e012ea1c240fea017",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/2/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/2/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/2/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:737b8f99812f85b95f57720c77f551fd",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/3/name",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/3/type",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/schema/fields/3/unit",
+      "qualifier": "Retained normalised series metadata.",
+      "source_id": "cv-series:f6b14f0048b25b622f0b77fd99f8e826",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/scheme",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    },
+    {
+      "external_path": "/resources/0/type",
+      "qualifier": "Deterministic adapter structure for this observation.",
+      "source_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+      "source_kind": "observation"
+    }
+  ],
+  "transformation_ids": [
+    "transform:089c1d220a2014513851ab7f18130890",
+    "transform:2a95fef0d4d4cc1332ef6f8ddc47bc55",
+    "transform:776356820096f924d09af7a6dcc6b25b",
+    "transform:0d93d5c30e44ba6d57cf12ab2eabf79d",
+    "transform:0b2cab138e25c06951c8574e3d8b3f83",
+    "transform:7a4a8484eb6ac40292cdb342fdd3f9f5"
+  ]
+}
