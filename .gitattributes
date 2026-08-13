@@ -17,7 +17,9 @@ SHA256SUMS.txt text eol=lf
 # line-ending conversion invalidate their recorded hashes.
 artifacts/source-capture/** -text
 artifacts/experiment-passport/** -text
+artifacts/cv-passport-demo/** -text -eol
 fixtures/source/synthetic-replay-cv-opaque.csv -text
+frontend/public/demo-fixtures/synthetic-cv-passport-demo.csv -text
 
 # Binary payloads: never transformed, never diffed as text.
 *.parquet binary

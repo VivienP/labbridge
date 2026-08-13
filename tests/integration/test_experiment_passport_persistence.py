@@ -10,7 +10,11 @@ import pytest
 from sqlalchemy import Engine, delete, select
 
 from labbridge.application.cv_ingestion import CVIngestionService
-from labbridge.application.experiments import ExperimentService, UserAssertionCommand
+from labbridge.application.experiments import (
+    ExperimentIdempotencyConflictError,
+    ExperimentService,
+    UserAssertionCommand,
+)
 from labbridge.application.source_intake import IntakeSource, SourceArtifactService
 from labbridge.domain.cv import CVImportProfile
 from labbridge.domain.experiments import AssertionValue, ExperimentVersionConflictError
@@ -136,6 +140,13 @@ def test_postgres_and_minio_preserve_initial_and_superseding_releases(  # noqa: 
         idempotency_key=passport_key,
     )
     assert first_passport.passport.released_at == now
+    equivalent_retry = service.release_passport(
+        experiment_id,
+        expected_version=1,
+        idempotency_key=f"passport-equivalent-retry-{uuid.uuid4().hex}",
+    )
+    assert equivalent_retry.replayed is True
+    assert equivalent_retry.passport.passport_id == first_passport.passport.passport_id
     package_key = f"package-{uuid.uuid4().hex}"
     stopping_package_store = StopAfterOneUploadStore(object_store)
     interrupted_package_service = ExperimentService(
@@ -160,7 +171,13 @@ def test_postgres_and_minio_preserve_initial_and_superseding_releases(  # noqa: 
                 storage_objects.c.object_key == stopping_package_store.uploaded_key
             )
         ).scalar_one()
+        published_package_id = connection.execute(
+            select(experiment_packages.c.package_id).where(
+                experiment_packages.c.experiment_id == experiment_id
+            )
+        ).scalar_one_or_none()
     assert not unreachable
+    assert published_package_id is None
     assert (
         next(item.classification for item in classified if item.object_uri == pending_package_uri)
         == "diagnostic_orphan"
@@ -171,6 +188,15 @@ def test_postgres_and_minio_preserve_initial_and_superseding_releases(  # noqa: 
         expected_version=1,
         idempotency_key=package_key,
     )
+    equivalent_package_retry_key = f"package-equivalent-retry-{uuid.uuid4().hex}"
+    equivalent_package_retry = service.create_package(
+        experiment_id,
+        passport_id=first_passport.passport.passport_id,
+        expected_version=1,
+        idempotency_key=equivalent_package_retry_key,
+    )
+    assert equivalent_package_retry.replayed is True
+    assert equivalent_package_retry.package.package_id == first_package.package.package_id
     first_bytes = service.download_package(first_package.package.package_id)
     profile_assertion = next(
         item
@@ -200,6 +226,13 @@ def test_postgres_and_minio_preserve_initial_and_superseding_releases(  # noqa: 
         expected_version=2,
         idempotency_key=f"passport-{uuid.uuid4().hex}",
     )
+    with pytest.raises(ExperimentIdempotencyConflictError):
+        service.create_package(
+            experiment_id,
+            passport_id=second_passport.passport.passport_id,
+            expected_version=2,
+            idempotency_key=equivalent_package_retry_key,
+        )
     second_package = service.create_package(
         experiment_id,
         passport_id=second_passport.passport.passport_id,

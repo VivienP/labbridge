@@ -90,9 +90,9 @@ ignore = ["PLR0913"]
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
 testpaths = ["tests"]
-# src layout: make the package importable without an editable install, so the offline suite runs
-# from a clean checkout.
-pythonpath = ["src", "tests"]
+# Make the package and repository-owned test tools importable without an editable install, so the
+# offline suite runs from a clean checkout under both `pytest` and `python -m pytest`.
+pythonpath = [".", "src", "tests"]
 asyncio_mode = "auto"
 markers = [
     "slow: heavier runs (a full campaign)",

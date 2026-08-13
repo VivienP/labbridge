@@ -24,6 +24,10 @@ dist/
 venv/
 
 # Tooling
+node_modules/
+.npm-cache*/
+playwright-report/
+test-results/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

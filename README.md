@@ -98,7 +98,7 @@ their consequences in [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECIS
 
 ```bash
 pip install -e ".[dev]"
-docker compose up -d                    # PostgreSQL and MinIO for the integration suite
+docker compose --profile infrastructure up -d  # PostgreSQL and MinIO for integration tests
 ```
 
 Only implemented commands are registered. A command with no implementation behind it is not
@@ -158,6 +158,31 @@ Passports and Packages, independent CLI verification output, and byte-level proo
 user-supplied assertion changes neither the source assertion nor the prior release. Its reports
 describe completeness and retained evidence; they do not score scientific quality or claim
 reproducibility.
+
+### Single-user synthetic CV Passport demo
+
+Phase 3.5 adds one bounded React/Vite presentation adapter over the authoritative FastAPI, domain,
+service, and Package-verifier contracts. From a clean checkout, the local production application is
+built, migrated, and started with:
+
+```bash
+docker compose --profile demo up -d --build --wait
+```
+
+The page at `http://localhost:8000/` retains the exact synthetic fixture bytes, requires explicit
+column roles and units, displays backend-provided plot values and findings, appends a user assertion,
+releases a superseding Passport, and downloads the exact Experiment Package. Runtime assets are
+bundled locally; the browser does not parse or repair scientific values, infer metadata origin, or
+evaluate validation rules.
+
+The demonstration is `implemented`, not `demonstrated`. The `RHE` value is an operator declaration
+only: LabBridge does not infer it, validate it as physically correct, or convert the potential values
+to that reference scale. A recorded human electrochemistry domain review must decide whether the
+missing reference scale is a blocker or warning and approve consistent API, UI, Passport, Package,
+and artifact semantics. A separate unfamiliar-viewer run must record both 60-90 second completion and
+comprehension of the raw-to-Package chain and the distinctions among completeness, integrity,
+scientific validity, and reproducibility. Until both human acceptance records and the closed browser
+artifact exist, no screenshot or `demonstrated` claim is published here.
 
 ```bash
 labbridge fetch-her --record-id 20439519 --dry-run
@@ -220,6 +245,7 @@ or operational experiment proves it), or `deferred`.
 | Explicit generic CV CSV ingestion and closed normalisation lineage | `demonstrated` |
 | Append-only Experiment assertions and deterministic release validation | `implemented` |
 | JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
+| Single-user interactive CV Passport demo | `implemented` |
 | Biosensor simulator and fault injection | `planned` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `planned` |
@@ -232,7 +258,10 @@ demonstrated separately under [`artifacts/cv-ingestion`](artifacts/cv-ingestion)
 parser, mapping, unit, structural, identity, and lineage behaviour for the committed profile; it does
 not claim electrochemical validity or infer unavailable experimental context. The Phase 3 candidate
 artifact is under [`artifacts/experiment-passport`](artifacts/experiment-passport); its status remains
-`implemented` until the artifact is committed and verified from the resulting clean checkout.
+`implemented` until the artifact is committed and verified from the resulting clean checkout. The
+single-user CV Passport candidate is under
+[`artifacts/cv-passport-demo`](artifacts/cv-passport-demo); it remains `implemented` pending the human
+domain classification and unfamiliar-viewer acceptance records described above.
 
 ## Limitations
 
@@ -301,7 +330,7 @@ ruff format --check src/ tests/ scripts/ migrations/
 ruff check src/ tests/ scripts/ migrations/
 mypy --strict src/
 pytest -q -m "not slow and not data and not integration"    # offline
-pytest -q -m integration                                    # needs docker compose up -d
+pytest -q -m integration                # needs docker compose --profile infrastructure up -d
 ```
 
 Python 3.12 or later. Stack: FastAPI, Pydantic v2, SQLAlchemy 2 with Alembic, PostgreSQL, MinIO,
