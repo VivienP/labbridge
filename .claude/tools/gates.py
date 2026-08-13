@@ -138,6 +138,10 @@ def collect(root: Path) -> list[Gate]:
     has_integration = _has_marked_test(root, "integration")
     has_replay = _has_selected_test(root, "integration", "test_replay_determinism")
     has_migration_test = _has_selected_test(root, "integration", "migration")
+    has_fault_campaign = _has_selected_test(root, "slow", "fault_campaign")
+    has_backup_restore = (
+        root / "src" / "labbridge" / "reliability" / "backup_restore.py"
+    ).exists() and has_fault_campaign
     has_data = _has_marked_test(root, "data")
     manifest = (root / "SHA256SUMS.txt").exists()
 
@@ -248,14 +252,18 @@ def collect(root: Path) -> list[Gate]:
         Gate(
             "fault-campaign",
             "pytest -q -m slow -k fault_campaign",
-            DEFERRED,
-            "PO-10: at least 100 seeded campaigns with injected termination (ROADMAP Slice 6)",
+            LIVE if has_fault_campaign and _has("pytest") else SCAFFOLDED,
+            "process-boundary checkpoint proof; release command runs at least 100 seeded campaigns"
+            if has_fault_campaign
+            else "no slow test named fault_campaign yet (ROADMAP Phase 7)",
         ),
         Gate(
             "backup-restore",
-            "documented operational procedure",
-            DEFERRED,
-            "PO-09: exercised in the deployed environment (ROADMAP Slice 6)",
+            "pytest -q -m slow -k fault_campaign",
+            LIVE if has_backup_restore and _has("pytest") else SCAFFOLDED,
+            "PO-09 restores PostgreSQL and objects into distinct environments"
+            if has_backup_restore
+            else "backup/restore implementation and slow proof are incomplete",
         ),
     ]
     return gates

@@ -1,0 +1,8 @@
+{
+  "after_adapter_return_before_upload": 17,
+  "after_commit_before_acknowledgement": 16,
+  "after_lease_acquisition": 17,
+  "after_upload_before_outcome_transaction": 17,
+  "during_evidence_export": 16,
+  "during_object_upload": 17
+}

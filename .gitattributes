@@ -17,6 +17,8 @@ SHA256SUMS.txt text eol=lf
 # line-ending conversion invalidate their recorded hashes.
 artifacts/source-capture/** -text
 artifacts/experiment-passport/** -text
+artifacts/fault-campaign/** -text
+artifacts/fault-campaign/raw-results.csv -text whitespace=-trailing-space
 fixtures/source/synthetic-replay-cv-opaque.csv -text
 
 # Binary payloads: never transformed, never diffed as text.

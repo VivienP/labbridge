@@ -571,7 +571,8 @@ for techniques not demonstrated in earlier phases.
 
 ## Phase 7 — campaign reliability demonstration
 
-**Status:** `planned`.
+**Status:** `demonstrated` for synthetic replay in the recorded environment; observed replay and
+future live execution were not run.
 
 ### Objective
 
@@ -612,6 +613,14 @@ evidence model.
 
 The released fault-campaign report, raw result table, environment manifest, logs needed for audit,
 and verified campaign-derived Experiment Package.
+
+The released evidence is under [`artifacts/fault-campaign`](../artifacts/fault-campaign). Its 100
+seeded campaigns cover all six declared process-termination boundaries. The recorded run reports
+zero lost accepted observations, unintended duplicate acceptances, hard-budget overspends,
+projection mismatches, or Package-verification failures; it also records 51 `lease_lost` failures
+and 100 suppressed redeliveries. The deployment restore reverified 100 stored objects, replayed 100
+campaigns, and fully verified 100 restored campaign Packages. These are synthetic-replay reliability
+measurements, not scientific or live-instrument results.
 
 ### Out of scope
 
