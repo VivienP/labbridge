@@ -538,3 +538,79 @@ techniques, multiple curves, proprietary binary formats, automatic locale or uni
 reference-electrode interpretation, current-density normalisation, live instrument control, or
 compatibility with vendor files outside the pinned fixture variants. Each wider variant requires a
 new explicit contract, fixture, diagnostics, and differential proof before acceptance.
+
+---
+
+## ADR-018 — Keep EchemDB exchange behind a versioned evidence adapter
+
+**Status:** accepted
+
+**Decision:** Phase 6 exports one CV observation through evidence adapter `echemdb-cv/1`. The
+LabBridge domain model remains unchanged and contains no EchemDB classes or field names. The adapter
+targets EchemDB metadata-schema `0.8.3` at commit
+`f48f583f83b1de9f5601d05dae5e5fcd1c25a3f0`, Data Package profile `2.0`, and Frictionless
+`5.19.0`. Validation also pins `jsonschema` `4.26.0` and `referencing` `0.37.0`; the exact external
+schema bytes are vendored for offline verification, and the EchemDB schema licence is retained beside
+its vendored file.
+
+Required target fields without source evidence are accepted only as known `user_supplied`
+assertions. Export traces qualify those values as explicit external metadata that is not
+source-declared. An `inferred` assertion cannot enter those fields. Unsupported or unknown metadata
+is omitted, while the mapping report records every omission, companion-only field, and lossy
+projection.
+
+### Consequences
+
+- every descriptor leaf and CSV cell has a trace to a LabBridge assertion, series, or observation;
+- the companion manifest retains experiment, observation, source-artifact, transformation, origin,
+  execution-mode, assertion, and series identities that the target schema cannot represent;
+- `figureDescription.type` is supplied by an explicit assertion and recorded as a lossy projection
+  because it cannot preserve `data_origin` and `execution_mode` as independent dimensions;
+- potential values, current values, units, signs, reference scales, electrode roles, areas, scan
+  rates, electrolyte compositions, and cycle meaning are never inferred or converted by the
+  adapter;
+- schema checks run from vendored bytes, and the Frictionless validator must report the exact pinned
+  installed version before an artifact is valid;
+- the field inventory, machine-readable mapping, human-readable mapping table, validation output,
+  external versions, source bytes, and reproduction command are closed by one artifact manifest.
+
+### Limits
+
+This decision demonstrates only the project-owned synthetic CV fixture and the exact versions above.
+It does not claim compatibility with other EchemDB metadata-schema versions, other Data Package
+profiles, other Frictionless versions, other techniques, EchemDB ingestion or publication, or
+scientific completeness of the explicit fixture declarations.
+
+---
+
+## ADR-019 — Keep electrolysis technique-specific and extend Package verification with schema 3
+
+**Status:** accepted
+
+**Decision:** Galvanostatic electrolysis uses dedicated profile, observation, transformation,
+finding, and auxiliary-result persistence. A minimal normalised-observation identity registry is
+shared because both CV and electrolysis Experiments require one referentially enforced root. Package
+schema `3` carries electrolysis evidence and optional auxiliary source artifacts through the existing
+independent verification entry point; CV schemas `1` and `2` retain their prior contracts.
+
+### Consequences
+
+- electrolysis requires explicit time, current or current-density, and potential mappings with
+  role-compatible units and a distinct current quantity kind;
+- electrical completeness requires aligned series, increasing time, and agreement with a declared
+  sampling interval, and is reported separately from unavailable chemical analysis;
+- CV-only scan-rate and cycle assertions are `not_applicable` for electrolysis;
+- profile- and observation-owned electrolysis assertions cannot be supplemented or corrected within
+  the same Experiment; corrected semantics require a new immutable profile and observation;
+- auxiliary analytical declarations close to exact electrical and analytical source bytes, sample and
+  collection-point identifiers, and declared method versions; their source locations are not parsed;
+- no conversion, selectivity, yield, or Faradaic-efficiency derivation is approved by this decision;
+- PostgreSQL references both technique-specific observation tables through the minimal shared
+  identity registry, while normalised payloads remain immutable objects in S3-compatible storage.
+
+### Limits
+
+This decision does not add instrument control, chromatography ingestion, automatic product
+assignment, mechanism attribution, or a generic workflow/technique abstraction. Any derived
+chemical quantity requires a separate reviewed analysis contract with equations, dimensions,
+method version, and complete provenance.

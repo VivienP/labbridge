@@ -305,11 +305,20 @@ def test_service_releases_initial_and_superseding_immutable_packages(
     initial_passport = service.release_passport(
         experiment_id, expected_version=1, idempotency_key="passport-v1"
     )
+    equivalent_retry = service.release_passport(
+        experiment_id, expected_version=1, idempotency_key="passport-v1-new-transport-key"
+    )
     initial_package = service.create_package(
         experiment_id,
         passport_id=initial_passport.passport.passport_id,
         expected_version=1,
         idempotency_key="package-v1",
+    )
+    equivalent_package_retry = service.create_package(
+        experiment_id,
+        passport_id=initial_passport.passport.passport_id,
+        expected_version=1,
+        idempotency_key="package-v1-new-transport-key",
     )
     original_bytes = service.download_package(initial_package.package.package_id)
 
@@ -339,6 +348,13 @@ def test_service_releases_initial_and_superseding_immutable_packages(
     superseding_passport = service.release_passport(
         experiment_id, expected_version=2, idempotency_key="passport-v2"
     )
+    with pytest.raises(ExperimentIdempotencyConflictError):
+        service.create_package(
+            experiment_id,
+            passport_id=superseding_passport.passport.passport_id,
+            expected_version=2,
+            idempotency_key="package-v1-new-transport-key",
+        )
     superseding_package = service.create_package(
         experiment_id,
         passport_id=superseding_passport.passport.passport_id,
@@ -347,6 +363,10 @@ def test_service_releases_initial_and_superseding_immutable_packages(
     )
 
     assert initial_validation.validation.release_decision.status == "eligible"
+    assert equivalent_retry.replayed is True
+    assert equivalent_retry.passport.passport_id == initial_passport.passport.passport_id
+    assert equivalent_package_retry.replayed is True
+    assert equivalent_package_retry.package.package_id == initial_package.package.package_id
     assert supplemented.experiment.version == SUPERSEDING_VERSION
     assert source_assertion in supplemented.experiment.assertions
     assert service.download_package(initial_package.package.package_id) == original_bytes

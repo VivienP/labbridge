@@ -1,0 +1,3 @@
+python scripts/reproduce_galvanostatic_electrolysis.py --output build/galvanostatic-electrolysis
+labbridge package verify build/galvanostatic-electrolysis/experiment-package.zip --json
+labbridge validate-artifacts build/galvanostatic-electrolysis

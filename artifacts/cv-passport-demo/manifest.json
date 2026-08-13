@@ -1,0 +1,65 @@
+{
+  "artifact_kind": "single_user_cv_passport_demo",
+  "capability_status": "implemented",
+  "data_origin": "synthetic",
+  "description": "Browser-driven synthetic CV chain of custody with a CLI-verified Package.",
+  "execution_mode": "replay",
+  "files": [
+    {
+      "byte_size": 2434882,
+      "name": "browser-trace.zip",
+      "sha256": "97bfc361b42a42330509ab8699c644a5473c1a5874c4b1d03aaf5ce00f66652b"
+    },
+    {
+      "byte_size": 770,
+      "name": "built-assets.json",
+      "sha256": "d5cdb71916df0782e8cf5a4a07f1ac3fa769419a8dcc9734a1d0c6dd2ed45b0e"
+    },
+    {
+      "byte_size": 463,
+      "name": "cli-verification.json",
+      "sha256": "8287ce34875caa94aa9edac506211ac6b9e4a71f8781950fcd51b3100f281b03"
+    },
+    {
+      "byte_size": 51,
+      "name": "EXACT_COMMAND.txt",
+      "sha256": "9f13246de21558fb3a9453cca18f35470f78411f20e4552ea796c8e7929a8639"
+    },
+    {
+      "byte_size": 10598,
+      "name": "experiment-package.zip",
+      "sha256": "ce9789758504346de52c089604cbf60fe404b8073bc5aab8149595ad47651f58"
+    },
+    {
+      "byte_size": 651164,
+      "name": "final-package.png",
+      "sha256": "ee5cba9abf3ee309548845121e0c947c8df3c1163cbdf67b6d79f6ec8e10d873"
+    },
+    {
+      "byte_size": 1131,
+      "name": "LIMITATIONS.md",
+      "sha256": "ee3cb9e3097799b9d852dcfc9670253b0a4c0e8ac188e6ad02e1ee865cd24dcc"
+    },
+    {
+      "byte_size": 257,
+      "name": "synthetic-cv-passport-demo.csv",
+      "sha256": "0269170bcbce7f023dbc61b5623c568e8159d5213067c6e4fdc10610555233ad"
+    }
+  ],
+  "files_digest": "c3ebca69e9cd1d7a1adf4f55b37946ab2eec0ecd8af9e78f63b33834d5e585fd",
+  "observation_id": "cv-observation:81143270c4855ead8b3cecd0ed63f028",
+  "outstanding_acceptance": [
+    "human_domain_review_of_reference_scale_severity",
+    "unfamiliar_viewer_60_to_90_second_comprehension_run"
+  ],
+  "package_id": "experiment-package:3f694588eb9c8814a81c0ebbc8adb5ee",
+  "passport_id": "passport:0e1524652c88c942572d68f83d62d7ca",
+  "producing_versions": {
+    "experiment_package": "1",
+    "frontend": "0.1.0",
+    "labbridge": "0.1.0",
+    "openapi_contract": "1"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:5fc18265721e53e92e417bba6c17191f"
+}

@@ -1,0 +1,15 @@
+{
+  "byte_size": 110,
+  "committed_at": "2026-08-13T12:00:00Z",
+  "created_at": "2026-08-13T12:00:00Z",
+  "data_origin": "synthetic",
+  "execution_mode": "replay",
+  "filename": "synthetic-galvanostatic-electrolysis.csv",
+  "media_type": "text/csv",
+  "object_uri": "s3://labbridge/source-artifacts/sha256/b1bc9619989641bf569f1912372b257a5fa32103153f4906d141d638c743b808",
+  "quarantine_reason": null,
+  "schema_version": "1",
+  "sha256": "b1bc9619989641bf569f1912372b257a5fa32103153f4906d141d638c743b808",
+  "source_artifact_id": "source:c0f58f1620c4f47e242543199641b10f",
+  "state": "committed"
+}

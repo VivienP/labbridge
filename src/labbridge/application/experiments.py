@@ -10,9 +10,14 @@ from typing import ClassVar, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from labbridge.application.cv_ingestion import StoredNormalisation, StoredProfile
+from labbridge.application.electrolysis_ingestion import (
+    StoredElectrolysisNormalisation,
+    StoredElectrolysisProfile,
+)
 from labbridge.application.source_intake import RetrievedSource
 from labbridge.domain.canonical import canonical_bytes
 from labbridge.domain.cv_observations import NormalisationResult, NormalisedSeries
+from labbridge.domain.electrolysis_observations import ElectrolysisNormalisationResult
 from labbridge.domain.experiments import (
     AssertionTransformation,
     AssertionValue,
@@ -29,6 +34,7 @@ from labbridge.domain.experiments import (
 )
 from labbridge.domain.idempotency import normalise_idempotency_key
 from labbridge.evidence.experiment_package import (
+    AuxiliaryPackageSource,
     ExperimentPackage,
     PackageInputs,
     build_experiment_package,
@@ -87,9 +93,11 @@ class UserAssertionCommand(BaseModel):
 
 
 class NormalisationReader(Protocol):
-    def get_normalisation(self, observation_id: str) -> StoredNormalisation: ...
+    def get_normalisation(
+        self, observation_id: str
+    ) -> StoredNormalisation | StoredElectrolysisNormalisation: ...
 
-    def get_profile(self, profile_id: str) -> StoredProfile: ...
+    def get_profile(self, profile_id: str) -> StoredProfile | StoredElectrolysisProfile: ...
 
 
 class SourceReader(Protocol):
@@ -321,8 +329,160 @@ def experiment_from_normalisation(result: NormalisationResult) -> Experiment:
     )
 
 
+_ELECTROLYSIS_METADATA_REQUIREMENTS: Mapping[str, RequirementClass] = {
+    "current_sign_convention": "conditional",
+    "current_basis": "conditional",
+    "electrode_area": "conditional",
+    "cell_geometry": "recommended",
+    "reference_scale": "conditional",
+    "potential_treatment": "conditional",
+    "sampling_interval": "recommended",
+    "interruptions": "recommended",
+    "chemical_analysis": "optional",
+}
+
+
+def experiment_from_electrolysis_normalisation(
+    result: ElectrolysisNormalisationResult,
+) -> Experiment:
+    """Create an electrolysis aggregate while preserving electrical and auxiliary lineage."""
+    observation = result.observation
+    experiment_id = experiment_id_for_observation(observation.observation_id)
+    common_evidence = (
+        observation.source_artifact_id,
+        observation.import_profile_id,
+        *observation.transformation_ids,
+    )
+    assertions: list[MetadataAssertion] = [
+        make_assertion(
+            experiment_id=experiment_id,
+            field_name="source_artifact",
+            requirement_class="required",
+            origin="source_file",
+            transformation="none",
+            value=AssertionValue(state="known", value=observation.source_artifact_id),
+            evidence_ids=(observation.source_artifact_id,),
+            evidence_note="Exact primary electrolysis source bytes are retained.",
+        ),
+        make_assertion(
+            experiment_id=experiment_id,
+            field_name="observation",
+            requirement_class="required",
+            origin="source_file",
+            transformation="derived",
+            value=AssertionValue(state="known", value=observation.observation_id),
+            evidence_ids=(observation.source_artifact_id, *observation.transformation_ids),
+            evidence_note="The electrical transformation graph closes to the primary source.",
+        ),
+    ]
+    for series in observation.series:
+        field_name = (
+            "current_axis"
+            if series.role in {"current", "current_density"}
+            else f"{series.role}_axis"
+        )
+        assertions.append(
+            make_assertion(
+                experiment_id=experiment_id,
+                field_name=field_name,
+                requirement_class="required",
+                origin="user_supplied",
+                transformation=(
+                    "parsed" if series.source_unit == series.unit else "unit_converted"
+                ),
+                value=AssertionValue(state="known", value=series.source_column, unit=series.unit),
+                evidence_ids=(
+                    observation.source_artifact_id,
+                    observation.import_profile_id,
+                    series.transformation_id,
+                ),
+                evidence_note="The explicit electrolysis profile assigns this axis and unit.",
+            )
+        )
+        if series.role in {"current", "current_density"}:
+            assertions.append(
+                make_assertion(
+                    experiment_id=experiment_id,
+                    field_name="current_quantity_kind",
+                    requirement_class="required",
+                    origin="user_supplied",
+                    transformation="none",
+                    value=AssertionValue(state="known", value=series.role),
+                    evidence_ids=(
+                        observation.source_artifact_id,
+                        observation.import_profile_id,
+                        series.transformation_id,
+                    ),
+                    evidence_note="The explicit profile declares current or current density.",
+                )
+            )
+    for field_name, requirement_class in _ELECTROLYSIS_METADATA_REQUIREMENTS.items():
+        value = getattr(observation.metadata, field_name)
+        assertions.append(
+            make_assertion(
+                experiment_id=experiment_id,
+                field_name=field_name,
+                requirement_class=requirement_class,
+                origin="user_supplied",
+                transformation="none",
+                value=AssertionValue(state=value.state, value=value.value, unit=value.unit),
+                evidence_ids=common_evidence,
+                evidence_note=(
+                    "The electrolysis profile declares this metadata state without inferring "
+                    "experimental context from column names."
+                ),
+            )
+        )
+    for field_name in ("scan_rate", "cycle_information"):
+        assertions.append(
+            make_assertion(
+                experiment_id=experiment_id,
+                field_name=field_name,
+                requirement_class="optional",
+                origin="user_supplied",
+                transformation="none",
+                value=AssertionValue(state="not_applicable"),
+                evidence_ids=common_evidence,
+                evidence_note="This cyclic-voltammetry field does not apply to electrolysis.",
+            )
+        )
+    for result_link in observation.auxiliary_results:
+        assertions.append(
+            make_assertion(
+                experiment_id=experiment_id,
+                field_name=f"auxiliary_result.{result_link.result_id}",
+                requirement_class="optional",
+                origin="user_supplied",
+                transformation="none",
+                value=AssertionValue(state="known", value=result_link.value, unit=result_link.unit),
+                evidence_ids=(result_link.source_artifact_id, result_link.result_id),
+                evidence_note=(
+                    f"Source-linked declaration for sample {result_link.sample_id}, "
+                    f"{result_link.collection_point}, {result_link.analyte} at "
+                    f"{result_link.source_location}; method {result_link.method_name} "
+                    f"version {result_link.method_version}."
+                ),
+            )
+        )
+    return create_experiment(
+        observation_id=observation.observation_id,
+        source_artifact_id=observation.source_artifact_id,
+        import_profile_id=observation.import_profile_id,
+        technique="galvanostatic_electrolysis",
+        data_origin=observation.data_origin,
+        execution_mode=observation.execution_mode,
+        environment_id=observation.environment_id,
+        transformation_ids=observation.transformation_ids,
+        assertions=tuple(assertions),
+    )
+
+
 def _request_hash(payload: object) -> str:
     return digest(canonical_bytes(payload))
+
+
+def _validation_version(experiment: Experiment) -> str:
+    return "2" if experiment.technique == "galvanostatic_electrolysis" else VALIDATION_VERSION
 
 
 class ExperimentService:
@@ -362,7 +522,11 @@ class ExperimentService:
         if expected_version != 0:
             raise ValueError("a new experiment requires expected experiment version 0")
         stored = self._normalisations.get_normalisation(observation_id)
-        experiment = experiment_from_normalisation(stored.result)
+        experiment = (
+            experiment_from_electrolysis_normalisation(stored.result)
+            if isinstance(stored.result, ElectrolysisNormalisationResult)
+            else experiment_from_normalisation(stored.result)
+        )
         result, replayed = self._repository.create(
             experiment,
             idempotency_key=self._key(idempotency_key),
@@ -419,7 +583,9 @@ class ExperimentService:
         experiment = self._experiment(experiment_id)
         if experiment.version != expected_version:
             raise ExperimentVersionConflictError(expected_version, experiment.version)
-        validation = validate_experiment(experiment, validation_version=VALIDATION_VERSION)
+        validation = validate_experiment(
+            experiment, validation_version=_validation_version(experiment)
+        )
         result, replayed = self._repository.store_validation(
             validation,
             expected_version=expected_version,
@@ -432,7 +598,9 @@ class ExperimentService:
 
     def preview_passport(self, experiment_id: str) -> ExperimentPassport:
         experiment = self._experiment(experiment_id)
-        validation = validate_experiment(experiment, validation_version=VALIDATION_VERSION)
+        validation = validate_experiment(
+            experiment, validation_version=_validation_version(experiment)
+        )
         return build_passport(
             experiment,
             validation,
@@ -457,15 +625,25 @@ class ExperimentService:
         experiment = self._experiment(experiment_id)
         if experiment.version != expected_version:
             raise ExperimentVersionConflictError(expected_version, experiment.version)
-        validation = validate_experiment(experiment, validation_version=VALIDATION_VERSION)
+        validation = validate_experiment(
+            experiment, validation_version=_validation_version(experiment)
+        )
         key = self._key(idempotency_key)
         previous = self._repository.latest_passport(experiment_id)
+        if previous is not None and previous.experiment_version == expected_version:
+            same_version_release = True
+            released_at = previous.released_at
+            supersedes_passport_id = previous.supersedes_passport_id
+        else:
+            same_version_release = False
+            released_at = self._clock()
+            supersedes_passport_id = previous.passport_id if previous is not None else None
         passport = build_passport(
             experiment,
             validation,
-            released_at=self._clock(),
+            released_at=released_at,
             release=True,
-            supersedes_passport_id=(previous.passport_id if previous is not None else None),
+            supersedes_passport_id=supersedes_passport_id,
         )
         result, replayed = self._repository.store_passport(
             passport,
@@ -475,7 +653,7 @@ class ExperimentService:
                 {"experiment_id": experiment_id, "expected_version": expected_version}
             ),
         )
-        return StoredPassport(result, replayed)
+        return StoredPassport(result, replayed or same_version_release)
 
     def create_package(
         self,
@@ -493,14 +671,42 @@ class ExperimentService:
             raise PassportNotFoundError(passport_id)
         if passport.experiment_version != expected_version:
             raise ValueError("Passport does not match the expected experiment version")
+        previous = self._repository.latest_package(experiment_id)
+        same_version_release = (
+            previous is not None and previous.experiment_version == expected_version
+        )
+        if same_version_release:
+            assert previous is not None
+            if previous.passport_id != passport_id:
+                raise ValueError("released Package names another Passport for this version")
+            self.download_package(previous.package_id)
         normalisation = self._normalisations.get_normalisation(experiment.observation_id).result
         profile = self._normalisations.get_profile(experiment.import_profile_id).profile
         source = self._sources.retrieve(experiment.source_artifact_id)
-        previous = self._repository.latest_package(experiment_id)
         producing_versions = dict(self._producing_versions)
-        if normalisation.parser_record is not None:
+        parser_record = (
+            normalisation.parser_record if isinstance(normalisation, NormalisationResult) else None
+        )
+        auxiliary_sources: tuple[AuxiliaryPackageSource, ...] = ()
+        if isinstance(normalisation, ElectrolysisNormalisationResult):
+            producing_versions["experiment_package"] = "3"
+            retained_auxiliary = []
+            for source_id in normalisation.observation.provenance.auxiliary_source_artifact_ids:
+                auxiliary = self._sources.retrieve(source_id)
+                retained_auxiliary.append(
+                    AuxiliaryPackageSource(
+                        source_filename=auxiliary.artifact.filename,
+                        source_bytes=auxiliary.data,
+                        source_artifact={
+                            "schema_version": "1",
+                            **auxiliary.artifact.model_dump(mode="json"),
+                        },
+                    )
+                )
+            auxiliary_sources = tuple(retained_auxiliary)
+        elif parser_record is not None:
             producing_versions["experiment_package"] = "2"
-            producing_versions["gamry_dta_parser"] = normalisation.parser_record.parser_version
+            producing_versions["gamry_dta_parser"] = parser_record.parser_version
         built = build_experiment_package(
             PackageInputs(
                 source_filename=source.artifact.filename,
@@ -513,14 +719,19 @@ class ExperimentService:
                 normalised_observation=normalisation.observation.model_dump(mode="json"),
                 transformation_graph=normalisation.graph.model_dump(mode="json"),
                 parser_record=(
-                    None
-                    if normalisation.parser_record is None
-                    else normalisation.parser_record.model_dump(mode="json")
+                    None if parser_record is None else parser_record.model_dump(mode="json")
                 ),
+                auxiliary_sources=auxiliary_sources,
                 passport=passport,
             ),
             producing_versions=producing_versions,
-            supersedes_package_id=(previous.package_id if previous is not None else None),
+            supersedes_package_id=(
+                previous.supersedes_package_id
+                if same_version_release and previous is not None
+                else previous.package_id
+                if previous is not None
+                else None
+            ),
         )
         result, replayed = self._repository.store_package(
             built.metadata,
@@ -535,7 +746,7 @@ class ExperimentService:
                 }
             ),
         )
-        return StoredPackage(result, replayed)
+        return StoredPackage(result, replayed or same_version_release)
 
     def download_package(self, package_id: str) -> bytes:
         stored = self._repository.get_package(package_id)
@@ -570,5 +781,6 @@ __all__ = [
     "StoredPassport",
     "StoredValidation",
     "UserAssertionCommand",
+    "experiment_from_electrolysis_normalisation",
     "experiment_from_normalisation",
 ]

@@ -32,7 +32,7 @@ class ExperimentPassport(BaseModel):
     schema_version: Literal["1"]
     experiment_id: str = Field(min_length=1)
     experiment_version: int = Field(ge=1)
-    technique: Literal["cyclic_voltammetry"]
+    technique: Literal["cyclic_voltammetry", "galvanostatic_electrolysis"]
     data_origin: DataOrigin
     execution_mode: ExecutionMode
     environment_id: str = Field(min_length=1)
@@ -172,6 +172,22 @@ def render_passport_html(passport: ExperimentPassport) -> bytes:
     origin = html.escape(passport.data_origin)
     execution_mode = html.escape(passport.execution_mode)
     decision_status = html.escape(passport.release_decision.status)
+    technique_scope = ""
+    if passport.technique == "galvanostatic_electrolysis":
+        chemical = next(
+            (
+                item.value.state
+                for item in passport.assertions
+                if item.assertion_id in active and item.field_name == "chemical_analysis"
+            ),
+            "unavailable",
+        )
+        technique_scope = (
+            "\n<h2>Electrical and chemical scope</h2>"
+            "<p>Recorded electrical time series: time, current, and potential with explicit units. "
+            f"Chemical/product quantification: {html.escape(chemical)}. This Passport does not "
+            "report conversion, selectivity, yield, or Faradaic efficiency.</p>"
+        )
     report = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -198,7 +214,7 @@ unknowns: {passport.release_decision.unknown_count}</p>
 <h2>Metadata assertions</h2>
 <table><thead><tr><th>Field</th><th>Value state</th><th>Origin</th><th>Transformation</th>
 <th>Requirement</th><th>Assertion</th></tr></thead><tbody>{assertion_rows}</tbody></table>
-<h2>Validation findings</h2><ul>{finding_rows}</ul>
+<h2>Validation findings</h2><ul>{finding_rows}</ul>{technique_scope}
 <h2>Lineage anchors</h2>
 <p>Source artifact: <code>{html.escape(passport.source_artifact_id)}</code><br>
 Normalised observation: <code>{html.escape(passport.observation_id)}</code><br>

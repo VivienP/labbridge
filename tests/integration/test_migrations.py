@@ -39,6 +39,10 @@ EXPECTED_TABLES = {
     "cv_transformation_records",
     "cv_parser_records",
     "derived_metrics",
+    "electrolysis_auxiliary_results",
+    "electrolysis_import_profiles",
+    "electrolysis_structural_findings",
+    "electrolysis_transformation_records",
     "events",
     "experiment_packages",
     "experiment_passports",
@@ -49,6 +53,8 @@ EXPECTED_TABLES = {
     "jobs",
     "observations",
     "normalised_cv_observations",
+    "normalised_electrolysis_observations",
+    "normalised_observations",
     "metadata_assertions",
     "record_relations",
     "source_artifacts",
@@ -72,6 +78,9 @@ def _clear_all(engine: Engine) -> None:
         "metadata_assertions",
         "experiment_versions",
         "experiments",
+        "electrolysis_auxiliary_results",
+        "electrolysis_transformation_records",
+        "electrolysis_structural_findings",
         "cv_transformation_records",
         "cv_structural_findings",
         "cv_parser_records",
@@ -79,7 +88,9 @@ def _clear_all(engine: Engine) -> None:
         "attempt_outcomes",
         "observations",
         "normalised_cv_observations",
+        "normalised_electrolysis_observations",
         "import_profiles",
+        "electrolysis_import_profiles",
         "source_artifacts",
         # Before `attempts` and `work_items`: a staged object references both under `RESTRICT`.
         "storage_objects",
@@ -94,6 +105,7 @@ def _clear_all(engine: Engine) -> None:
         "idempotency_keys",
         "campaigns",
         "record_relations",
+        "normalised_observations",
     )
     with engine.begin() as connection:
         for table in order:

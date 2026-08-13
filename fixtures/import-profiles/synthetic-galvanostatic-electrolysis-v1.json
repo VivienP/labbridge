@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "technique": "galvanostatic_electrolysis",
+  "environment_id": "synthetic_galvanostatic_fixture",
+  "encoding": "utf-8",
+  "delimiter": ",",
+  "decimal_convention": "point",
+  "header_row": 1,
+  "missing_value_tokens": ["", "NA"],
+  "columns": [
+    {
+      "source_column": "elapsed_s",
+      "role": "time",
+      "source_unit": "s",
+      "target_unit": "s"
+    },
+    {
+      "source_column": "applied_current_mA",
+      "role": "current",
+      "source_unit": "mA",
+      "target_unit": "A"
+    },
+    {
+      "source_column": "working_potential_V",
+      "role": "potential",
+      "source_unit": "V",
+      "target_unit": "V"
+    }
+  ],
+  "metadata": {
+    "current_sign_convention": {"state": "unknown"},
+    "current_basis": {"state": "known", "value": "total_current"},
+    "electrode_area": {"state": "not_applicable"},
+    "cell_geometry": {"state": "unknown"},
+    "reference_scale": {"state": "unknown"},
+    "potential_treatment": {"state": "unknown"},
+    "sampling_interval": {"state": "known", "value": "60", "unit": "s"},
+    "interruptions": {"state": "known", "value": "none_declared"},
+    "chemical_analysis": {"state": "unavailable"}
+  },
+  "auxiliary_results": []
+}

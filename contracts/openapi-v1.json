@@ -1,0 +1,4162 @@
+{
+  "components": {
+    "schemas": {
+      "AssertionValue-Input": {
+        "additionalProperties": false,
+        "description": "A metadata value whose evidence state remains explicit and queryable.",
+        "properties": {
+          "state": {
+            "enum": [
+              "known",
+              "unknown",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "AssertionValue",
+        "type": "object"
+      },
+      "AssertionValue-Output": {
+        "additionalProperties": false,
+        "description": "A metadata value whose evidence state remains explicit and queryable.",
+        "properties": {
+          "state": {
+            "enum": [
+              "known",
+              "unknown",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "AssertionValue",
+        "type": "object"
+      },
+      "CVImportProfile-Input": {
+        "additionalProperties": false,
+        "description": "Versioned, complete and immutable instructions for parsing one CSV shape.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "decimal_convention": {
+            "enum": [
+              "point",
+              "comma"
+            ],
+            "title": "Decimal Convention",
+            "type": "string"
+          },
+          "delimiter": {
+            "maxLength": 1,
+            "minLength": 1,
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "utf-8-sig"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "header_row": {
+            "minimum": 1.0,
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CVMetadata-Input"
+          },
+          "missing_value_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Value Tokens",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "technique": {
+            "const": "cyclic_voltammetry",
+            "title": "Technique",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "technique",
+          "environment_id",
+          "encoding",
+          "delimiter",
+          "decimal_convention",
+          "header_row",
+          "missing_value_tokens",
+          "columns",
+          "metadata"
+        ],
+        "title": "CVImportProfile",
+        "type": "object"
+      },
+      "CVImportProfile-Output": {
+        "additionalProperties": false,
+        "description": "Versioned, complete and immutable instructions for parsing one CSV shape.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "decimal_convention": {
+            "enum": [
+              "point",
+              "comma"
+            ],
+            "title": "Decimal Convention",
+            "type": "string"
+          },
+          "delimiter": {
+            "maxLength": 1,
+            "minLength": 1,
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "utf-8-sig"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "header_row": {
+            "minimum": 1.0,
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CVMetadata-Output"
+          },
+          "missing_value_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Value Tokens",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "technique": {
+            "const": "cyclic_voltammetry",
+            "title": "Technique",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "technique",
+          "environment_id",
+          "encoding",
+          "delimiter",
+          "decimal_convention",
+          "header_row",
+          "missing_value_tokens",
+          "columns",
+          "metadata"
+        ],
+        "title": "CVImportProfile",
+        "type": "object"
+      },
+      "CVLineage": {
+        "additionalProperties": false,
+        "properties": {
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "parser_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Record Id"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "transformation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Transformation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "environment_id",
+          "source_artifact_id",
+          "source_sha256",
+          "import_profile_id",
+          "transformation_ids"
+        ],
+        "title": "CVLineage",
+        "type": "object"
+      },
+      "CVMetadata-Input": {
+        "additionalProperties": false,
+        "description": "Phase 2 states required to avoid inventing electrochemical context.",
+        "properties": {
+          "contact_area": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "current_basis": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "cycle_information": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "electrode_role": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "geometric_area": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "potential_treatment": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "reference_scale": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "scan_rate": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          }
+        },
+        "required": [
+          "reference_scale",
+          "potential_treatment",
+          "current_basis",
+          "electrode_role",
+          "geometric_area",
+          "contact_area",
+          "scan_rate",
+          "cycle_information"
+        ],
+        "title": "CVMetadata",
+        "type": "object"
+      },
+      "CVMetadata-Output": {
+        "additionalProperties": false,
+        "description": "Phase 2 states required to avoid inventing electrochemical context.",
+        "properties": {
+          "contact_area": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "current_basis": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "cycle_information": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "electrode_role": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "geometric_area": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "potential_treatment": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "reference_scale": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "scan_rate": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          }
+        },
+        "required": [
+          "reference_scale",
+          "potential_treatment",
+          "current_basis",
+          "electrode_role",
+          "geometric_area",
+          "contact_area",
+          "scan_rate",
+          "cycle_information"
+        ],
+        "title": "CVMetadata",
+        "type": "object"
+      },
+      "CampaignAttemptsView": {
+        "properties": {
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Status",
+            "type": "object"
+          },
+          "failure_codes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Failure Codes",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "by_status",
+          "failure_codes"
+        ],
+        "title": "CampaignAttemptsView",
+        "type": "object"
+      },
+      "CampaignBudgetView": {
+        "properties": {
+          "consumed": {
+            "title": "Consumed",
+            "type": "string"
+          },
+          "hard_limit": {
+            "title": "Hard Limit",
+            "type": "string"
+          },
+          "outstanding": {
+            "title": "Outstanding",
+            "type": "string"
+          },
+          "released": {
+            "title": "Released",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "string"
+          },
+          "reserved": {
+            "title": "Reserved",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hard_limit",
+          "unit",
+          "reserved",
+          "consumed",
+          "released",
+          "outstanding",
+          "remaining"
+        ],
+        "title": "CampaignBudgetView",
+        "type": "object"
+      },
+      "CampaignControlRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "CampaignControlRequest",
+        "type": "object"
+      },
+      "CampaignControlResult": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "ready",
+              "active",
+              "paused",
+              "completed",
+              "budget_exhausted",
+              "cancelled",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "state",
+          "version",
+          "replayed"
+        ],
+        "title": "CampaignControlResult",
+        "type": "object"
+      },
+      "CampaignCreated": {
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "work_items": {
+            "title": "Work Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "work_items",
+          "replayed"
+        ],
+        "title": "CampaignCreated",
+        "type": "object"
+      },
+      "CampaignDeclaration": {
+        "additionalProperties": false,
+        "description": "The execution limits that must be known before a campaign becomes active.",
+        "properties": {
+          "budget_unit": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Budget Unit",
+            "type": "string"
+          },
+          "hard_budget": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Hard Budget"
+          },
+          "max_attempts": {
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "per_attempt_estimate": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Per Attempt Estimate"
+          },
+          "stopping_rule": {
+            "const": "hard_budget_exhausted",
+            "title": "Stopping Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hard_budget",
+          "per_attempt_estimate",
+          "budget_unit",
+          "max_attempts",
+          "stopping_rule"
+        ],
+        "title": "CampaignDeclaration",
+        "type": "object"
+      },
+      "CampaignRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_version": {
+            "minLength": 1,
+            "title": "Adapter Version",
+            "type": "string"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignDeclaration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/HerCandidate"
+            },
+            "minItems": 1,
+            "title": "Candidates",
+            "type": "array"
+          },
+          "data_origin": {
+            "enum": [
+              "observed",
+              "synthetic"
+            ],
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "enum": [
+              "replay",
+              "simulation",
+              "live"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "environment_id",
+          "adapter_version",
+          "data_origin",
+          "execution_mode",
+          "candidates"
+        ],
+        "title": "CampaignRequest",
+        "type": "object"
+      },
+      "CampaignView": {
+        "properties": {
+          "attempts": {
+            "$ref": "#/components/schemas/CampaignAttemptsView"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/CampaignBudgetView"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "data_origin": {
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "execution_mode": {
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "work_items": {
+            "title": "Work Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "name",
+          "state",
+          "data_origin",
+          "execution_mode",
+          "work_items",
+          "succeeded",
+          "failed",
+          "budget",
+          "attempts"
+        ],
+        "title": "CampaignView",
+        "type": "object"
+      },
+      "ColumnMapping": {
+        "additionalProperties": false,
+        "description": "One explicit decision about one source column.",
+        "properties": {
+          "role": {
+            "enum": [
+              "potential",
+              "current",
+              "current_density",
+              "time",
+              "cycle",
+              "ignored"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "source_column": {
+            "minLength": 1,
+            "title": "Source Column",
+            "type": "string"
+          },
+          "source_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Unit"
+          },
+          "target_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Unit"
+          }
+        },
+        "required": [
+          "source_column",
+          "role"
+        ],
+        "title": "ColumnMapping",
+        "type": "object"
+      },
+      "ConfidenceRepresentation": {
+        "additionalProperties": false,
+        "description": "The declared representation used for one inference confidence statement.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "probability",
+              "qualitative",
+              "interval"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "ConfidenceRepresentation",
+        "type": "object"
+      },
+      "CreateExperimentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_experiment_version": {
+            "minimum": 0.0,
+            "title": "Expected Experiment Version",
+            "type": "integer"
+          },
+          "observation_id": {
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observation_id",
+          "expected_experiment_version"
+        ],
+        "title": "CreateExperimentRequest",
+        "type": "object"
+      },
+      "CreatePackageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_experiment_version": {
+            "minimum": 1.0,
+            "title": "Expected Experiment Version",
+            "type": "integer"
+          },
+          "passport_id": {
+            "minLength": 1,
+            "title": "Passport Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_experiment_version",
+          "passport_id"
+        ],
+        "title": "CreatePackageRequest",
+        "type": "object"
+      },
+      "ExpectedVersionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_experiment_version": {
+            "minimum": 1.0,
+            "title": "Expected Experiment Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_experiment_version"
+        ],
+        "title": "ExpectedVersionRequest",
+        "type": "object"
+      },
+      "Experiment": {
+        "additionalProperties": false,
+        "description": "One immutable version of an experiment aggregate.",
+        "properties": {
+          "active_assertion_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Assertion Ids",
+            "type": "array"
+          },
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/MetadataAssertion"
+            },
+            "title": "Assertions",
+            "type": "array"
+          },
+          "data_origin": {
+            "enum": [
+              "observed",
+              "synthetic"
+            ],
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "enum": [
+              "replay",
+              "simulation",
+              "live"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "experiment_id": {
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "observation_id": {
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "supersedes_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Version"
+          },
+          "technique": {
+            "enum": [
+              "cyclic_voltammetry",
+              "galvanostatic_electrolysis"
+            ],
+            "title": "Technique",
+            "type": "string"
+          },
+          "transformation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Transformation Ids",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "schema_version",
+          "version",
+          "observation_id",
+          "source_artifact_id",
+          "import_profile_id",
+          "technique",
+          "data_origin",
+          "execution_mode",
+          "environment_id",
+          "transformation_ids",
+          "assertions",
+          "active_assertion_ids"
+        ],
+        "title": "Experiment",
+        "type": "object"
+      },
+      "ExperimentPackage": {
+        "additionalProperties": false,
+        "description": "Versioned identity and checksum metadata for one immutable package archive.",
+        "properties": {
+          "archive_byte_size": {
+            "minimum": 1.0,
+            "title": "Archive Byte Size",
+            "type": "integer"
+          },
+          "archive_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Archive Sha256",
+            "type": "string"
+          },
+          "data_origin": {
+            "enum": [
+              "observed",
+              "synthetic"
+            ],
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "enum": [
+              "replay",
+              "simulation",
+              "live"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "experiment_id": {
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "experiment_version": {
+            "minimum": 1.0,
+            "title": "Experiment Version",
+            "type": "integer"
+          },
+          "package_id": {
+            "minLength": 1,
+            "title": "Package Id",
+            "type": "string"
+          },
+          "passport_id": {
+            "minLength": 1,
+            "title": "Passport Id",
+            "type": "string"
+          },
+          "producing_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Producing Versions",
+            "type": "object"
+          },
+          "schema_version": {
+            "enum": [
+              "1",
+              "2",
+              "3"
+            ],
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "supersedes_package_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Package Id"
+          }
+        },
+        "required": [
+          "package_id",
+          "schema_version",
+          "passport_id",
+          "experiment_id",
+          "experiment_version",
+          "data_origin",
+          "execution_mode",
+          "environment_id",
+          "archive_sha256",
+          "archive_byte_size",
+          "producing_versions"
+        ],
+        "title": "ExperimentPackage",
+        "type": "object"
+      },
+      "ExperimentPassport": {
+        "additionalProperties": false,
+        "description": "An immutable validation snapshot for one exact experiment version.",
+        "properties": {
+          "active_assertion_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Assertion Ids",
+            "type": "array"
+          },
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/MetadataAssertion"
+            },
+            "title": "Assertions",
+            "type": "array"
+          },
+          "data_origin": {
+            "enum": [
+              "observed",
+              "synthetic"
+            ],
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "enum": [
+              "replay",
+              "simulation",
+              "live"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "experiment_id": {
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "experiment_version": {
+            "minimum": 1.0,
+            "title": "Experiment Version",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "observation_id": {
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "passport_id": {
+            "minLength": 1,
+            "title": "Passport Id",
+            "type": "string"
+          },
+          "release_decision": {
+            "$ref": "#/components/schemas/ReleaseDecision"
+          },
+          "release_status": {
+            "enum": [
+              "preview",
+              "released"
+            ],
+            "title": "Release Status",
+            "type": "string"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "supersedes_passport_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Passport Id"
+          },
+          "technique": {
+            "enum": [
+              "cyclic_voltammetry",
+              "galvanostatic_electrolysis"
+            ],
+            "title": "Technique",
+            "type": "string"
+          },
+          "transformation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Transformation Ids",
+            "type": "array"
+          },
+          "validation_id": {
+            "minLength": 1,
+            "title": "Validation Id",
+            "type": "string"
+          },
+          "validation_version": {
+            "minLength": 1,
+            "title": "Validation Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "passport_id",
+          "schema_version",
+          "experiment_id",
+          "experiment_version",
+          "technique",
+          "data_origin",
+          "execution_mode",
+          "environment_id",
+          "source_artifact_id",
+          "observation_id",
+          "import_profile_id",
+          "transformation_ids",
+          "assertions",
+          "active_assertion_ids",
+          "validation_id",
+          "validation_version",
+          "findings",
+          "release_decision",
+          "release_status"
+        ],
+        "title": "ExperimentPassport",
+        "type": "object"
+      },
+      "ExperimentView": {
+        "properties": {
+          "experiment": {
+            "$ref": "#/components/schemas/Experiment"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "experiment",
+          "replayed"
+        ],
+        "title": "ExperimentView",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HerCandidate": {
+        "additionalProperties": false,
+        "description": "One measurement location on one materials library.\n\nThe grid coordinates are `Quantity`, not bare numbers, because the archive records them in\nmillimetres and a coordinate without its unit cannot be compared across sources.",
+        "properties": {
+          "grid_x": {
+            "$ref": "#/components/schemas/Quantity"
+          },
+          "grid_y": {
+            "$ref": "#/components/schemas/Quantity"
+          },
+          "kind": {
+            "const": "her_location",
+            "default": "her_location",
+            "title": "Kind",
+            "type": "string"
+          },
+          "library_id": {
+            "minLength": 1,
+            "title": "Library Id",
+            "type": "string"
+          },
+          "measurement_area_id": {
+            "minLength": 1,
+            "title": "Measurement Area Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "library_id",
+          "measurement_area_id",
+          "grid_x",
+          "grid_y"
+        ],
+        "title": "HerCandidate",
+        "type": "object"
+      },
+      "InferenceDetails": {
+        "additionalProperties": false,
+        "description": "Method and evidence required before an assertion may be called inferred.",
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/ConfidenceRepresentation"
+          },
+          "evidence": {
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "method": {
+            "minLength": 1,
+            "title": "Method",
+            "type": "string"
+          },
+          "method_version": {
+            "minLength": 1,
+            "title": "Method Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "method_version",
+          "evidence",
+          "confidence"
+        ],
+        "title": "InferenceDetails",
+        "type": "object"
+      },
+      "InspectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "delimiter": {
+            "maxLength": 1,
+            "minLength": 1,
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "utf-8-sig"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "header_row": {
+            "minimum": 1.0,
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "encoding",
+          "delimiter",
+          "header_row",
+          "source_artifact_id"
+        ],
+        "title": "InspectionRequest",
+        "type": "object"
+      },
+      "MetadataAssertion": {
+        "additionalProperties": false,
+        "description": "One immutable claim about one experiment metadata field.",
+        "properties": {
+          "assertion_id": {
+            "minLength": 1,
+            "title": "Assertion Id",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "evidence_note": {
+            "minLength": 1,
+            "title": "Evidence Note",
+            "type": "string"
+          },
+          "experiment_id": {
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "field_name": {
+            "minLength": 1,
+            "title": "Field Name",
+            "type": "string"
+          },
+          "inference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "enum": [
+              "source_file",
+              "user_supplied",
+              "inferred"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "requirement_class": {
+            "enum": [
+              "required",
+              "conditional",
+              "recommended",
+              "optional"
+            ],
+            "title": "Requirement Class",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "supersedes_assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Assertion Id"
+          },
+          "supplements_assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplements Assertion Id"
+          },
+          "transformation": {
+            "enum": [
+              "none",
+              "parsed",
+              "unit_converted",
+              "derived"
+            ],
+            "title": "Transformation",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/AssertionValue-Output"
+          }
+        },
+        "required": [
+          "assertion_id",
+          "schema_version",
+          "experiment_id",
+          "field_name",
+          "requirement_class",
+          "origin",
+          "transformation",
+          "value",
+          "evidence_ids",
+          "evidence_note"
+        ],
+        "title": "MetadataAssertion",
+        "type": "object"
+      },
+      "MetadataValue-Input": {
+        "additionalProperties": false,
+        "description": "One metadata value whose evidence state is independent from its value.",
+        "properties": {
+          "state": {
+            "enum": [
+              "known",
+              "unknown",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "MetadataValue",
+        "type": "object"
+      },
+      "MetadataValue-Output": {
+        "additionalProperties": false,
+        "description": "One metadata value whose evidence state is independent from its value.",
+        "properties": {
+          "state": {
+            "enum": [
+              "known",
+              "unknown",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "MetadataValue",
+        "type": "object"
+      },
+      "NormalisationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_format": {
+            "default": "generic_csv",
+            "enum": [
+              "generic_csv",
+              "gamry_dta"
+            ],
+            "title": "Source Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_artifact_id",
+          "profile_id"
+        ],
+        "title": "NormalisationRequest",
+        "type": "object"
+      },
+      "NormalisationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/StructuralFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/TransformationGraph"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/NormalisedCVObservation"
+          },
+          "parser_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParserRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "observation",
+          "graph",
+          "findings"
+        ],
+        "title": "NormalisationResult",
+        "type": "object"
+      },
+      "NormalisationView": {
+        "properties": {
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/NormalisationResult"
+          }
+        },
+        "required": [
+          "result",
+          "replayed"
+        ],
+        "title": "NormalisationView",
+        "type": "object"
+      },
+      "NormalisedCVObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "data_origin": {
+            "enum": [
+              "observed",
+              "synthetic"
+            ],
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "enum": [
+              "replay",
+              "simulation",
+              "live"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/CVMetadata-Output"
+          },
+          "normalisation_version": {
+            "minLength": 1,
+            "title": "Normalisation Version",
+            "type": "string"
+          },
+          "observation_id": {
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "parser_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Record Id"
+          },
+          "parser_version": {
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/CVLineage"
+          },
+          "row_count": {
+            "minimum": 1.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/NormalisedSeries"
+            },
+            "minItems": 2,
+            "title": "Series",
+            "type": "array"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "transformation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Transformation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observation_id",
+          "schema_version",
+          "parser_version",
+          "normalisation_version",
+          "source_artifact_id",
+          "import_profile_id",
+          "data_origin",
+          "execution_mode",
+          "environment_id",
+          "row_count",
+          "series",
+          "metadata",
+          "transformation_ids",
+          "provenance"
+        ],
+        "title": "NormalisedCVObservation",
+        "type": "object"
+      },
+      "NormalisedSeries": {
+        "additionalProperties": false,
+        "properties": {
+          "dtype": {
+            "const": "decimal",
+            "title": "Dtype",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "potential",
+              "current",
+              "current_density",
+              "time",
+              "cycle",
+              "ignored"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "series_id": {
+            "minLength": 1,
+            "title": "Series Id",
+            "type": "string"
+          },
+          "shape": {
+            "maxItems": 1,
+            "minItems": 1,
+            "prefixItems": [
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Shape",
+            "type": "array"
+          },
+          "source_column": {
+            "minLength": 1,
+            "title": "Source Column",
+            "type": "string"
+          },
+          "source_unit": {
+            "minLength": 1,
+            "title": "Source Unit",
+            "type": "string"
+          },
+          "transformation_id": {
+            "minLength": 1,
+            "title": "Transformation Id",
+            "type": "string"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "series_id",
+          "schema_version",
+          "dtype",
+          "shape",
+          "source_column",
+          "role",
+          "source_unit",
+          "unit",
+          "values",
+          "transformation_id"
+        ],
+        "title": "NormalisedSeries",
+        "type": "object"
+      },
+      "PackageView": {
+        "properties": {
+          "package": {
+            "$ref": "#/components/schemas/ExperimentPackage"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "package",
+          "replayed"
+        ],
+        "title": "PackageView",
+        "type": "object"
+      },
+      "ParsedFieldTrace": {
+        "additionalProperties": false,
+        "description": "Exact DTA lines supporting one field accepted by the shared CV mapping.",
+        "properties": {
+          "data_end_line": {
+            "minimum": 1.0,
+            "title": "Data End Line",
+            "type": "integer"
+          },
+          "data_start_line": {
+            "minimum": 1.0,
+            "title": "Data Start Line",
+            "type": "integer"
+          },
+          "header_line": {
+            "minimum": 1.0,
+            "title": "Header Line",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "potential",
+              "current",
+              "current_density",
+              "time",
+              "cycle",
+              "ignored"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "source_column": {
+            "minLength": 1,
+            "title": "Source Column",
+            "type": "string"
+          },
+          "source_unit": {
+            "minLength": 1,
+            "title": "Source Unit",
+            "type": "string"
+          },
+          "unit_line": {
+            "minimum": 1.0,
+            "title": "Unit Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_column",
+          "role",
+          "source_unit",
+          "header_line",
+          "unit_line",
+          "data_start_line",
+          "data_end_line"
+        ],
+        "title": "ParsedFieldTrace",
+        "type": "object"
+      },
+      "ParserDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "locations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ParserSourceLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "ParserDiagnostic",
+        "type": "object"
+      },
+      "ParserRecord": {
+        "additionalProperties": false,
+        "description": "Immutable parser result retained for accepted and rejected source interpretations.",
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ParserDiagnostic"
+            },
+            "minItems": 1,
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "exclusions": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "fields": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ParsedFieldTrace"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "headers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "parser_name": {
+            "minLength": 1,
+            "title": "Parser Name",
+            "type": "string"
+          },
+          "parser_record_id": {
+            "minLength": 1,
+            "title": "Parser Record Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "preserved_uninterpreted": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Preserved Uninterpreted",
+            "type": "array"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_format": {
+            "enum": [
+              "generic_csv",
+              "gamry_dta"
+            ],
+            "title": "Source Format",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "support_statement": {
+            "minLength": 1,
+            "title": "Support Statement",
+            "type": "string"
+          },
+          "supported_variant": {
+            "minLength": 1,
+            "title": "Supported Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parser_record_id",
+          "schema_version",
+          "source_format",
+          "parser_name",
+          "parser_version",
+          "supported_variant",
+          "source_artifact_id",
+          "import_profile_id",
+          "status",
+          "diagnostics",
+          "support_statement",
+          "exclusions"
+        ],
+        "title": "ParserRecord",
+        "type": "object"
+      },
+      "ParserRecordView": {
+        "properties": {
+          "record": {
+            "$ref": "#/components/schemas/ParserRecord"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "record",
+          "replayed"
+        ],
+        "title": "ParserRecordView",
+        "type": "object"
+      },
+      "ParserSourceLocation": {
+        "additionalProperties": false,
+        "description": "One one-based source span retained with a parser diagnostic.",
+        "properties": {
+          "line_end": {
+            "minimum": 1.0,
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "minimum": 1.0,
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "object_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Tag"
+          },
+          "object_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Type"
+          }
+        },
+        "required": [
+          "line_start",
+          "line_end"
+        ],
+        "title": "ParserSourceLocation",
+        "type": "object"
+      },
+      "PassportView": {
+        "properties": {
+          "passport": {
+            "$ref": "#/components/schemas/ExperimentPassport"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "passport",
+          "replayed"
+        ],
+        "title": "PassportView",
+        "type": "object"
+      },
+      "PlotSeriesView": {
+        "properties": {
+          "data_origin": {
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "observation_id": {
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/CVLineage"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/NormalisedSeries"
+            },
+            "title": "Series",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observation_id",
+          "data_origin",
+          "execution_mode",
+          "environment_id",
+          "series",
+          "provenance"
+        ],
+        "title": "PlotSeriesView",
+        "type": "object"
+      },
+      "ProfileView": {
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/CVImportProfile-Output"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "profile_id",
+          "profile",
+          "replayed"
+        ],
+        "title": "ProfileView",
+        "type": "object"
+      },
+      "Quantity": {
+        "additionalProperties": false,
+        "description": "A scalar or array value with its unit.\n\n`value` is `Decimal`, never `float`: a binary float has no canonical decimal form, so a float\nhere would make every identity derived from it platform-dependent (invariant 7).",
+        "properties": {
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "unit"
+        ],
+        "title": "Quantity",
+        "type": "object"
+      },
+      "ReleaseDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "blocking_count": {
+            "minimum": 0.0,
+            "title": "Blocking Count",
+            "type": "integer"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "blocked",
+              "eligible"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unknown_count": {
+            "minimum": 0.0,
+            "title": "Unknown Count",
+            "type": "integer"
+          },
+          "warning_count": {
+            "minimum": 0.0,
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "blocking_count",
+          "warning_count",
+          "unknown_count",
+          "finding_ids"
+        ],
+        "title": "ReleaseDecision",
+        "type": "object"
+      },
+      "SourceArtifactView": {
+        "properties": {
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "data_origin": {
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "execution_mode": {
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "object_uri": {
+            "title": "Object Uri",
+            "type": "string"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_artifact_id",
+          "filename",
+          "media_type",
+          "byte_size",
+          "sha256",
+          "data_origin",
+          "execution_mode",
+          "state",
+          "object_uri"
+        ],
+        "title": "SourceArtifactView",
+        "type": "object"
+      },
+      "SourceInspectionView": {
+        "properties": {
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_artifact_id",
+          "source_sha256",
+          "headers",
+          "row_count"
+        ],
+        "title": "SourceInspectionView",
+        "type": "object"
+      },
+      "StructuralFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "finding_id": {
+            "minLength": 1,
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "warning",
+              "blocking"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_id": {
+            "minLength": 1,
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "code",
+          "status",
+          "subject_id",
+          "message"
+        ],
+        "title": "StructuralFinding",
+        "type": "object"
+      },
+      "TransformationGraph": {
+        "additionalProperties": false,
+        "properties": {
+          "observation_id": {
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/TransformationRecord"
+            },
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_artifact_id",
+          "observation_id",
+          "records"
+        ],
+        "title": "TransformationGraph",
+        "type": "object"
+      },
+      "TransformationParameter": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "TransformationParameter",
+        "type": "object"
+      },
+      "TransformationRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "implementation": {
+            "minLength": 1,
+            "title": "Implementation",
+            "type": "string"
+          },
+          "implementation_version": {
+            "minLength": 1,
+            "title": "Implementation Version",
+            "type": "string"
+          },
+          "input_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Input Ids",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "csv_parse",
+              "dta_parse",
+              "column_mapping",
+              "observation_assembly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "output_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Output Ids",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/TransformationParameter"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "transformation_id": {
+            "minLength": 1,
+            "title": "Transformation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transformation_id",
+          "schema_version",
+          "kind",
+          "implementation",
+          "implementation_version",
+          "input_ids",
+          "parameters",
+          "output_ids"
+        ],
+        "title": "TransformationRecord",
+        "type": "object"
+      },
+      "UserAssertionRequest": {
+        "additionalProperties": false,
+        "description": "HTTP user edits intentionally expose no origin selector.",
+        "properties": {
+          "evidence_note": {
+            "minLength": 1,
+            "title": "Evidence Note",
+            "type": "string"
+          },
+          "expected_experiment_version": {
+            "minimum": 1.0,
+            "title": "Expected Experiment Version",
+            "type": "integer"
+          },
+          "field_name": {
+            "minLength": 1,
+            "title": "Field Name",
+            "type": "string"
+          },
+          "requirement_class": {
+            "enum": [
+              "required",
+              "conditional",
+              "recommended",
+              "optional"
+            ],
+            "title": "Requirement Class",
+            "type": "string"
+          },
+          "supersedes_assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Assertion Id"
+          },
+          "supplements_assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplements Assertion Id"
+          },
+          "transformation": {
+            "enum": [
+              "none",
+              "parsed",
+              "unit_converted",
+              "derived"
+            ],
+            "title": "Transformation",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/AssertionValue-Input"
+          }
+        },
+        "required": [
+          "expected_experiment_version",
+          "field_name",
+          "requirement_class",
+          "transformation",
+          "value",
+          "evidence_note"
+        ],
+        "title": "UserAssertionRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationFinding": {
+        "additionalProperties": false,
+        "description": "One stable validation result shared by every report representation.",
+        "properties": {
+          "assertion_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assertion Ids",
+            "type": "array"
+          },
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "field_name": {
+            "minLength": 1,
+            "title": "Field Name",
+            "type": "string"
+          },
+          "finding_id": {
+            "minLength": 1,
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "requirement_class": {
+            "enum": [
+              "required",
+              "conditional",
+              "recommended",
+              "optional"
+            ],
+            "title": "Requirement Class",
+            "type": "string"
+          },
+          "resolution": {
+            "minLength": 1,
+            "title": "Resolution",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "blocking",
+              "warning",
+              "unknown"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "schema_version",
+          "code",
+          "severity",
+          "field_name",
+          "requirement_class",
+          "assertion_ids",
+          "evidence_ids",
+          "message",
+          "resolution"
+        ],
+        "title": "ValidationFinding",
+        "type": "object"
+      },
+      "ValidationRun": {
+        "additionalProperties": false,
+        "properties": {
+          "experiment_id": {
+            "minLength": 1,
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "experiment_version": {
+            "minimum": 1.0,
+            "title": "Experiment Version",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "release_decision": {
+            "$ref": "#/components/schemas/ReleaseDecision"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "validation_id": {
+            "minLength": 1,
+            "title": "Validation Id",
+            "type": "string"
+          },
+          "validation_version": {
+            "minLength": 1,
+            "title": "Validation Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "validation_id",
+          "schema_version",
+          "validation_version",
+          "experiment_id",
+          "experiment_version",
+          "findings",
+          "release_decision"
+        ],
+        "title": "ValidationRun",
+        "type": "object"
+      },
+      "ValidationView": {
+        "properties": {
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationRun"
+          }
+        },
+        "required": [
+          "validation",
+          "replayed"
+        ],
+        "title": "ValidationView",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "LabBridge",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/campaigns": {
+      "post": {
+        "description": "Declare a campaign and enqueue one durable job per candidate.\n\nThe whole submission is one transaction. A partial submission — some work items enqueued,\nthe campaign never recorded — would leave jobs referencing a campaign that does not exist,\nand no retry could repair it.",
+        "operationId": "create_campaign_campaigns_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}": {
+      "get": {
+        "operationId": "read_campaign_campaigns__campaign_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}/cancel": {
+      "post": {
+        "operationId": "cancel_campaign_campaigns__campaign_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}/pause": {
+      "post": {
+        "operationId": "pause_campaign_campaigns__campaign_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}/resume": {
+      "post": {
+        "operationId": "resume_campaign_campaigns__campaign_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Campaign"
+      }
+    },
+    "/cv/import-profiles": {
+      "post": {
+        "operationId": "create_profile_cv_import_profiles_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CVImportProfile-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Profile"
+      }
+    },
+    "/cv/import-profiles/{profile_id}": {
+      "get": {
+        "operationId": "read_profile_cv_import_profiles__profile_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Profile"
+      }
+    },
+    "/cv/normalisations": {
+      "post": {
+        "operationId": "normalise_cv_normalisations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NormalisationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NormalisationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Normalise"
+      }
+    },
+    "/cv/normalised-observations/{observation_id}": {
+      "get": {
+        "operationId": "read_normalisation_cv_normalised_observations__observation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observation_id",
+            "required": true,
+            "schema": {
+              "title": "Observation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NormalisationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Normalisation"
+      }
+    },
+    "/cv/normalised-observations/{observation_id}/plot-series": {
+      "get": {
+        "operationId": "plot_series_cv_normalised_observations__observation_id__plot_series_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observation_id",
+            "required": true,
+            "schema": {
+              "title": "Observation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlotSeriesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plot Series"
+      }
+    },
+    "/cv/parser-records/{parser_record_id}": {
+      "get": {
+        "operationId": "read_parser_record_cv_parser_records__parser_record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "parser_record_id",
+            "required": true,
+            "schema": {
+              "title": "Parser Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParserRecordView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Parser Record"
+      }
+    },
+    "/cv/source-inspections": {
+      "post": {
+        "operationId": "inspect_source_cv_source_inspections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceInspectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect Source"
+      }
+    },
+    "/experiment-packages/{package_id}": {
+      "get": {
+        "operationId": "get_package_route_experiment_packages__package_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Package Route"
+      }
+    },
+    "/experiment-packages/{package_id}/download": {
+      "get": {
+        "operationId": "download_package_route_experiment_packages__package_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Package Route"
+      }
+    },
+    "/experiment-passports/{passport_id}": {
+      "get": {
+        "operationId": "get_passport_route_experiment_passports__passport_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "passport_id",
+            "required": true,
+            "schema": {
+              "title": "Passport Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassportView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Passport Route"
+      }
+    },
+    "/experiments": {
+      "post": {
+        "operationId": "create_experiment_route_experiments_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExperimentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Experiment Route"
+      }
+    },
+    "/experiments/{experiment_id}": {
+      "get": {
+        "operationId": "get_experiment_route_experiments__experiment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Experiment Route"
+      }
+    },
+    "/experiments/{experiment_id}/assertions": {
+      "post": {
+        "operationId": "add_assertion_route_experiments__experiment_id__assertions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserAssertionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Assertion Route"
+      }
+    },
+    "/experiments/{experiment_id}/packages": {
+      "post": {
+        "operationId": "create_package_route_experiments__experiment_id__packages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Package Route"
+      }
+    },
+    "/experiments/{experiment_id}/passport-preview": {
+      "get": {
+        "operationId": "preview_passport_route_experiments__experiment_id__passport_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassportView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Passport Route"
+      }
+    },
+    "/experiments/{experiment_id}/passports": {
+      "post": {
+        "operationId": "release_passport_route_experiments__experiment_id__passports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassportView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Passport Route"
+      }
+    },
+    "/experiments/{experiment_id}/validations": {
+      "post": {
+        "operationId": "validate_route_experiments__experiment_id__validations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Route"
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness only. Deliberately does not touch the database: a health check that fails when\na dependency is down makes an orchestrator restart a process that is working fine.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Readiness *does* touch the database, because that is the difference from `/health`:\nthis one answers \"can I serve traffic\", and without PostgreSQL the answer is no (F-024).",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ready Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
+    "/source-artifacts": {
+      "post": {
+        "operationId": "intake_source_artifact_source_artifacts_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "data_origin",
+            "required": true,
+            "schema": {
+              "enum": [
+                "observed",
+                "synthetic"
+              ],
+              "title": "Data Origin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "execution_mode",
+            "required": true,
+            "schema": {
+              "enum": [
+                "replay",
+                "simulation",
+                "live"
+              ],
+              "title": "Execution Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceArtifactView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Intake Source Artifact"
+      }
+    },
+    "/source-artifacts/{source_artifact_id}": {
+      "get": {
+        "operationId": "read_source_artifact_source_artifacts__source_artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Source Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceArtifactView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Source Artifact"
+      }
+    },
+    "/source-artifacts/{source_artifact_id}/content": {
+      "get": {
+        "operationId": "read_source_content_source_artifacts__source_artifact_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Source Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Source Content"
+      }
+    }
+  }
+}

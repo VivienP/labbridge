@@ -34,6 +34,13 @@ class NormalisationRequest(BaseModel):
     source_format: SourceFormat = "generic_csv"
 
 
+class SourceInspectionView(BaseModel):
+    source_artifact_id: str
+    source_sha256: str
+    headers: tuple[str, ...]
+    row_count: int
+
+
 class ProfileView(BaseModel):
     profile_id: str
     profile: CVImportProfile
@@ -92,7 +99,7 @@ def _error(error: Exception) -> HTTPException:
 
 def register_cv_routes(app: FastAPI, service: Callable[[], CVIngestionService]) -> None:
     @app.post("/cv/source-inspections")
-    def inspect_source(request: InspectionRequest) -> dict[str, object]:
+    def inspect_source(request: InspectionRequest) -> SourceInspectionView:
         try:
             result = service().inspect(
                 request.source_artifact_id,
@@ -104,12 +111,12 @@ def register_cv_routes(app: FastAPI, service: Callable[[], CVIngestionService]) 
             )
         except (CVIngestionError, SourceIntakeError, CsvParseError, ValueError) as error:
             raise _error(error) from error
-        return {
-            "source_artifact_id": result.source_artifact_id,
-            "source_sha256": result.source_sha256,
-            "headers": result.headers,
-            "row_count": result.row_count,
-        }
+        return SourceInspectionView(
+            source_artifact_id=result.source_artifact_id,
+            source_sha256=result.source_sha256,
+            headers=result.headers,
+            row_count=result.row_count,
+        )
 
     @app.post("/cv/import-profiles", status_code=status.HTTP_201_CREATED)
     def create_profile(

@@ -39,6 +39,7 @@ from labbridge.infrastructure.persistence.tables import (
     experiment_passports,
     jobs,
     normalised_cv_observations,
+    normalised_electrolysis_observations,
     observations,
     source_artifacts,
     storage_objects,
@@ -290,6 +291,14 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
         ).scalar_one()
         > 0
     )
+    referenced_by_normalised_electrolysis = (
+        connection.execute(
+            select(func.count())
+            .select_from(normalised_electrolysis_observations)
+            .where(normalised_electrolysis_observations.c.object_uri == row.object_uri)
+        ).scalar_one()
+        > 0
+    )
     referenced_by_passport = (
         connection.execute(
             select(func.count())
@@ -326,6 +335,7 @@ def _object_facts(connection: Connection, row: Row[Any], store: ObjectStore) -> 
             referenced_by_observation
             or referenced_by_source
             or referenced_by_normalised_cv
+            or referenced_by_normalised_electrolysis
             or referenced_by_passport
             or referenced_by_package
         ),

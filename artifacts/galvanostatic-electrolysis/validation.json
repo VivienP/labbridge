@@ -1,0 +1,132 @@
+{
+  "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+  "experiment_version": 1,
+  "findings": [
+    {
+      "assertion_ids": [
+        "assertion:60913f24c196035e2064b48ca268fb91"
+      ],
+      "code": "metadata.cell_geometry.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "cell_geometry",
+      "finding_id": "validation-finding:7e3c34a744bef5e26ec75eb610f25291",
+      "message": "cell_geometry remains unknown; the Passport does not infer it.",
+      "requirement_class": "recommended",
+      "resolution": "Append a user-supplied cell_geometry assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:c6cbaa50dd870653294a994f0d11378a"
+      ],
+      "code": "metadata.current_sign_convention.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "current_sign_convention",
+      "finding_id": "validation-finding:5acd36b0287540527a6e39794910f0c2",
+      "message": "current_sign_convention remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied current_sign_convention assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:1533c00a356fb32c17c15ff11d7258a0"
+      ],
+      "code": "metadata.potential_treatment.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "potential_treatment",
+      "finding_id": "validation-finding:b5e15761b4cfdc1deefb6263719b8558",
+      "message": "potential_treatment remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied potential_treatment assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:4af485baf6b3d1b3c70614df7e0e94ba"
+      ],
+      "code": "metadata.reference_scale.unknown",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "reference_scale",
+      "finding_id": "validation-finding:5ae9a6d3bd6d3c4ddf1d4b281bf9a194",
+      "message": "reference_scale remains unknown; the Passport does not infer it.",
+      "requirement_class": "conditional",
+      "resolution": "Append a user-supplied reference_scale assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "unknown"
+    },
+    {
+      "assertion_ids": [
+        "assertion:b1711151cb5d73cff91b1d571861277d"
+      ],
+      "code": "metadata.chemical_analysis.warning",
+      "evidence_ids": [
+        "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
+        "source:c0f58f1620c4f47e242543199641b10f",
+        "transform:1c15c7f327d8b885a20330e2010e8a15",
+        "transform:23ad340c615a93d7405dd09a8a503ac6",
+        "transform:6ae518fc293641ea33d14d5e00023aec",
+        "transform:7a3225c64fa93d7a8fbd951277c65d40",
+        "transform:80870c93a9c044c5b52c10ab3f82d17f"
+      ],
+      "field_name": "chemical_analysis",
+      "finding_id": "validation-finding:d4182f96e49f2c4800440edfe1ac3ca4",
+      "message": "chemical_analysis remains unavailable; the Passport does not infer it.",
+      "requirement_class": "optional",
+      "resolution": "Append a user-supplied chemical_analysis assertion if additional retained evidence is available; otherwise keep this finding visible.",
+      "schema_version": "1",
+      "severity": "warning"
+    }
+  ],
+  "release_decision": {
+    "blocking_count": 0,
+    "finding_ids": [
+      "validation-finding:7e3c34a744bef5e26ec75eb610f25291",
+      "validation-finding:5acd36b0287540527a6e39794910f0c2",
+      "validation-finding:b5e15761b4cfdc1deefb6263719b8558",
+      "validation-finding:5ae9a6d3bd6d3c4ddf1d4b281bf9a194",
+      "validation-finding:d4182f96e49f2c4800440edfe1ac3ca4"
+    ],
+    "status": "eligible",
+    "unknown_count": 4,
+    "warning_count": 1
+  },
+  "schema_version": "1",
+  "validation_id": "validation:1b68b0c7629ce937974e225526896925",
+  "validation_version": "2"
+}

@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "347acfe4e146d586add373abf6d31d9db021ff1a8dff376546227b16f749c4d1",
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_galvanostatic_fixture",
+  "execution_mode": "replay",
+  "experiment_id": "experiment:f055128fb63374cd1e568299953bc4db",
+  "experiment_version": 1,
+  "lineage_closed": true,
+  "package_id": "experiment-package:6479dddfda8860fedee9058d164fffd9",
+  "passport_id": "passport:887d95b0e3849b62b4cd778d3d3460dc",
+  "verified": true
+}

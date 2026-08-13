@@ -27,6 +27,7 @@ from .tables import (
     idempotency_keys,
     import_profiles,
     normalised_cv_observations,
+    normalised_observations,
     storage_objects,
 )
 
@@ -284,6 +285,15 @@ class PostgresCVRecordRepository:
                         observation_id=observation.observation_id,
                     )
                 return True
+            connection.execute(
+                insert(normalised_observations)
+                .values(
+                    observation_id=observation.observation_id,
+                    technique="cyclic_voltammetry",
+                    created_at=now,
+                )
+                .on_conflict_do_nothing(index_elements=[normalised_observations.c.observation_id])
+            )
             inserted = connection.execute(
                 insert(normalised_cv_observations)
                 .values(

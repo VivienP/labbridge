@@ -26,6 +26,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated, Any, Final
 
 from fastapi import FastAPI, Header, HTTPException, Response, status
@@ -68,6 +69,7 @@ from labbridge.runtime.jobs import enqueue
 
 from .cv import register_cv_routes
 from .experiments import register_experiment_routes
+from .frontend import register_frontend
 from .source_artifacts import register_source_routes
 
 API_VERSION: Final = "1"
@@ -251,6 +253,7 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
     source_service: SourceArtifactService | None = None,
     cv_service: CVIngestionService | None = None,
     experiment_service: ExperimentService | None = None,
+    frontend_dir: Path | None = None,
 ) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
@@ -587,4 +590,5 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
             ),
         )
 
+    register_frontend(app, frontend_dir)
     return app
