@@ -130,6 +130,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cv/parser-records/{parser_record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Parser Record */
+        get: operations["read_parser_record_cv_parser_records__parser_record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cv/source-inspections": {
         parameters: {
             query?: never;
@@ -524,6 +541,8 @@ export interface components {
             environment_id: string;
             /** Import Profile Id */
             import_profile_id: string;
+            /** Parser Record Id */
+            parser_record_id?: string | null;
             /** Source Artifact Id */
             source_artifact_id: string;
             /** Source Sha256 */
@@ -744,9 +763,9 @@ export interface components {
             };
             /**
              * Schema Version
-             * @constant
+             * @enum {string}
              */
-            schema_version: "1";
+            schema_version: "1" | "2";
             /** Supersedes Package Id */
             supersedes_package_id?: string | null;
         };
@@ -949,6 +968,12 @@ export interface components {
             profile_id: string;
             /** Source Artifact Id */
             source_artifact_id: string;
+            /**
+             * Source Format
+             * @default generic_csv
+             * @enum {string}
+             */
+            source_format: "generic_csv" | "gamry_dta";
         };
         /** NormalisationResult */
         NormalisationResult: {
@@ -956,6 +981,7 @@ export interface components {
             findings: components["schemas"]["StructuralFinding"][];
             graph: components["schemas"]["TransformationGraph"];
             observation: components["schemas"]["NormalisedCVObservation"];
+            parser_record?: components["schemas"]["ParserRecord"] | null;
         };
         /** NormalisationView */
         NormalisationView: {
@@ -984,6 +1010,8 @@ export interface components {
             normalisation_version: string;
             /** Observation Id */
             observation_id: string;
+            /** Parser Record Id */
+            parser_record_id?: string | null;
             /** Parser Version */
             parser_version: string;
             provenance: components["schemas"]["CVLineage"];
@@ -1040,6 +1068,122 @@ export interface components {
             package: components["schemas"]["ExperimentPackage"];
             /** Replayed */
             replayed: boolean;
+        };
+        /**
+         * ParsedFieldTrace
+         * @description Exact DTA lines supporting one field accepted by the shared CV mapping.
+         */
+        ParsedFieldTrace: {
+            /** Data End Line */
+            data_end_line: number;
+            /** Data Start Line */
+            data_start_line: number;
+            /** Header Line */
+            header_line: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "potential" | "current" | "current_density" | "time" | "cycle" | "ignored";
+            /** Source Column */
+            source_column: string;
+            /** Source Unit */
+            source_unit: string;
+            /** Unit Line */
+            unit_line: number;
+        };
+        /** ParserDiagnostic */
+        ParserDiagnostic: {
+            /** Code */
+            code: string;
+            /**
+             * Locations
+             * @default []
+             */
+            locations: components["schemas"]["ParserSourceLocation"][];
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+        };
+        /**
+         * ParserRecord
+         * @description Immutable parser result retained for accepted and rejected source interpretations.
+         */
+        ParserRecord: {
+            /** Diagnostics */
+            diagnostics: components["schemas"]["ParserDiagnostic"][];
+            /** Exclusions */
+            exclusions: string[];
+            /**
+             * Fields
+             * @default []
+             */
+            fields: components["schemas"]["ParsedFieldTrace"][];
+            /**
+             * Headers
+             * @default []
+             */
+            headers: string[];
+            /** Import Profile Id */
+            import_profile_id: string;
+            /** Parser Name */
+            parser_name: string;
+            /** Parser Record Id */
+            parser_record_id: string;
+            /** Parser Version */
+            parser_version: string;
+            /**
+             * Preserved Uninterpreted
+             * @default []
+             */
+            preserved_uninterpreted: string[];
+            /** Row Count */
+            row_count?: number | null;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "1";
+            /** Source Artifact Id */
+            source_artifact_id: string;
+            /**
+             * Source Format
+             * @enum {string}
+             */
+            source_format: "generic_csv" | "gamry_dta";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected";
+            /** Support Statement */
+            support_statement: string;
+            /** Supported Variant */
+            supported_variant: string;
+        };
+        /** ParserRecordView */
+        ParserRecordView: {
+            record: components["schemas"]["ParserRecord"];
+            /** Replayed */
+            replayed: boolean;
+        };
+        /**
+         * ParserSourceLocation
+         * @description One one-based source span retained with a parser diagnostic.
+         */
+        ParserSourceLocation: {
+            /** Line End */
+            line_end: number;
+            /** Line Start */
+            line_start: number;
+            /** Object Tag */
+            object_tag?: string | null;
+            /** Object Type */
+            object_type?: string | null;
         };
         /** PassportView */
         PassportView: {
@@ -1179,7 +1323,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_parse" | "column_mapping" | "observation_assembly";
+            kind: "csv_parse" | "dta_parse" | "column_mapping" | "observation_assembly";
             /** Output Ids */
             output_ids: string[];
             /** Parameters */
@@ -1517,6 +1661,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlotSeriesView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_parser_record_cv_parser_records__parser_record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                parser_record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParserRecordView"];
                 };
             };
             /** @description Validation Error */

@@ -483,3 +483,100 @@ consumed a real adapter call and appends no entry.
 The attempt lifecycle has no `duplicate_suppressed` state, so a suppressed attempt is recorded as
 `cancelled` while its outcome carries the real meaning. That is a temporary compromise, recorded as
 one: no documentation or metric may read those attempt rows as user-requested cancellations.
+
+---
+
+## ADR-017 — Use a bounded in-repository parser for the first Gamry DTA CV variant
+
+**Status:** accepted
+
+**Decision:** Phase 4 uses a small, fail-closed parser owned by LabBridge for one pinned textual
+Gamry DTA CV variant. It does not add `echemdb-converters` as a runtime dependency. Every attempt
+creates a content-addressed parser record; accepted records enter the common CV transformation,
+Passport, and Package contracts, while rejected records remain queryable without creating a partial
+observation. A DTA-backed Experiment Package uses schema `2` and contains the parser record.
+
+### Context
+
+The documented `echemdb-converters` 0.4.1 Gamry loader was evaluated before implementation. Its
+loader locates the first `CURVE` table and delegates table parsing to general tabular tooling. That
+is useful for conversion workflows, but the inspected version does not enforce the Phase 4 boundary:
+one technique, one Framework version, one table schema, an exact declared row count, rejection of
+mixed table objects, durable failure diagnostics, and exact line locations for every accepted field.
+Wrapping it would still require a second strict parser around its output while adding pandas,
+clevercsv, unitpackage, and their transitive surface to this path.
+
+The relevant inspected sources are the
+[`gamryloader.py`](https://github.com/echemdb/echemdb-converters/blob/main/echemdbconverters/gamryloader.py)
+implementation, its
+[`pyproject.toml`](https://github.com/echemdb/echemdb-converters/blob/main/pyproject.toml), and Gamry's
+documented [DTA object format](https://help.gamry.com/Framework/general-information_datafileformat.html).
+The decision is about the inspected version and required contract, not a general quality judgment
+about the converter project.
+
+### Consequences
+
+- the accepted variant is `TAG CV`, Framework `7.07`, exactly one `CURVE TABLE`, and the pinned
+  column/unit layout in `artifacts/gamry-dta-cv/SUPPORT.md`;
+- encoding and decimal convention come only from the immutable import profile;
+- declared row counts, headers, units, leading DTA table fields, numeric cells, and trailing content
+  are checked without dialect detection or row repair;
+- `Vf`, `Im`, `T`, and `Cycle` enter the same explicit mapping and unit-conversion code used by
+  generic CSV; `TITLE`, `NOTES`, and ignored table columns are preserved or named but not interpreted;
+- `V vs. Ref.` converts the numeric potential dimension to volts without assigning a reference
+  electrode or potential scale;
+- accepted and rejected parser records are durable PostgreSQL evidence tied to exact Phase 1 bytes;
+- DTA observations expose the same API, CLI, validation, Passport, and Package operations as generic
+  CSV, with no vendor-only observation or report model;
+- Package schema `1` remains verifiable for existing generic CSV evidence; schema `2` requires the
+  parser member and producing parser version.
+
+### Limits
+
+This decision does not claim support for other Gamry Framework versions, other electrochemical
+techniques, multiple curves, proprietary binary formats, automatic locale or unit detection,
+reference-electrode interpretation, current-density normalisation, live instrument control, or
+compatibility with vendor files outside the pinned fixture variants. Each wider variant requires a
+new explicit contract, fixture, diagnostics, and differential proof before acceptance.
+
+---
+
+## ADR-018 — Keep EchemDB exchange behind a versioned evidence adapter
+
+**Status:** accepted
+
+**Decision:** Phase 6 exports one CV observation through evidence adapter `echemdb-cv/1`. The
+LabBridge domain model remains unchanged and contains no EchemDB classes or field names. The adapter
+targets EchemDB metadata-schema `0.8.3` at commit
+`f48f583f83b1de9f5601d05dae5e5fcd1c25a3f0`, Data Package profile `2.0`, and Frictionless
+`5.19.0`. Validation also pins `jsonschema` `4.26.0` and `referencing` `0.37.0`; the exact external
+schema bytes are vendored for offline verification, and the EchemDB schema licence is retained beside
+its vendored file.
+
+Required target fields without source evidence are accepted only as known `user_supplied`
+assertions. Export traces qualify those values as explicit external metadata that is not
+source-declared. An `inferred` assertion cannot enter those fields. Unsupported or unknown metadata
+is omitted, while the mapping report records every omission, companion-only field, and lossy
+projection.
+
+### Consequences
+
+- every descriptor leaf and CSV cell has a trace to a LabBridge assertion, series, or observation;
+- the companion manifest retains experiment, observation, source-artifact, transformation, origin,
+  execution-mode, assertion, and series identities that the target schema cannot represent;
+- `figureDescription.type` is supplied by an explicit assertion and recorded as a lossy projection
+  because it cannot preserve `data_origin` and `execution_mode` as independent dimensions;
+- potential values, current values, units, signs, reference scales, electrode roles, areas, scan
+  rates, electrolyte compositions, and cycle meaning are never inferred or converted by the
+  adapter;
+- schema checks run from vendored bytes, and the Frictionless validator must report the exact pinned
+  installed version before an artifact is valid;
+- the field inventory, machine-readable mapping, human-readable mapping table, validation output,
+  external versions, source bytes, and reproduction command are closed by one artifact manifest.
+
+### Limits
+
+This decision demonstrates only the project-owned synthetic CV fixture and the exact versions above.
+It does not claim compatibility with other EchemDB metadata-schema versions, other Data Package
+profiles, other Frictionless versions, other techniques, EchemDB ingestion or publication, or
+scientific completeness of the explicit fixture declarations.

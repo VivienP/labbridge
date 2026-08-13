@@ -1,4 +1,4 @@
-"""FastAPI adapter for explicit generic CV CSV ingestion."""
+"""FastAPI adapter for explicit CV source ingestion."""
 
 from __future__ import annotations
 
@@ -12,11 +12,13 @@ from labbridge.application.cv_ingestion import (
     CVIngestionService,
     ImportProfileNotFoundError,
     NormalisedObservationNotFoundError,
+    ParserRecordNotFoundError,
 )
 from labbridge.application.source_intake import SourceIntakeError
 from labbridge.domain.cv import CSVFormat, CVImportProfile
 from labbridge.domain.cv_observations import CVLineage, NormalisationResult, NormalisedSeries
 from labbridge.domain.idempotency import IdempotencyKeyError, normalise_idempotency_key
+from labbridge.domain.parser_diagnostics import ParserRecord, SourceFormat
 from labbridge.infrastructure.cv_csv import CsvParseError
 
 
@@ -29,6 +31,7 @@ class NormalisationRequest(BaseModel):
 
     source_artifact_id: str
     profile_id: str
+    source_format: SourceFormat = "generic_csv"
 
 
 class SourceInspectionView(BaseModel):
@@ -46,6 +49,11 @@ class ProfileView(BaseModel):
 
 class NormalisationView(BaseModel):
     result: NormalisationResult
+    replayed: bool
+
+
+class ParserRecordView(BaseModel):
+    record: ParserRecord
     replayed: bool
 
 
@@ -72,14 +80,21 @@ def _idempotency(key: str | None) -> str:
 
 
 def _error(error: Exception) -> HTTPException:
-    if isinstance(error, ImportProfileNotFoundError | NormalisedObservationNotFoundError):
+    if isinstance(
+        error,
+        ImportProfileNotFoundError | NormalisedObservationNotFoundError | ParserRecordNotFoundError,
+    ):
         http_status = status.HTTP_404_NOT_FOUND
     elif isinstance(error, CsvParseError | ValueError):
         http_status = status.HTTP_422_UNPROCESSABLE_CONTENT
     else:
         http_status = status.HTTP_409_CONFLICT
     code = getattr(error, "code", "cv_ingestion_error")
-    return HTTPException(status_code=http_status, detail={"code": code, "message": str(error)})
+    detail = {"code": code, "message": str(error)}
+    parser_record_id = getattr(error, "parser_record_id", None)
+    if parser_record_id is not None:
+        detail["parser_record_id"] = parser_record_id
+    return HTTPException(status_code=http_status, detail=detail)
 
 
 def register_cv_routes(app: FastAPI, service: Callable[[], CVIngestionService]) -> None:
@@ -140,6 +155,7 @@ def register_cv_routes(app: FastAPI, service: Callable[[], CVIngestionService]) 
                 request.source_artifact_id,
                 request.profile_id,
                 idempotency_key=key,
+                source_format=request.source_format,
             )
         except (CVIngestionError, SourceIntakeError, CsvParseError, ValueError) as error:
             raise _error(error) from error
@@ -154,6 +170,14 @@ def register_cv_routes(app: FastAPI, service: Callable[[], CVIngestionService]) 
         except CVIngestionError as error:
             raise _error(error) from error
         return NormalisationView(result=stored.result, replayed=True)
+
+    @app.get("/cv/parser-records/{parser_record_id}")
+    def read_parser_record(parser_record_id: str) -> ParserRecordView:
+        try:
+            stored = service().get_parser_record(parser_record_id)
+        except CVIngestionError as error:
+            raise _error(error) from error
+        return ParserRecordView(record=stored.record, replayed=True)
 
     @app.get("/cv/normalised-observations/{observation_id}/plot-series")
     def plot_series(observation_id: str) -> PlotSeriesView:

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://datapackage.org/profiles/2.0/datapackage.json",
+  "name": "labbridge-f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "profile": "data-package",
+  "resources": [
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "metadata": {
+        "echemdb": {
+          "curation": {
+            "process": []
+          },
+          "echemdbSchemaVersion": "0.8.3",
+          "experimental": {},
+          "figureDescription": {
+            "fields": [
+              {
+                "name": "Vf",
+                "type": "number",
+                "unit": "V"
+              },
+              {
+                "name": "Im",
+                "type": "number",
+                "unit": "A"
+              },
+              {
+                "name": "T",
+                "type": "number",
+                "unit": "s"
+              },
+              {
+                "name": "Cycle",
+                "type": "number",
+                "unit": "1"
+              }
+            ],
+            "measurementType": "CV",
+            "type": "simulated"
+          },
+          "source": {
+            "citationKey": "labbridge_synthetic_gamry_cv",
+            "originalFilename": "synthetic-gamry-cv.dta",
+            "url": "https://github.com/VivienP/labbridge/blob/14921d701e512bb70816e55c844293f90e6bb8d0/fixtures/source/synthetic-gamry-cv.dta"
+          },
+          "system": {
+            "electrodes": [],
+            "electrolyte": {
+              "type": "aqueous"
+            },
+            "type": "electrochemical"
+          }
+        }
+      },
+      "name": "cv",
+      "path": "cv.csv",
+      "schema": {
+        "fields": [
+          {
+            "name": "Vf",
+            "type": "number",
+            "unit": "V"
+          },
+          {
+            "name": "Im",
+            "type": "number",
+            "unit": "A"
+          },
+          {
+            "name": "T",
+            "type": "number",
+            "unit": "s"
+          },
+          {
+            "name": "Cycle",
+            "type": "number",
+            "unit": "1"
+          }
+        ]
+      },
+      "scheme": "file",
+      "type": "table"
+    }
+  ]
+}

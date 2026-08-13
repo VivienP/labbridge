@@ -2,6 +2,7 @@
 # tools, and `core.autocrlf=true` is common on Windows checkouts.
 * text=auto
 .gitattributes text eol=lf
+.gitignore text eol=lf
 *.py text eol=lf
 *.sh text eol=lf
 scripts/hooks/* text eol=lf
@@ -18,8 +19,12 @@ SHA256SUMS.txt text eol=lf
 artifacts/source-capture/** -text
 artifacts/experiment-passport/** -text
 artifacts/cv-passport-demo/** -text -eol
+artifacts/gamry-dta-cv/** -text
+artifacts/echemdb-cv-exchange/** -text
 fixtures/source/synthetic-replay-cv-opaque.csv -text
+fixtures/source/synthetic-gamry-cv.dta -text
 frontend/public/demo-fixtures/synthetic-cv-passport-demo.csv -text
+src/labbridge/evidence/schemas/** -text whitespace=-trailing-space
 
 # Binary payloads: never transformed, never diffed as text.
 *.parquet binary

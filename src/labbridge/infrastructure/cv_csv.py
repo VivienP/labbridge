@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 
 from labbridge.domain.cv import ColumnRole, CSVFormat, CVImportProfile
 
@@ -58,6 +60,7 @@ class CSVInspection:
 
 _CONVERSION_FACTORS: dict[tuple[str, str], Decimal] = {
     ("V", "V"): Decimal("1"),
+    ("V vs. Ref.", "V"): Decimal("1"),
     ("mV", "V"): Decimal("0.001"),
     ("A", "A"): Decimal("1"),
     ("mA", "A"): Decimal("0.001"),
@@ -73,7 +76,16 @@ _CONVERSION_FACTORS: dict[tuple[str, str], Decimal] = {
     ("ms", "s"): Decimal("0.001"),
     ("min", "s"): Decimal("60"),
     ("1", "1"): Decimal("1"),
+    ("#", "1"): Decimal("1"),
 }
+_POINT_DECIMAL = re.compile(r"[+-]?\d+(?:\.\d+)?(?:[Ee][+-]?\d+)?")
+_COMMA_DECIMAL = re.compile(r"[+-]?\d+(?:,\d+)?(?:[Ee][+-]?\d+)?")
+
+
+def decimal_syntax_matches(cell: str, convention: Literal["point", "comma"]) -> bool:
+    """Return whether one cell uses the bounded declared decimal grammar exactly."""
+    pattern = _COMMA_DECIMAL if convention == "comma" else _POINT_DECIMAL
+    return pattern.fullmatch(cell) is not None
 
 
 def _factor(source_unit: str, target_unit: str) -> Decimal:
@@ -88,6 +100,16 @@ def _decimal(cell: str, profile: CVImportProfile, *, row: int, column: str) -> D
         raise CsvParseError(
             "missing_scientific_value",
             f"row {row} column `{column}` contains a declared missing-value token",
+            row=row,
+            column=column,
+        )
+    wrong_separator = (profile.decimal_convention == "point" and "," in cell) or (
+        profile.decimal_convention == "comma" and "." in cell
+    )
+    if wrong_separator:
+        raise CsvParseError(
+            "locale_mismatch",
+            f"row {row} column `{column}` conflicts with the declared decimal convention",
             row=row,
             column=column,
         )
@@ -108,26 +130,24 @@ def _decimal(cell: str, profile: CVImportProfile, *, row: int, column: str) -> D
             row=row,
             column=column,
         )
+    if not decimal_syntax_matches(cell, profile.decimal_convention):
+        raise CsvParseError(
+            "non_numeric_cell",
+            f"row {row} column `{column}` is not a decimal number",
+            row=row,
+            column=column,
+        )
     return value
 
 
-def parse_cv_csv(data: bytes, profile: CVImportProfile) -> ParsedCV:
-    """Parse exact bytes without guessing dialect, headers, roles, units, or missing values."""
-    try:
-        text = data.decode(profile.encoding, errors="strict")
-    except UnicodeDecodeError as error:
-        raise CsvParseError("encoding_error", f"source is not valid {profile.encoding}") from error
-    reader = csv.reader(io.StringIO(text, newline=""), delimiter=profile.delimiter, strict=True)
-    try:
-        rows = list(reader)
-    except csv.Error as error:
-        error_row = reader.line_num or None
-        raise CsvParseError(
-            "malformed_csv", "source contains malformed CSV quoting", row=error_row
-        ) from error
-    if len(rows) < profile.header_row:
-        raise CsvParseError("header_missing", f"header row {profile.header_row} is absent")
-    headers = tuple(rows[profile.header_row - 1])
+def parse_mapped_cv_table(
+    *,
+    headers: tuple[str, ...],
+    rows: tuple[tuple[int, tuple[str, ...]], ...],
+    profile: CVImportProfile,
+    parser_version: str,
+) -> ParsedCV:
+    """Apply one explicit CV profile to already delimited rows."""
     if not headers or any(not name for name in headers):
         raise CsvParseError("blank_header", "every source column requires a non-blank header")
     if len(headers) != len(set(headers)):
@@ -147,8 +167,7 @@ def parse_cv_csv(data: bytes, profile: CVImportProfile) -> ParsedCV:
             "source columns have no explicit mapped or ignored role: " + ", ".join(unexpected),
         )
 
-    body = rows[profile.header_row :]
-    for offset, row in enumerate(body, start=profile.header_row + 1):
+    for offset, row in rows:
         if not row:
             raise CsvParseError(
                 "blank_row",
@@ -179,7 +198,7 @@ def parse_cv_csv(data: bytes, profile: CVImportProfile) -> ParsedCV:
                 row=offset,
                 column=mapping.source_column,
             )
-            for offset, row in enumerate(body, start=profile.header_row + 1)
+            for offset, row in rows
         )
         series.append(
             ParsedSeries(
@@ -192,10 +211,41 @@ def parse_cv_csv(data: bytes, profile: CVImportProfile) -> ParsedCV:
             )
         )
     return ParsedCV(
-        parser_version=PARSER_VERSION,
+        parser_version=parser_version,
         headers=headers,
-        row_count=len(body),
+        row_count=len(rows),
         series=tuple(series),
+    )
+
+
+def parse_cv_csv(data: bytes, profile: CVImportProfile) -> ParsedCV:
+    """Parse exact bytes without guessing dialect, headers, roles, units, or missing values."""
+    try:
+        text = data.decode(profile.encoding, errors="strict")
+    except UnicodeDecodeError as error:
+        raise CsvParseError("encoding_error", f"source is not valid {profile.encoding}") from error
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=profile.delimiter, strict=True)
+    try:
+        source_rows = list(reader)
+    except csv.Error as error:
+        error_row = reader.line_num or None
+        raise CsvParseError(
+            "malformed_csv", "source contains malformed CSV quoting", row=error_row
+        ) from error
+    if len(source_rows) < profile.header_row:
+        raise CsvParseError("header_missing", f"header row {profile.header_row} is absent")
+    headers = tuple(source_rows[profile.header_row - 1])
+    body = tuple(
+        (offset, tuple(row))
+        for offset, row in enumerate(
+            source_rows[profile.header_row :], start=profile.header_row + 1
+        )
+    )
+    return parse_mapped_cv_table(
+        headers=headers,
+        rows=body,
+        profile=profile,
+        parser_version=PARSER_VERSION,
     )
 
 
@@ -246,6 +296,8 @@ __all__ = [
     "ParsedCV",
     "ParsedSeries",
     "UnsupportedUnitMappingError",
+    "decimal_syntax_matches",
     "inspect_csv",
     "parse_cv_csv",
+    "parse_mapped_cv_table",
 ]

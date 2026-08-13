@@ -346,3 +346,6 @@ def test_postgres_and_minio_preserve_initial_and_superseding_releases(  # noqa: 
             delete(experiment_versions).where(experiment_versions.c.experiment_id == experiment_id)
         )
         connection.execute(delete(experiments).where(experiments.c.experiment_id == experiment_id))
+        connection.execute(
+            delete(storage_objects).where(storage_objects.c.object_uri.in_(release_uris))
+        )

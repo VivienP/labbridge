@@ -44,6 +44,23 @@ def test_plot_contract_returns_backend_values_units_and_provenance() -> None:
     assert {"values", "role", "source_unit", "unit", "series_id"} <= series.keys()
 
 
+def test_normalisation_contract_retains_typed_result_properties() -> None:
+    document = _contract()
+    schemas = document["components"]["schemas"]  # type: ignore[index]
+
+    assert {"observation", "graph", "findings", "parser_record"} <= schemas["NormalisationResult"][
+        "properties"
+    ].keys()
+    assert {
+        "observation_id",
+        "data_origin",
+        "execution_mode",
+        "series",
+        "metadata",
+        "provenance",
+    } <= schemas["NormalisedCVObservation"]["properties"].keys()
+
+
 def test_source_inspection_contract_keeps_headers_semantically_unassigned() -> None:
     document = _contract()
     schemas = document["components"]["schemas"]  # type: ignore[index]

@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "506e0904ed1d853ca721273a288a528d2f78b9116cc912795ccb031f18a6301a",
+  "data_origin": "synthetic",
+  "environment_id": "synthetic_gamry_cv_fixture",
+  "execution_mode": "replay",
+  "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+  "experiment_version": 1,
+  "lineage_closed": true,
+  "package_id": "experiment-package:16b5b290eaacdd068f4b82ffa061d426",
+  "passport_id": "passport:33f9f4da6efc4ee2c028cbc4ae18c4fe",
+  "verified": true
+}

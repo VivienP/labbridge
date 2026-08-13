@@ -40,6 +40,7 @@ from labbridge.application.source_intake import (
 from labbridge.demo import engine_from_settings, run_demo
 from labbridge.domain.cv import CSVFormat, CVImportProfile
 from labbridge.domain.identity import DataOrigin, ExecutionMode
+from labbridge.domain.parser_diagnostics import SourceFormat
 from labbridge.environments.her_replay import HerReplayAdapter
 from labbridge.evidence.bundle import (
     BundleVerificationError,
@@ -96,7 +97,7 @@ demo_app = typer.Typer(no_args_is_help=True, help="Run a demonstration campaign 
 evidence_app = typer.Typer(no_args_is_help=True, help="Build and verify evidence bundles.")
 source_app = typer.Typer(no_args_is_help=True, help="Retain and verify opaque source files.")
 cv_app = typer.Typer(
-    no_args_is_help=True, help="Inspect and normalise explicitly mapped CV CSV files."
+    no_args_is_help=True, help="Inspect and normalise explicitly mapped CV source files."
 )
 experiment_app = typer.Typer(
     no_args_is_help=True, help="Version experiments and release Experiment Passports."
@@ -167,7 +168,9 @@ def _experiment_failure(error: Exception) -> None:
 
 def _cv_failure(error: Exception) -> None:
     code = getattr(error, "code", "cv_ingestion_error")
-    console.print(f"[red]{code}[/red]: {error}")
+    parser_record_id = getattr(error, "parser_record_id", None)
+    parser_identity = "" if parser_record_id is None else f" parser_record_id={parser_record_id}"
+    console.print(f"[red]{code}[/red]: {error}{parser_identity}")
     raise typer.Exit(code=1) from error
 
 
@@ -233,13 +236,23 @@ def cv_normalise(
     profile_id: Annotated[
         str, typer.Option("--profile-id", help="Explicit import profile identity.")
     ],
+    source_format: Annotated[
+        str,
+        typer.Option("--source-format", help="Explicit source format: generic_csv or gamry_dta."),
+    ] = "generic_csv",
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable JSON.")
     ] = False,
 ) -> None:
     """Normalise one retained source through the shared application service."""
     try:
-        stored = _build_cv_service().normalise(source_artifact_id, profile_id)
+        if source_format not in {"generic_csv", "gamry_dta"}:
+            raise ValueError("source format must be `generic_csv` or `gamry_dta`")
+        stored = _build_cv_service().normalise(
+            source_artifact_id,
+            profile_id,
+            source_format=cast(SourceFormat, source_format),
+        )
     except (CVIngestionError, SourceIntakeError, CsvParseError, ValueError) as error:
         _cv_failure(error)
     payload = {"result": stored.result.model_dump(mode="json"), "replayed": stored.replayed}
@@ -247,6 +260,25 @@ def cv_normalise(
         typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
     else:
         console.print(stored.result.observation.observation_id)
+
+
+@cv_app.command("parser-record")
+def cv_parser_record(
+    parser_record_id: Annotated[str, typer.Argument(help="Retained parser record identity.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Read one accepted or rejected parser diagnostic record."""
+    try:
+        stored = _build_cv_service().get_parser_record(parser_record_id)
+    except CVIngestionError as error:
+        _cv_failure(error)
+    payload = {"record": stored.record.model_dump(mode="json"), "replayed": True}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.record.parser_record_id)
 
 
 @cv_app.command("plot")

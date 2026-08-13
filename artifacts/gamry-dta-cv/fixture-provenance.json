@@ -1,0 +1,10 @@
+{
+  "data_origin": "synthetic",
+  "execution_mode": "replay",
+  "fixture_name": "synthetic-gamry-cv.dta",
+  "generator": "LabBridge project-owned Phase 4 fixture",
+  "redistribution": "Project-owned synthetic data; redistribution permitted under the repository license.",
+  "schema_version": "1",
+  "scientific_scope": "Parser and provenance testing only; not an experimental measurement.",
+  "source_relationship": "No vendor or third-party DTA bytes were copied. The structure is a minimal synthetic instance of the documented Gamry DTA object format."
+}

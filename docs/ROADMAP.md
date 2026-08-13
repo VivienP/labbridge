@@ -46,9 +46,9 @@ verification.
 | Deterministic validation report and Experiment Passport | `implemented` | JSON/HTML reports and reproducible candidate artifact under `artifacts/experiment-passport` |
 | Experiment Package | `implemented` | Closed ZIP manifest, independent CLI verifier, tamper tests, and candidate artifact |
 | Single-user interactive CV demo | `implemented` | Closed candidate artifact under `artifacts/cv-passport-demo`; required human acceptance records remain outstanding |
-| Gamry DTA ingestion | `planned` | Existing converter ecosystem must be evaluated first |
+| Gamry DTA ingestion | `implemented` | Bounded Framework 7.07 CV parser, retained diagnostics, shared pipeline, and candidate artifact under `artifacts/gamry-dta-cv` |
 | Galvanostatic electrolysis support | `planned` | Technique contract not implemented |
-| EchemDB-compatible export | `planned` | Mapping and validation proof do not exist |
+| EchemDB-aligned CV export | `implemented` | Versioned adapter, mapping report, pinned validation, and candidate artifact under `artifacts/echemdb-cv-exchange` |
 | Enzymatic-biosensor simulator | `deferred` | Scientific contract retained in `SIMULATOR_MODEL.md` |
 
 The source-capture capability is `demonstrated` only at the opaque byte-retention boundary. The
@@ -78,7 +78,7 @@ delivery plan consistent across the public documentation.
 - define the difference between metadata origin and transformation;
 - make explicit mapping and units mandatory for generic CSV ingestion;
 - bound the meaning of validation, reproducibility checks, and publication readiness;
-- document EchemDB alignment as a future mapping exercise rather than present compatibility.
+- keep EchemDB claims version-scoped; Phase 6 supersedes the earlier future-only mapping boundary.
 
 ### Acceptance criteria
 
@@ -419,7 +419,14 @@ design system, autonomous-agent chat, and admin console.
 
 ## Phase 4 — Gamry DTA CV ingestion
 
-**Status:** `planned`.
+**Status:** `implemented`. The reproducible candidate artifact is under
+[`../artifacts/gamry-dta-cv`](../artifacts/gamry-dta-cv); promotion to `demonstrated` requires a
+commit followed by clean-checkout reproduction and verification.
+
+The accepted boundary is the project-owned synthetic variant documented in the artifact's
+[`SUPPORT.md`](../artifacts/gamry-dta-cv/SUPPORT.md). ADR-017 records the decision to implement a
+bounded parser after evaluating `echemdb-converters` 0.4.1. The runtime adds no converter
+dependency.
 
 ### Objective
 
@@ -525,7 +532,7 @@ attribution, and unsupported efficiency calculations.
 
 ## Phase 6 — EchemDB-aligned exchange package
 
-**Status:** `planned`.
+**Status:** `implemented` for the pinned CV candidate; not a general compatibility claim.
 
 ### Objective
 

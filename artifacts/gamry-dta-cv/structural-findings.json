@@ -1,0 +1,30 @@
+[
+  {
+    "code": "dta.structure.valid",
+    "finding_id": "finding:f1e663a6973acdc894fcef035409b9bb",
+    "message": "DTA objects, CURVE rows, and headers are structurally valid.",
+    "status": "pass",
+    "subject_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20"
+  },
+  {
+    "code": "cv.axes.valid",
+    "finding_id": "finding:edd1bdf3192e6fb33034060d8daecb53",
+    "message": "Required potential and current axes are mapped.",
+    "status": "pass",
+    "subject_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20"
+  },
+  {
+    "code": "unit.mapping.valid",
+    "finding_id": "finding:a17524a0379b7de3b0781a00893356f7",
+    "message": "Every scientific column has a supported explicit unit mapping.",
+    "status": "pass",
+    "subject_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20"
+  },
+  {
+    "code": "lineage.closed",
+    "finding_id": "finding:d65c63a2679ead67a87144bca348b763",
+    "message": "Every normalised series closes to the retained source artifact.",
+    "status": "pass",
+    "subject_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20"
+  }
+]

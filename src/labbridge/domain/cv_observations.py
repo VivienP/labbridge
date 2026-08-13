@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from decimal import Decimal
-from typing import Literal, Self
+from typing import Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from .canonical import content_id
 from .cv import ColumnRole, CVMetadata
 from .identity import DataOrigin, ExecutionMode
+from .parser_diagnostics import ParserRecord
 
 OBSERVATION_SCHEMA_VERSION = "1"
 SERIES_SCHEMA_VERSION = "1"
@@ -30,7 +38,7 @@ class TransformationParameter(_Model):
 class TransformationRecord(_Model):
     transformation_id: str = Field(min_length=1)
     schema_version: Literal["1"]
-    kind: Literal["csv_parse", "column_mapping", "observation_assembly"]
+    kind: Literal["csv_parse", "dta_parse", "column_mapping", "observation_assembly"]
     implementation: str = Field(min_length=1)
     implementation_version: str = Field(min_length=1)
     input_ids: tuple[str, ...] = Field(min_length=1)
@@ -47,7 +55,7 @@ def transformation_record_id(record: TransformationRecord) -> str:
 
 def _transformation_record(
     *,
-    kind: Literal["csv_parse", "column_mapping", "observation_assembly"],
+    kind: Literal["csv_parse", "dta_parse", "column_mapping", "observation_assembly"],
     implementation: str,
     implementation_version: str,
     input_ids: tuple[str, ...],
@@ -133,7 +141,17 @@ class CVLineage(_Model):
     source_artifact_id: str = Field(min_length=1)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     import_profile_id: str = Field(min_length=1)
+    parser_record_id: str | None = None
     transformation_ids: tuple[str, ...] = Field(min_length=1)
+
+    @model_serializer(mode="wrap")
+    def _serialize_compatible(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
+        payload = cast(dict[str, object], handler(self))
+        if self.parser_record_id is None:
+            payload.pop("parser_record_id", None)
+        return payload
 
 
 class NormalisedCVObservation(_Model):
@@ -143,6 +161,7 @@ class NormalisedCVObservation(_Model):
     normalisation_version: str = Field(min_length=1)
     source_artifact_id: str = Field(min_length=1)
     import_profile_id: str = Field(min_length=1)
+    parser_record_id: str | None = None
     data_origin: DataOrigin
     execution_mode: ExecutionMode
     environment_id: str = Field(min_length=1)
@@ -152,25 +171,40 @@ class NormalisedCVObservation(_Model):
     transformation_ids: tuple[str, ...] = Field(min_length=1)
     provenance: CVLineage
 
+    @model_validator(mode="after")
+    def _parser_lineage_matches(self) -> Self:
+        if self.parser_record_id != self.provenance.parser_record_id:
+            raise ValueError("observation and lineage parser record identities differ")
+        return self
+
+    @model_serializer(mode="wrap")
+    def _serialize_compatible(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
+        payload = cast(dict[str, object], handler(self))
+        if self.parser_record_id is None:
+            payload.pop("parser_record_id", None)
+        return payload
+
 
 def normalised_observation_id(observation: NormalisedCVObservation) -> str:
     """Recompute the canonical identity of one retained normalised observation."""
-    return content_id(
-        "cv-observation",
-        {
-            "schema_version": observation.schema_version,
-            "parser_version": observation.parser_version,
-            "normalisation_version": observation.normalisation_version,
-            "source_artifact_id": observation.source_artifact_id,
-            "import_profile_id": observation.import_profile_id,
-            "data_origin": observation.data_origin,
-            "execution_mode": observation.execution_mode,
-            "environment_id": observation.environment_id,
-            "row_count": observation.row_count,
-            "series": [item.model_dump(mode="python") for item in observation.series],
-            "metadata": observation.metadata,
-        },
-    )
+    body: dict[str, object] = {
+        "schema_version": observation.schema_version,
+        "parser_version": observation.parser_version,
+        "normalisation_version": observation.normalisation_version,
+        "source_artifact_id": observation.source_artifact_id,
+        "import_profile_id": observation.import_profile_id,
+        "data_origin": observation.data_origin,
+        "execution_mode": observation.execution_mode,
+        "environment_id": observation.environment_id,
+        "row_count": observation.row_count,
+        "series": [item.model_dump(mode="python") for item in observation.series],
+        "metadata": observation.metadata,
+    }
+    if observation.parser_record_id is not None:
+        body["parser_record_id"] = observation.parser_record_id
+    return content_id("cv-observation", body)
 
 
 class StructuralFinding(_Model):
@@ -209,6 +243,23 @@ class NormalisationResult(_Model):
     observation: NormalisedCVObservation
     graph: TransformationGraph
     findings: tuple[StructuralFinding, ...]
+    parser_record: ParserRecord | None = None
+
+    @model_validator(mode="after")
+    def _parser_record_matches_observation(self) -> Self:
+        expected = None if self.parser_record is None else self.parser_record.parser_record_id
+        if expected != self.observation.parser_record_id:
+            raise ValueError("normalisation parser record does not match the observation")
+        return self
+
+    @model_serializer(mode="wrap")
+    def _serialize_compatible(  # type: ignore[no-untyped-def]
+        self, handler: SerializerFunctionWrapHandler
+    ):
+        payload = cast(dict[str, object], handler(self))
+        if self.parser_record is None:
+            payload.pop("parser_record", None)
+        return payload
 
 
 __all__ = [

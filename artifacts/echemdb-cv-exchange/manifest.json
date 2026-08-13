@@ -1,0 +1,101 @@
+{
+  "artifact_kind": "echemdb_cv_exchange",
+  "capability_status": "implemented",
+  "data_origin": "synthetic",
+  "description": "Version-scoped EchemDB-aligned CV exchange with explicit user assertions, field traces, loss reporting, and pinned offline validation.",
+  "execution_mode": "replay",
+  "experiment_id": "experiment:5bae829786b0f187239a7da5f1e121c2",
+  "files": [
+    {
+      "byte_size": 122,
+      "name": "cv.csv",
+      "sha256": "185e5bf93922b04c5b437a571187d760c8ec90635d7bcb9acbeb7ced3797c926"
+    },
+    {
+      "byte_size": 2164,
+      "name": "datapackage.json",
+      "sha256": "5d32589be6537e6a2615a0a34bd027cd860e88c0f5aca50eba1fba2b274cea8d"
+    },
+    {
+      "byte_size": 2811,
+      "name": "exchange-profile.json",
+      "sha256": "516079f9ce7ac750ca3337cfc2dc5c84b7ed0eec983bfcb48a4d4ebdfacefba6"
+    },
+    {
+      "byte_size": 23016,
+      "name": "experiment.json",
+      "sha256": "c80921552526fafda55aafdc4d6061e012f5172d190528ce2f9258546cf1332b"
+    },
+    {
+      "byte_size": 705,
+      "name": "external-versions.json",
+      "sha256": "5a550a9ec657836ea85dd93b8c1fe460998df7018c2002534f0765f41a365c08"
+    },
+    {
+      "byte_size": 42423,
+      "name": "labbridge-provenance.json",
+      "sha256": "a7cda1623b5170e94d53ec8beac6969568fee02fcfa0539cd828352dae38b577"
+    },
+    {
+      "byte_size": 1866,
+      "name": "LIMITATIONS.md",
+      "sha256": "2cd60c07b092bb4216fb704fcda233e37824d4a48ea222b0f119a327d52b60e1"
+    },
+    {
+      "byte_size": 12651,
+      "name": "mapping.csv",
+      "sha256": "4748e1e25d727f1a2ccce5ae4e44b7f21ab16f6501ec11f40a76ef3eff0f8069"
+    },
+    {
+      "byte_size": 29263,
+      "name": "mapping.json",
+      "sha256": "ac78978e537e5a7cca95f03a06b43c36ddbf7598b3411ca8133b04dfe7b68162"
+    },
+    {
+      "byte_size": 9654,
+      "name": "MAPPING.md",
+      "sha256": "3f2eb35910d5fdb828b7b70b380a09085e2856bc345007cf6cca46b82a9265ae"
+    },
+    {
+      "byte_size": 4131,
+      "name": "normalised-observation.json",
+      "sha256": "cb29eb3814491669aa4c97f969f7bb3a30a70d4ceee686530a0fe54923ed8451"
+    },
+    {
+      "byte_size": 147,
+      "name": "REPRODUCE.txt",
+      "sha256": "e897dcf1ca670d2569df1c661ad6adbf9818ec59b8c092bdb3c5dd28d66d29c5"
+    },
+    {
+      "byte_size": 597,
+      "name": "source-artifact.json",
+      "sha256": "7fa7c08447eaa5838fa2a77bcaa30e975d9e7ccd03b9c388e264ec9f748180eb"
+    },
+    {
+      "byte_size": 537,
+      "name": "synthetic-gamry-cv.dta",
+      "sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b"
+    },
+    {
+      "byte_size": 4869,
+      "name": "transformation-graph.json",
+      "sha256": "e9565d5e9bb271d7fc62e1389000a2353a2cae8ae8a83bfd6ac8e34655afb23d"
+    },
+    {
+      "byte_size": 648,
+      "name": "validation.json",
+      "sha256": "5ad1ecbdad8e23c9260d29e4fe7bde569cbb79a1899c8c1430310647e466d236"
+    }
+  ],
+  "files_digest": "565c900337c6db637d74a6647e1685084df93dc0f33e778060f55246864f6909",
+  "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "producing_versions": {
+    "adapter": "echemdb-cv/1",
+    "data_package_profile": "2.0",
+    "echemdb_metadata_schema": "0.8.3",
+    "frictionless": "5.19.0",
+    "labbridge": "0.1.0"
+  },
+  "schema_version": "1",
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348"
+}

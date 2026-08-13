@@ -1,0 +1,3 @@
+python scripts/reproduce_gamry_dta_cv.py --output build/gamry-dta-cv
+labbridge package verify build/gamry-dta-cv/experiment-package.zip --json
+labbridge validate-artifacts build/gamry-dta-cv

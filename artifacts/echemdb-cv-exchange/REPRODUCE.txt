@@ -1,0 +1,2 @@
+python scripts/reproduce_echemdb_cv_exchange.py --output build/echemdb-cv-exchange
+labbridge validate-artifacts --bundle build/echemdb-cv-exchange

@@ -592,6 +592,43 @@ normalised_cv_observations = Table(
     CheckConstraint(_ADMISSIBLE_PAIR_SQL, name="normalised_cv_admissible_origin_mode"),
 )
 
+cv_parser_records = Table(
+    "cv_parser_records",
+    metadata,
+    Column("parser_record_id", _ID, primary_key=True),
+    Column(
+        "source_artifact_id",
+        _ID,
+        ForeignKey("source_artifacts.source_artifact_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "profile_id",
+        _ID,
+        ForeignKey("import_profiles.profile_id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "observation_id",
+        _ID,
+        ForeignKey("normalised_cv_observations.observation_id", ondelete="RESTRICT"),
+        nullable=True,
+        unique=True,
+    ),
+    Column("source_format", String(32), nullable=False),
+    Column("parser_version", String(64), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("body", JSONB, nullable=False),
+    *_timestamps("created_at"),
+    CheckConstraint("source_format IN ('generic_csv','gamry_dta')", name="known_source_format"),
+    CheckConstraint("status IN ('accepted','rejected')", name="known_parser_status"),
+    CheckConstraint(
+        "(status = 'accepted' AND observation_id IS NOT NULL) OR "
+        "(status = 'rejected' AND observation_id IS NULL)",
+        name="parser_status_matches_observation",
+    ),
+)
+
 cv_transformation_records = Table(
     "cv_transformation_records",
     metadata,
@@ -867,7 +904,7 @@ experiment_packages = Table(
         name="fk_experiment_packages_supersedes_package",
         ondelete="RESTRICT",
     ),
-    CheckConstraint("schema_version = '1'", name="known_experiment_package_schema"),
+    CheckConstraint("schema_version IN ('1','2')", name="known_experiment_package_schema"),
     CheckConstraint("archive_byte_size >= 1", name="experiment_package_not_empty"),
     UniqueConstraint("experiment_id", "experiment_version", name="uq_package_experiment_version"),
 )
@@ -946,6 +983,7 @@ __all__ = [
     "attempts",
     "budget_ledger",
     "campaigns",
+    "cv_parser_records",
     "cv_structural_findings",
     "cv_transformation_records",
     "derived_metrics",

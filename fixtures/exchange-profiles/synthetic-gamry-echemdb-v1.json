@@ -1,0 +1,65 @@
+{
+  "adapter_version": "echemdb-cv/1",
+  "assertions": [
+    {
+      "evidence_note": "Explicit exchange metadata for the project-owned synthetic fixture; the DTA source does not declare a publication citation key.",
+      "field_name": "exchange.source.citation_key",
+      "requirement_class": "required",
+      "value": "labbridge_synthetic_gamry_cv"
+    },
+    {
+      "evidence_note": "Explicit exchange metadata for the project-owned synthetic fixture; the DTA source does not declare this repository URL.",
+      "field_name": "exchange.source.url",
+      "requirement_class": "required",
+      "value": "https://github.com/VivienP/labbridge/blob/14921d701e512bb70816e55c844293f90e6bb8d0/fixtures/source/synthetic-gamry-cv.dta"
+    },
+    {
+      "evidence_note": "Explicit exchange classification for the project-owned synthetic electrochemical fixture; it is not parsed from the DTA source.",
+      "field_name": "exchange.system.type",
+      "requirement_class": "required",
+      "value": "electrochemical"
+    },
+    {
+      "evidence_note": "Explicit exchange classification for the project-owned synthetic fixture; electrolyte composition is unknown and is not inferred.",
+      "field_name": "exchange.electrolyte.type",
+      "requirement_class": "required",
+      "value": "aqueous"
+    },
+    {
+      "evidence_note": "Explicit exchange projection for synthetic replay data; LabBridge data_origin and execution_mode remain separate in the companion manifest.",
+      "field_name": "exchange.figure.type",
+      "requirement_class": "required",
+      "value": "simulated"
+    },
+    {
+      "evidence_note": "Explicit exchange label for the project-owned CV fixture; the adapter does not infer technique acronyms from column values.",
+      "field_name": "exchange.measurement_type",
+      "requirement_class": "optional",
+      "value": "CV"
+    },
+    {
+      "evidence_note": "Explicit declaration that adapter version 1 emits an empty curation process list; no curation process is inferred.",
+      "field_name": "exchange.curation.process",
+      "requirement_class": "required",
+      "value": "empty"
+    },
+    {
+      "evidence_note": "Explicit declaration that adapter version 1 emits an empty experimental object; no setup metadata is inferred.",
+      "field_name": "exchange.experimental",
+      "requirement_class": "required",
+      "value": "empty"
+    },
+    {
+      "evidence_note": "Explicit declaration that adapter version 1 emits an empty electrode list; no electrode identity or role is inferred.",
+      "field_name": "exchange.electrodes",
+      "requirement_class": "required",
+      "value": "empty"
+    }
+  ],
+  "external_scope": {
+    "data_package_profile": "2.0",
+    "echemdb_metadata_schema": "0.8.3",
+    "frictionless": "5.19.0"
+  },
+  "schema_version": "1"
+}

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Protocol
+from typing import ClassVar, Literal, Protocol
 
 from labbridge.application.source_intake import RetrievedSource
 from labbridge.domain.canonical import content_id
@@ -23,7 +23,22 @@ from labbridge.domain.cv_observations import (
     _transformation_record,
     normalised_series_id,
 )
-from labbridge.infrastructure.cv_csv import PARSER_VERSION, ParsedSeries, inspect_csv, parse_cv_csv
+from labbridge.domain.parser_diagnostics import ParserRecord, SourceFormat
+from labbridge.infrastructure.cv_csv import (
+    PARSER_VERSION as CSV_PARSER_VERSION,
+)
+from labbridge.infrastructure.cv_csv import (
+    ParsedSeries,
+    inspect_csv,
+    parse_cv_csv,
+)
+from labbridge.infrastructure.gamry_dta import (
+    PARSER_VERSION as DTA_PARSER_VERSION,
+)
+from labbridge.infrastructure.gamry_dta import (
+    GamryDtaParseError,
+    parse_gamry_dta,
+)
 
 
 def _series_identity(source_artifact_id: str, profile_id: str, series: ParsedSeries) -> str:
@@ -54,44 +69,81 @@ def _finding(code: str, observation_id: str, message: str) -> StructuralFinding:
     )
 
 
-def normalise_cv(
-    source: RetrievedSource, profile: CVImportProfile, *, producing_version: str
+def normalise_cv(  # noqa: PLR0915 - assembles one explicit, ordered provenance graph
+    source: RetrievedSource,
+    profile: CVImportProfile,
+    *,
+    producing_version: str,
+    source_format: SourceFormat = "generic_csv",
 ) -> NormalisationResult:
     """Build the deterministic observation and every declared transformation from exact bytes."""
-    parsed = parse_cv_csv(source.data, profile)
+    parser_record: ParserRecord | None = None
+    if source_format == "gamry_dta":
+        dta = parse_gamry_dta(
+            source.data,
+            profile,
+            source_artifact_id=source.artifact.source_artifact_id,
+        )
+        parsed = dta.parsed
+        parser_record = dta.record
+    else:
+        parsed = parse_cv_csv(source.data, profile)
     if parsed.row_count < 1:
         raise ValueError("a normalised CV observation requires at least one data row")
     artifact = source.artifact
     profile_identity = import_profile_id(profile)
+    parsed_table_body: dict[str, object] = {
+        "source_artifact_id": artifact.source_artifact_id,
+        "import_profile_id": profile_identity,
+        "parser_version": parsed.parser_version,
+        "headers": parsed.headers,
+        "row_count": parsed.row_count,
+    }
+    if parser_record is not None:
+        parsed_table_body["parser_record_id"] = parser_record.parser_record_id
     parsed_table_id = content_id(
-        "csv-table",
-        {
-            "source_artifact_id": artifact.source_artifact_id,
-            "import_profile_id": profile_identity,
-            "parser_version": parsed.parser_version,
-            "headers": parsed.headers,
-            "row_count": parsed.row_count,
-        },
+        "dta-table" if parser_record is not None else "csv-table",
+        parsed_table_body,
     )
+    parse_kind: Literal["csv_parse", "dta_parse"]
+    parse_parameters: tuple[TransformationParameter, ...]
+    parse_outputs: tuple[str, ...]
+    if parser_record is None:
+        parse_kind = "csv_parse"
+        parse_implementation = "labbridge.infrastructure.cv_csv.parse_cv_csv"
+        parse_version = CSV_PARSER_VERSION
+        parse_parameters = (
+            TransformationParameter(name="encoding", value=profile.encoding),
+            TransformationParameter(name="delimiter", value=profile.delimiter),
+            TransformationParameter(name="decimal_convention", value=profile.decimal_convention),
+            TransformationParameter(name="header_row", value=str(profile.header_row)),
+            TransformationParameter(
+                name="missing_value_tokens",
+                value="|".join(sorted(profile.missing_value_tokens)),
+            ),
+        )
+        parse_outputs = (parsed_table_id,)
+    else:
+        parse_kind = "dta_parse"
+        parse_implementation = "labbridge.infrastructure.gamry_dta.parse_gamry_dta"
+        parse_version = DTA_PARSER_VERSION
+        parse_parameters = (
+            TransformationParameter(name="encoding", value=profile.encoding),
+            TransformationParameter(name="decimal_convention", value=profile.decimal_convention),
+            TransformationParameter(name="header_row", value=str(profile.header_row)),
+            TransformationParameter(
+                name="supported_variant", value=parser_record.supported_variant
+            ),
+        )
+        parse_outputs = (parser_record.parser_record_id, parsed_table_id)
     records: list[TransformationRecord] = [
         _transformation_record(
-            kind="csv_parse",
-            implementation="labbridge.infrastructure.cv_csv.parse_cv_csv",
-            implementation_version=PARSER_VERSION,
+            kind=parse_kind,
+            implementation=parse_implementation,
+            implementation_version=parse_version,
             input_ids=(artifact.source_artifact_id,),
-            parameters=(
-                TransformationParameter(name="encoding", value=profile.encoding),
-                TransformationParameter(name="delimiter", value=profile.delimiter),
-                TransformationParameter(
-                    name="decimal_convention", value=profile.decimal_convention
-                ),
-                TransformationParameter(name="header_row", value=str(profile.header_row)),
-                TransformationParameter(
-                    name="missing_value_tokens",
-                    value="|".join(sorted(profile.missing_value_tokens)),
-                ),
-            ),
-            output_ids=(parsed_table_id,),
+            parameters=parse_parameters,
+            output_ids=parse_outputs,
         )
     ]
     series_models: list[NormalisedSeries] = []
@@ -101,7 +153,7 @@ def normalise_cv(
         record = _transformation_record(
             kind="column_mapping",
             implementation="labbridge.infrastructure.cv_csv.unit_conversion",
-            implementation_version=PARSER_VERSION,
+            implementation_version=parsed.parser_version,
             input_ids=(parsed_table_id,),
             parameters=(
                 TransformationParameter(name="source_column", value=parsed_series.source_column),
@@ -127,22 +179,22 @@ def normalise_cv(
                 transformation_id=record.transformation_id,
             )
         )
-    observation_id = content_id(
-        "cv-observation",
-        {
-            "schema_version": OBSERVATION_SCHEMA_VERSION,
-            "parser_version": parsed.parser_version,
-            "normalisation_version": producing_version,
-            "source_artifact_id": artifact.source_artifact_id,
-            "import_profile_id": profile_identity,
-            "data_origin": artifact.data_origin,
-            "execution_mode": artifact.execution_mode,
-            "environment_id": profile.environment_id,
-            "row_count": parsed.row_count,
-            "series": [item.model_dump(mode="python") for item in series_models],
-            "metadata": profile.metadata,
-        },
-    )
+    observation_body: dict[str, object] = {
+        "schema_version": OBSERVATION_SCHEMA_VERSION,
+        "parser_version": parsed.parser_version,
+        "normalisation_version": producing_version,
+        "source_artifact_id": artifact.source_artifact_id,
+        "import_profile_id": profile_identity,
+        "data_origin": artifact.data_origin,
+        "execution_mode": artifact.execution_mode,
+        "environment_id": profile.environment_id,
+        "row_count": parsed.row_count,
+        "series": [item.model_dump(mode="python") for item in series_models],
+        "metadata": profile.metadata,
+    }
+    if parser_record is not None:
+        observation_body["parser_record_id"] = parser_record.parser_record_id
+    observation_id = content_id("cv-observation", observation_body)
     records.append(
         _transformation_record(
             kind="observation_assembly",
@@ -163,6 +215,7 @@ def normalise_cv(
         source_artifact_id=artifact.source_artifact_id,
         source_sha256=artifact.sha256,
         import_profile_id=profile_identity,
+        parser_record_id=(None if parser_record is None else parser_record.parser_record_id),
         transformation_ids=transformation_ids,
     )
     observation = NormalisedCVObservation(
@@ -172,6 +225,7 @@ def normalise_cv(
         normalisation_version=producing_version,
         source_artifact_id=artifact.source_artifact_id,
         import_profile_id=profile_identity,
+        parser_record_id=(None if parser_record is None else parser_record.parser_record_id),
         data_origin=artifact.data_origin,
         execution_mode=artifact.execution_mode,
         environment_id=profile.environment_id,
@@ -186,9 +240,17 @@ def normalise_cv(
         observation_id=observation_id,
         records=tuple(records),
     )
+    structure_code = "dta.structure.valid" if parser_record is not None else "csv.structure.valid"
+    structure_message = (
+        "DTA objects, CURVE rows, and headers are structurally valid."
+        if parser_record is not None
+        else "CSV rows and headers are structurally valid."
+    )
     findings = (
         _finding(
-            "csv.structure.valid", observation_id, "CSV rows and headers are structurally valid."
+            structure_code,
+            observation_id,
+            structure_message,
         ),
         _finding(
             "cv.axes.valid", observation_id, "Required potential and current axes are mapped."
@@ -204,7 +266,12 @@ def normalise_cv(
             "Every normalised series closes to the retained source artifact.",
         ),
     )
-    return NormalisationResult(observation=observation, graph=graph, findings=findings)
+    return NormalisationResult(
+        observation=observation,
+        graph=graph,
+        findings=findings,
+        parser_record=parser_record,
+    )
 
 
 class CVIngestionError(Exception):
@@ -223,6 +290,22 @@ class NormalisedObservationNotFoundError(CVIngestionError):
 
     def __init__(self, observation_id: str) -> None:
         super().__init__(f"normalised observation `{observation_id}` does not exist")
+
+
+class ParserRecordNotFoundError(CVIngestionError):
+    code = "parser_record_not_found"
+
+    def __init__(self, parser_record_id: str) -> None:
+        super().__init__(f"parser record `{parser_record_id}` does not exist")
+
+
+class ParserRecordIntegrityError(CVIngestionError):
+    code = "parser_record_integrity_mismatch"
+
+    def __init__(self, parser_record_id: str) -> None:
+        super().__init__(
+            f"parser record `{parser_record_id}` no longer matches its retained object"
+        )
 
 
 class NormalisedObservationIntegrityError(CVIngestionError):
@@ -258,6 +341,10 @@ class CVRecordRepository(Protocol):
 
     def get_normalisation(self, observation_id: str) -> NormalisationResult | None: ...
 
+    def put_parser_record(self, record: ParserRecord) -> bool: ...
+
+    def get_parser_record(self, parser_record_id: str) -> ParserRecord | None: ...
+
 
 @dataclass(frozen=True)
 class StoredProfile:
@@ -269,6 +356,12 @@ class StoredProfile:
 @dataclass(frozen=True)
 class StoredNormalisation:
     result: NormalisationResult
+    replayed: bool
+
+
+@dataclass(frozen=True)
+class StoredParserRecord:
+    record: ParserRecord
     replayed: bool
 
 
@@ -332,12 +425,22 @@ class CVIngestionService:
         profile_id: str,
         *,
         idempotency_key: str | None = None,
+        source_format: SourceFormat = "generic_csv",
     ) -> StoredNormalisation:
         profile = self._records.get_profile(profile_id)
         if profile is None:
             raise ImportProfileNotFoundError(profile_id)
         source = self._sources.retrieve(source_artifact_id)
-        result = normalise_cv(source, profile, producing_version=self._producing_version)
+        try:
+            result = normalise_cv(
+                source,
+                profile,
+                producing_version=self._producing_version,
+                source_format=source_format,
+            )
+        except GamryDtaParseError as error:
+            self._records.put_parser_record(error.record)
+            raise
         replayed = self._records.put_normalisation(result, idempotency_key=idempotency_key)
         return StoredNormalisation(result=result, replayed=replayed)
 
@@ -346,6 +449,12 @@ class CVIngestionService:
         if result is None:
             raise NormalisedObservationNotFoundError(observation_id)
         return StoredNormalisation(result=result, replayed=True)
+
+    def get_parser_record(self, parser_record_id: str) -> StoredParserRecord:
+        record = self._records.get_parser_record(parser_record_id)
+        if record is None:
+            raise ParserRecordNotFoundError(parser_record_id)
+        return StoredParserRecord(record=record, replayed=True)
 
     def plot_series(self, observation_id: str) -> PlotSeries:
         result = self.get_normalisation(observation_id).result
@@ -368,9 +477,12 @@ __all__ = [
     "ImportProfileNotFoundError",
     "NormalisedObservationIntegrityError",
     "NormalisedObservationNotFoundError",
+    "ParserRecordIntegrityError",
+    "ParserRecordNotFoundError",
     "PlotSeries",
     "SourceInspection",
     "SourceReader",
     "StoredNormalisation",
+    "StoredParserRecord",
     "StoredProfile",
 ]

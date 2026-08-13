@@ -28,6 +28,7 @@ node_modules/
 .npm-cache*/
 playwright-report/
 test-results/
+.cache/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

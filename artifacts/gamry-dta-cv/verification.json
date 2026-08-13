@@ -1,0 +1,15 @@
+{
+  "capability_status": "implemented",
+  "import_profile_id": "cv-profile:b972971ffc04130cb2ba9811e5e76cc2",
+  "lineage_closed": true,
+  "observation_id": "cv-observation:f88ccc6e9ad289c674d8f3ba4b9bcc20",
+  "package_id": "experiment-package:16b5b290eaacdd068f4b82ffa061d426",
+  "package_verified": true,
+  "parser_record_id": "parser-record:f3d7d5fad276f78be792e6032b46c429",
+  "parser_version": "gamry-dta/1",
+  "passport_id": "passport:33f9f4da6efc4ee2c028cbc4ae18c4fe",
+  "schema_version": "1",
+  "source_artifact_id": "source:df37fd96994c27215c5dc78121877348",
+  "source_sha256": "01474c09391fee0fc8d20a716fe8c237a654b40adb1d91329696b79662a1367b",
+  "verified": true
+}

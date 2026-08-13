@@ -275,6 +275,17 @@
             "title": "Import Profile Id",
             "type": "string"
           },
+          "parser_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Record Id"
+          },
           "source_artifact_id": {
             "minLength": 1,
             "title": "Source Artifact Id",
@@ -827,7 +838,10 @@
             "type": "object"
           },
           "schema_version": {
-            "const": "1",
+            "enum": [
+              "1",
+              "2"
+            ],
             "title": "Schema Version",
             "type": "string"
           },
@@ -1373,6 +1387,15 @@
           "source_artifact_id": {
             "title": "Source Artifact Id",
             "type": "string"
+          },
+          "source_format": {
+            "default": "generic_csv",
+            "enum": [
+              "generic_csv",
+              "gamry_dta"
+            ],
+            "title": "Source Format",
+            "type": "string"
           }
         },
         "required": [
@@ -1397,6 +1420,16 @@
           },
           "observation": {
             "$ref": "#/components/schemas/NormalisedCVObservation"
+          },
+          "parser_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParserRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1466,6 +1499,17 @@
             "minLength": 1,
             "title": "Observation Id",
             "type": "string"
+          },
+          "parser_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Record Id"
           },
           "parser_version": {
             "minLength": 1,
@@ -1626,6 +1670,295 @@
           "replayed"
         ],
         "title": "PackageView",
+        "type": "object"
+      },
+      "ParsedFieldTrace": {
+        "additionalProperties": false,
+        "description": "Exact DTA lines supporting one field accepted by the shared CV mapping.",
+        "properties": {
+          "data_end_line": {
+            "minimum": 1.0,
+            "title": "Data End Line",
+            "type": "integer"
+          },
+          "data_start_line": {
+            "minimum": 1.0,
+            "title": "Data Start Line",
+            "type": "integer"
+          },
+          "header_line": {
+            "minimum": 1.0,
+            "title": "Header Line",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "potential",
+              "current",
+              "current_density",
+              "time",
+              "cycle",
+              "ignored"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "source_column": {
+            "minLength": 1,
+            "title": "Source Column",
+            "type": "string"
+          },
+          "source_unit": {
+            "minLength": 1,
+            "title": "Source Unit",
+            "type": "string"
+          },
+          "unit_line": {
+            "minimum": 1.0,
+            "title": "Unit Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_column",
+          "role",
+          "source_unit",
+          "header_line",
+          "unit_line",
+          "data_start_line",
+          "data_end_line"
+        ],
+        "title": "ParsedFieldTrace",
+        "type": "object"
+      },
+      "ParserDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "locations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ParserSourceLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "ParserDiagnostic",
+        "type": "object"
+      },
+      "ParserRecord": {
+        "additionalProperties": false,
+        "description": "Immutable parser result retained for accepted and rejected source interpretations.",
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ParserDiagnostic"
+            },
+            "minItems": 1,
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "exclusions": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "fields": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ParsedFieldTrace"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "headers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "parser_name": {
+            "minLength": 1,
+            "title": "Parser Name",
+            "type": "string"
+          },
+          "parser_record_id": {
+            "minLength": 1,
+            "title": "Parser Record Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "preserved_uninterpreted": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Preserved Uninterpreted",
+            "type": "array"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_format": {
+            "enum": [
+              "generic_csv",
+              "gamry_dta"
+            ],
+            "title": "Source Format",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "support_statement": {
+            "minLength": 1,
+            "title": "Support Statement",
+            "type": "string"
+          },
+          "supported_variant": {
+            "minLength": 1,
+            "title": "Supported Variant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parser_record_id",
+          "schema_version",
+          "source_format",
+          "parser_name",
+          "parser_version",
+          "supported_variant",
+          "source_artifact_id",
+          "import_profile_id",
+          "status",
+          "diagnostics",
+          "support_statement",
+          "exclusions"
+        ],
+        "title": "ParserRecord",
+        "type": "object"
+      },
+      "ParserRecordView": {
+        "properties": {
+          "record": {
+            "$ref": "#/components/schemas/ParserRecord"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "record",
+          "replayed"
+        ],
+        "title": "ParserRecordView",
+        "type": "object"
+      },
+      "ParserSourceLocation": {
+        "additionalProperties": false,
+        "description": "One one-based source span retained with a parser diagnostic.",
+        "properties": {
+          "line_end": {
+            "minimum": 1.0,
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "minimum": 1.0,
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "object_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Tag"
+          },
+          "object_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Type"
+          }
+        },
+        "required": [
+          "line_start",
+          "line_end"
+        ],
+        "title": "ParserSourceLocation",
         "type": "object"
       },
       "PassportView": {
@@ -1998,6 +2331,7 @@
           "kind": {
             "enum": [
               "csv_parse",
+              "dta_parse",
               "column_mapping",
               "observation_assembly"
             ],
@@ -2642,6 +2976,45 @@
           }
         },
         "summary": "Plot Series"
+      }
+    },
+    "/cv/parser-records/{parser_record_id}": {
+      "get": {
+        "operationId": "read_parser_record_cv_parser_records__parser_record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "parser_record_id",
+            "required": true,
+            "schema": {
+              "title": "Parser Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParserRecordView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Parser Record"
       }
     },
     "/cv/source-inspections": {

@@ -50,12 +50,18 @@ def test_parser_uses_the_declared_delimiter_decimal_and_units() -> None:
         (b"E,I,note,extra\n0,1,x,2\n", _profile(), "unexpected_column"),
         (b"E,E,note\n0,1,x\n", _profile(), "duplicate_header"),
         (b"E,I,note\n0,nope,x\n", _profile(), "non_numeric_cell"),
+        (b"E,I,note\n0,1_2,x\n", _profile(), "non_numeric_cell"),
         (b"E,I,note\n0,NaN,x\n", _profile(), "non_finite_value"),
         (b"E,I,note\n0,1\n", _profile(), "row_length_mismatch"),
         (b"E,I,note\n0,1,x\n\n1,2,y\n", _profile(), "blank_row"),
         (b"E,I,note\n0,NA,x\n", _profile(), "missing_scientific_value"),
         (b"E,I\n0,1\n", _profile(), "missing_column"),
         (b'E,I,note\n0,"unterminated,x\n', _profile(), "malformed_csv"),
+        (
+            b"E;I;note\n0.1;1.2;x\n",
+            _profile(delimiter=";", decimal_convention="comma"),
+            "locale_mismatch",
+        ),
     ],
 )
 def test_parser_fails_closed_for_invalid_tables(
