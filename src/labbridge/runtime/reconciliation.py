@@ -28,6 +28,7 @@ from sqlalchemy import Connection, Row, and_, func, or_, select, update
 from labbridge.domain.identity import EnvironmentRef
 from labbridge.domain.objects import ObjectFacts, ObjectVerdict, classify_object
 from labbridge.domain.provenance import Provenance
+from labbridge.domain.quantities import CostRecord, Quantity
 from labbridge.infrastructure.objectstore import ObjectStore, ObjectStoreError, digest
 from labbridge.infrastructure.persistence.tables import (
     attempt_outcomes,
@@ -43,6 +44,10 @@ from labbridge.infrastructure.persistence.tables import (
     source_artifacts,
     storage_objects,
     work_items,
+)
+from labbridge.runtime.budgets import (
+    consume_outstanding_for_attempt,
+    release_outstanding_for_attempt,
 )
 from labbridge.runtime.events import append_event, current_sequence
 from labbridge.runtime.jobs import ReclaimedLease, recover_expired_leases
@@ -90,7 +95,9 @@ def close_abandoned_attempts(connection: Connection) -> list[uuid.UUID]:
             attempts.c.attempt_id,
             attempts.c.work_item_id,
             attempts.c.job_id,
+            attempts.c.ordinal,
             attempts.c.started_at,
+            attempts.c.adapter_started_at,
             work_items.c.campaign_id,
             campaigns.c.environment_id,
             campaigns.c.adapter_version,
@@ -143,8 +150,38 @@ def close_abandoned_attempts(connection: Connection) -> list[uuid.UUID]:
             "category": "worker",
             "retryable": False,
             "summary": "the worker stopped holding this job before the attempt reached an outcome",
+            "details": [],
             "exception_type": None,
         }
+        if row.adapter_started_at is None:
+            settlement = release_outstanding_for_attempt(
+                connection, job_id=row.job_id, attempt_id=row.attempt_id
+            )
+        else:
+            settlement = consume_outstanding_for_attempt(
+                connection, job_id=row.job_id, attempt_id=row.attempt_id
+            )
+        cost = {}
+        if settlement is not None:
+            cost = CostRecord(
+                budget_estimate=Quantity(value=settlement.reserved_amount, unit=settlement.unit),
+                budget_reserved=Quantity(value=settlement.reserved_amount, unit=settlement.unit),
+                budget_incurred=(
+                    Quantity(value=settlement.actual_amount, unit=settlement.unit)
+                    if settlement.actual_amount is not None
+                    else None
+                ),
+                budget_actual=(
+                    Quantity(value=settlement.actual_amount, unit=settlement.unit)
+                    if settlement.actual_amount is not None
+                    else None
+                ),
+                budget_released=(
+                    Quantity(value=settlement.reserved_amount, unit=settlement.unit)
+                    if settlement.kind == "released"
+                    else None
+                ),
+            ).model_dump(mode="json")
         outcome = connection.execute(
             attempt_outcomes.insert()
             .values(
@@ -154,7 +191,7 @@ def close_abandoned_attempts(connection: Connection) -> list[uuid.UUID]:
                 status="lease_lost",
                 observation_id=None,
                 failure=failure,
-                cost={},
+                cost=cost,
                 data_origin=row.data_origin,
                 execution_mode=row.execution_mode,
                 provenance=provenance,
@@ -187,12 +224,14 @@ def close_abandoned_attempts(connection: Connection) -> list[uuid.UUID]:
             event_type="attempt.completed",
             payload={
                 "work_item_id": row.work_item_id,
+                "job_id": row.job_id,
+                "ordinal": row.ordinal,
                 "campaign_id": row.campaign_id,
                 "state": "lease_lost",
                 "status": "lease_lost",
                 "observation_id": None,
                 "failure": failure,
-                "cost": {},
+                "cost": cost,
                 "data_origin": row.data_origin,
                 "execution_mode": row.execution_mode,
                 "provenance": provenance,

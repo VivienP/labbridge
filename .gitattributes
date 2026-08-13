@@ -18,6 +18,8 @@ SHA256SUMS.txt text eol=lf
 # line-ending conversion invalidate their recorded hashes.
 artifacts/source-capture/** -text
 artifacts/experiment-passport/** -text
+artifacts/fault-campaign/** -text
+artifacts/fault-campaign/raw-results.csv -text whitespace=-trailing-space
 artifacts/cv-passport-demo/** -text -eol
 artifacts/gamry-dta-cv/** -text
 artifacts/echemdb-cv-exchange/** -text

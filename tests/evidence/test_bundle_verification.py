@@ -366,6 +366,24 @@ def test_version_2_rejects_invalid_top_level_identity_after_digest_refresh(
     assert caught.value.code.value == "bundle_identity_invalid"
 
 
+@pytest.mark.parametrize("contract_version", [1, 2])
+def test_version_2_accepts_complete_known_event_stream_contracts(
+    tmp_path: Path, contract_version: int
+) -> None:
+    bundle = tmp_path / "bundle"
+    _write_bundle(bundle, version="2", objects=[])
+    manifest_path = bundle / MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["event_stream_contract_version"] = contract_version
+    manifest["event_stream_completeness"] = "complete"
+    _refresh_manifest_digest(manifest)
+    manifest_path.write_bytes(_canonical_json(manifest))
+
+    result = verify_bundle(bundle, mode=VerificationMode.BUNDLE_ONLY)
+
+    assert result.status is VerificationStatus.PARTIAL
+
+
 @pytest.mark.parametrize("mutation", ["missing", "row_origin", "provenance_environment"])
 def test_version_2_cross_checks_object_references_against_observations(
     tmp_path: Path, mutation: str

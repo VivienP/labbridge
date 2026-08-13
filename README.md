@@ -254,12 +254,12 @@ or operational experiment proves it), or `deferred`.
 | Durable jobs with atomic claim, lease fencing, heartbeats, and lease recovery | `implemented` |
 | Constraint-arbitrated idempotency for submission, enqueueing, and outcome acceptance | `implemented` |
 | Worker-startup and CLI reconciliation, including non-deleting object classification | `implemented` |
-| Retry scheduling | `planned` |
+| Retry scheduling | `implemented` |
 | Typed, version-checked event append with aggregate and campaign ordering | `implemented` |
 | Explicit legacy/incomplete event-stream boundary and validated replay input | `implemented` |
-| Deterministic state reconstruction from the event log | `planned` |
+| Deterministic state reconstruction from the event log | `implemented` |
 | Append-only budget ledger, written in the outcome transaction | `implemented` |
-| Budget reservation and hard stopping rules | `planned` |
+| Budget reservation and hard stopping rules | `implemented` |
 | Evidence bundles, local bundle checks, and full stored-object verification | `implemented` |
 | Opaque source intake, exact-byte retrieval, and integrity verification | `demonstrated` |
 | Explicit generic CV CSV ingestion and closed normalisation lineage | `demonstrated` |
@@ -268,10 +268,11 @@ or operational experiment proves it), or `deferred`.
 | Append-only Experiment assertions and deterministic release validation | `implemented` |
 | JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
 | Single-user interactive CV Passport demo | `implemented` |
-| Biosensor simulator and fault injection | `planned` |
+| Process-boundary campaign fault injection | `demonstrated` |
+| Biosensor simulator | `deferred` |
 | Campaign submission API with idempotency keys | `implemented` |
-| Campaign control endpoints, observability, and operator runbook | `planned` |
-| Deployment, backup restore, and the seeded fault-injection experiment | `planned` |
+| Campaign control endpoints, observability, and operator runbook | `implemented` |
+| Deployment restore and the seeded synthetic-replay fault campaign | `demonstrated` |
 | Model-based selection policy beyond a seeded random baseline | `deferred` |
 
 Opaque source capture is demonstrated under
@@ -286,6 +287,10 @@ single-user CV Passport candidate is under
 domain classification and unfamiliar-viewer acceptance records described above. The
 Phase 4 candidate under [`artifacts/gamry-dta-cv`](artifacts/gamry-dta-cv) follows the same boundary:
 its code, tests, and candidate Package justify `implemented`, not `demonstrated`, in this worktree.
+Phase 7 synthetic-replay reliability evidence is released under
+[`artifacts/fault-campaign`](artifacts/fault-campaign). It demonstrates the recorded fault campaign,
+backup/restore, replay comparison, and full stored-object verification; it does not demonstrate
+observed replay or live execution.
 The galvanostatic electrolysis candidate under
 [`artifacts/galvanostatic-electrolysis`](artifacts/galvanostatic-electrolysis) packages explicit time,
 current, and potential series while reporting chemical analysis as unavailable. It makes no
@@ -297,13 +302,16 @@ conversion, selectivity, yield, product-assignment, or Faradaic-efficiency claim
   and its bundle verifies, but every record it produces is synthetic and none of it is evidence
   about the physical system.
 - `labbridge reconcile` and worker-startup reconciliation are on-demand rather than a continuous
-  daemon. The worker heartbeats while an adapter runs, but it does not yet schedule retries.
+  daemon. Retry scheduling is durable and bounded, but no continuously running scheduler is
+  provided.
 - `labbridge validate-artifacts` defaults to `--mode bundle-only`, verifies bundle members locally,
   and reports `partial`; it does not contact object storage. `--mode full` additionally checks every
   referenced object for existence, byte size, and SHA-256 and reports `complete` only when those checks
   pass.
-- Crash recovery is tested across a real process boundary by killing worker subprocesses after lease
-  acquisition, after adapter return, after object upload, and after commit.
+- Crash recovery is tested across real process boundaries after lease acquisition, after adapter
+  return, during object upload, after upload before the outcome transaction, after commit before
+  acknowledgement, and during evidence export. Campaign cancellation with a leased job is also
+  exercised across a process boundary: the existing lease may finish, while new work is rejected.
 - At-least-once delivery with idempotent effect handling is the worker protocol, and nothing here is
   exactly-once. Duplicate submission, duplicate enqueueing, and duplicate acceptance are each decided
   by a database constraint reached through a conflict-safe insert, and each is tested under real
@@ -311,8 +319,8 @@ conversion, selectivity, yield, product-assignment, or Faradaic-efficiency claim
   by a redelivery, which costs an adapter call and an object upload before the acceptance claim
   refuses it. Suppression is proven; avoiding the wasted execution is not attempted.
 - A suppressed duplicate delivery retains received bytes as a non-accepted observation under its own
-  attempt, so identical and divergent reads remain distinguishable. It appends no budget-ledger
-  entry, so the ledger still under-counts adapter calls by one per suppressed delivery.
+  attempt, so identical and divergent reads remain distinguishable. Its attempt and actual cost are
+  retained in the append-only budget ledger.
 - The acquired HER archives and the generated fixture are git-ignored. A clean checkout has no data
   until `labbridge fetch-her` or `labbridge build-her-fixture` produces it.
 - The integration suite requires the PostgreSQL and MinIO services from `docker-compose.yml`, and
@@ -320,12 +328,13 @@ conversion, selectivity, yield, product-assignment, or Faradaic-efficiency claim
 - Experiment Passport validation reports declared evidence completeness. A released Package may
   retain warnings and unknowns; release does not assert scientific validity, data quality, or
   reproducibility.
+- No scientific number in this repository comes from a released physical measurement run. The
+  reliability numbers under [`artifacts/fault-campaign`](artifacts/fault-campaign) are measured
+  software-behaviour results from generated synthetic bytes in replay mode.
 - Galvanostatic electrolysis support covers generic CSV electrical time series. It excludes
   instrument control, chromatography ingestion, automatic product assignment, and derived
   efficiency or yield calculations. Auxiliary analytical declarations require exact electrical and
   analytical source links, sample and collection-point identifiers, and declared method versions.
-- No number in this repository comes from a released measurement run. The reliability targets in
-  [`docs/FAILURE_MATRIX.md`](docs/FAILURE_MATRIX.md) are acceptance targets, not results.
 
 ## Data source
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import ClassVar, Final
@@ -17,7 +18,8 @@ from labbridge.domain.events import (
 from labbridge.infrastructure.persistence.tables import campaigns, events
 
 CURRENT_SCHEMA_VERSION: Final = 1
-COMPLETE_STREAM_CONTRACT_VERSION: Final = 1
+COMPLETE_STREAM_CONTRACT_VERSION: Final = 2
+READABLE_STREAM_CONTRACT_VERSIONS: Final = frozenset({1, COMPLETE_STREAM_CONTRACT_VERSION})
 
 
 class ExpectedVersionError(RuntimeError):
@@ -114,7 +116,7 @@ def _lock_complete_campaign(connection: Connection, campaign_id: uuid.UUID) -> t
         .with_for_update()
     ).one()
     contract_version = int(row.event_stream_contract_version)
-    if contract_version != COMPLETE_STREAM_CONTRACT_VERSION:
+    if contract_version not in READABLE_STREAM_CONTRACT_VERSIONS:
         raise IncompleteEventStreamError(campaign_id, contract_version)
     return contract_version, int(row.event_stream_last_position)
 
@@ -138,7 +140,7 @@ def _validate_event_identity(
             f"event `{event_type}` payload campaign {payload_campaign_id} differs from envelope "
             f"campaign {campaign_id}"
         )
-    if event_type == "observation.accepted":
+    if event_type in ("observation.accepted", "observation.retained"):
         payload_attempt_id = uuid.UUID(str(payload["attempt_id"]))
         if payload_attempt_id != aggregate_id:
             raise EventIdentityMismatchError(
@@ -268,69 +270,96 @@ def load_replay_stream(connection: Connection, campaign_id: uuid.UUID) -> tuple[
     """Load and validate a complete stream without reconstructing its projections."""
     contract_version, last_position = _lock_complete_campaign(connection, campaign_id)
     del contract_version
-    rows = connection.execute(
-        select(events)
-        .where(events.c.campaign_id == campaign_id)
-        .order_by(events.c.campaign_position)
-    ).mappings()
+    rows = [
+        dict(row)
+        for row in (
+            connection.execute(
+                select(events)
+                .where(events.c.campaign_id == campaign_id)
+                .order_by(events.c.campaign_position)
+            ).mappings()
+        )
+    ]
+    return validate_exported_stream(
+        rows,
+        campaign_id=campaign_id,
+        expected_last_position=last_position,
+    )
+
+
+def validate_exported_stream(
+    rows: Iterable[Mapping[str, object]],
+    *,
+    campaign_id: uuid.UUID,
+    expected_last_position: int | None = None,
+) -> tuple[EventEnvelope, ...]:
+    """Validate an exported stream with the same rules used for PostgreSQL replay loading."""
     loaded: list[EventEnvelope] = []
     aggregate_versions: dict[tuple[str, uuid.UUID], int] = {}
     prior_events: dict[uuid.UUID, uuid.UUID] = {}
-    for expected_position, row in enumerate(rows, start=FIRST_SEQUENCE):
-        if row["campaign_position"] != expected_position:
+    for expected_position, raw_row in enumerate(rows, start=FIRST_SEQUENCE):
+        envelope = EventEnvelope.model_validate(raw_row)
+        if envelope.campaign_id != campaign_id:
+            raise EventIdentityMismatchError(
+                f"event {envelope.event_id} belongs to campaign {envelope.campaign_id}, "
+                f"not {campaign_id}"
+            )
+        if envelope.campaign_position != expected_position:
             raise CampaignPositionGapError(
                 f"campaign {campaign_id} expected position {expected_position}, "
-                f"found {row['campaign_position']}"
+                f"found {envelope.campaign_position}"
             )
-        aggregate_key = (row["aggregate_type"], row["aggregate_id"])
+        aggregate_key = (envelope.aggregate_type, envelope.aggregate_id)
         expected_sequence = aggregate_versions.get(aggregate_key, 0) + FIRST_SEQUENCE
-        if row["sequence"] != expected_sequence:
+        if envelope.sequence != expected_sequence:
             raise AggregateSequenceGapError(
-                f"campaign {campaign_id} aggregate {row['aggregate_type']}/"
-                f"{row['aggregate_id']} expected sequence {expected_sequence}, "
-                f"found {row['sequence']}"
+                f"campaign {campaign_id} aggregate {envelope.aggregate_type}/"
+                f"{envelope.aggregate_id} expected sequence {expected_sequence}, "
+                f"found {envelope.sequence}"
             )
-        if row["event_type"] == "campaign.created" and (
-            expected_position != FIRST_SEQUENCE or row["sequence"] != FIRST_SEQUENCE
+        if envelope.event_type == "campaign.created" and (
+            expected_position != FIRST_SEQUENCE or envelope.sequence != FIRST_SEQUENCE
         ):
             raise InvalidEventCausationError(
                 "campaign.created must be the first event in a complete campaign stream"
             )
         payload = validate_event_payload(
-            event_type=row["event_type"],
-            schema_version=row["schema_version"],
-            aggregate_type=row["aggregate_type"],
-            causation_id=row["causation_id"],
-            payload=row["payload"],
+            event_type=envelope.event_type,
+            schema_version=envelope.schema_version,
+            aggregate_type=envelope.aggregate_type,
+            causation_id=envelope.causation_id,
+            payload=envelope.payload,
         )
         _validate_event_identity(
             campaign_id=campaign_id,
-            aggregate_id=row["aggregate_id"],
-            aggregate_type=row["aggregate_type"],
-            event_type=row["event_type"],
+            aggregate_id=envelope.aggregate_id,
+            aggregate_type=envelope.aggregate_type,
+            event_type=envelope.event_type,
             payload=payload,
         )
-        causation_id = row["causation_id"]
+        causation_id = envelope.causation_id
         if causation_id is not None:
             cause_correlation_id = prior_events.get(causation_id)
             if cause_correlation_id is None:
                 raise InvalidEventCausationError(
-                    f"event {row['event_id']} refers to absent or non-prior cause {causation_id}"
+                    f"event {envelope.event_id} refers to absent or non-prior cause {causation_id}"
                 )
-            if cause_correlation_id != row["correlation_id"]:
+            if cause_correlation_id != envelope.correlation_id:
                 raise InvalidEventCausationError(
-                    f"event {row['event_id']} and cause {causation_id} have different correlations"
+                    f"event {envelope.event_id} and cause {causation_id} "
+                    "have different correlations"
                 )
-        loaded.append(EventEnvelope.model_validate({**row, "payload": payload}))
-        aggregate_versions[aggregate_key] = row["sequence"]
-        prior_events[row["event_id"]] = row["correlation_id"]
+        loaded.append(envelope.model_copy(update={"payload": payload}))
+        aggregate_versions[aggregate_key] = envelope.sequence
+        prior_events[envelope.event_id] = envelope.correlation_id
     if not loaded:
         raise InvalidEventCausationError(
             f"complete campaign {campaign_id} has no campaign.created root event"
         )
-    if len(loaded) != last_position:
+    if expected_last_position is not None and len(loaded) != expected_last_position:
         raise CampaignPositionGapError(
-            f"campaign {campaign_id} metadata ends at {last_position}, loaded {len(loaded)} events"
+            f"campaign {campaign_id} metadata ends at {expected_last_position}, "
+            f"loaded {len(loaded)} events"
         )
     return tuple(loaded)
 
@@ -342,7 +371,7 @@ def read_stream(connection: Connection, campaign_id: uuid.UUID) -> list[dict[str
             campaigns.c.campaign_id == campaign_id
         )
     ).scalar_one()
-    if contract_version == COMPLETE_STREAM_CONTRACT_VERSION:
+    if contract_version in READABLE_STREAM_CONTRACT_VERSIONS:
         return [
             event.model_dump(mode="json") for event in load_replay_stream(connection, campaign_id)
         ]

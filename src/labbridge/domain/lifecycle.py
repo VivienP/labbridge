@@ -28,6 +28,7 @@ AttemptState = Literal[
     "failed_terminal",
     "corrupted",
     "lease_lost",
+    "duplicate_suppressed",
     "cancelled",
 ]
 JobState = Literal[
@@ -76,6 +77,7 @@ ATTEMPT_TRANSITIONS: Final[dict[AttemptState, frozenset[AttemptState]]] = {
             "failed_terminal",
             "corrupted",
             "lease_lost",
+            "duplicate_suppressed",
             "cancelled",
         }
     ),
@@ -85,6 +87,7 @@ ATTEMPT_TRANSITIONS: Final[dict[AttemptState, frozenset[AttemptState]]] = {
     "failed_terminal": frozenset(),
     "corrupted": frozenset(),
     "lease_lost": frozenset(),
+    "duplicate_suppressed": frozenset(),
     "cancelled": frozenset(),
 }
 

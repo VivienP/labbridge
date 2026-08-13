@@ -28,7 +28,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import ClassVar, Final
+from decimal import Decimal
+from typing import ClassVar, Final, Literal
 
 from sqlalchemy import (
     ColumnElement,
@@ -41,19 +42,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from labbridge.domain.campaigns import DEFAULT_RETRY_POLICY
 from labbridge.domain.idempotency import InstructionConflictError
 from labbridge.domain.lifecycle import JobState, check_job_transition
-from labbridge.infrastructure.persistence.tables import campaigns, jobs, work_items
-from labbridge.runtime.events import AppendedEvent, append_event, current_sequence
+from labbridge.infrastructure.persistence.tables import attempts, campaigns, jobs, work_items
+from labbridge.runtime.budgets import release_outstanding_without_attempt, reserve
+from labbridge.runtime.events import (
+    READABLE_STREAM_CONTRACT_VERSIONS,
+    AppendedEvent,
+    append_event,
+    current_sequence,
+)
 
 #: How long a claim holds a job before the lease is reclaimable. `heartbeat` extends it — but the
 #: worker does not call `heartbeat` yet, so for the shipped runtime this is a hard cap on how long
 #: an adapter call may take before another worker may claim the same job. Stated rather than
 #: implied: the intent is a liveness floor, the delivered behaviour is a timeout.
 DEFAULT_LEASE_SECONDS: Final = 60
-#: Exponential, capped. A retry storm against a failing dependency is itself a failure mode.
-RETRY_BASE_SECONDS: Final = 2
-MAX_RETRY_SECONDS: Final = 300
 
 
 class JobError(Exception):
@@ -93,6 +98,9 @@ class Lease:
     idempotency_key: str
     correlation_id: uuid.UUID
     last_event_id: uuid.UUID
+    budget_reservation_id: uuid.UUID
+    reserved_amount: Decimal
+    budget_unit: str
 
     @property
     def attempts_exhausted(self) -> bool:
@@ -110,6 +118,17 @@ class EnqueuedJob:
 
     job_id: uuid.UUID
     created: bool
+
+
+RetryScheduleStatus = Literal[
+    "scheduled", "retry_cap_reached", "campaign_cancelled", "budget_exhausted"
+]
+
+
+@dataclass(frozen=True)
+class RetryScheduleResult:
+    status: RetryScheduleStatus
+    available_at: datetime | None = None
 
 
 def enqueue(
@@ -196,6 +215,7 @@ def _job_event_payload(connection: Connection, job_id: uuid.UUID) -> dict[str, o
         "lease_token": row["lease_token"],
         "lease_expires_at": row["lease_expires_at"],
         "heartbeat_at": row["heartbeat_at"],
+        "lease_generation": row["lease_generation"],
         "attempt_count": row["attempt_count"],
         "max_attempts": row["max_attempts"],
         "command_version": row["command_version"],
@@ -270,25 +290,63 @@ def claim(
     a concurrent claim is passed over rather than waited on, so claims neither block nor collide.
     """
     token = uuid.uuid4()
-    claimable = connection.execute(
-        select(jobs.c.job_id)
+    candidate_campaign = connection.execute(
+        select(work_items.c.campaign_id)
         .select_from(jobs.join(work_items).join(campaigns))
         .where(
             and_(
                 jobs.c.state == "available",
                 jobs.c.available_at <= func.now(),
-                campaigns.c.event_stream_contract_version == 1,
+                campaigns.c.event_stream_contract_version.in_(READABLE_STREAM_CONTRACT_VERSIONS),
+                campaigns.c.state == "active",
             )
         )
         .order_by(jobs.c.available_at)
         .limit(1)
-        .with_for_update(skip_locked=True, of=jobs)
     ).scalar_one_or_none()
+    if candidate_campaign is None:
+        return None
+    locked_campaign = connection.execute(
+        select(campaigns.c.campaign_id)
+        .where(
+            campaigns.c.campaign_id == candidate_campaign,
+            campaigns.c.state == "active",
+            campaigns.c.event_stream_contract_version.in_(READABLE_STREAM_CONTRACT_VERSIONS),
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if locked_campaign is None:
+        return None
+    claimable = connection.execute(
+        select(
+            jobs.c.job_id,
+            jobs.c.work_item_id,
+            jobs.c.lease_generation,
+        )
+        .select_from(jobs.join(work_items))
+        .where(
+            work_items.c.campaign_id == locked_campaign,
+            jobs.c.state == "available",
+            jobs.c.available_at <= func.now(),
+        )
+        .order_by(jobs.c.available_at)
+        .limit(1)
+        .with_for_update(skip_locked=True, of=jobs)
+    ).one_or_none()
     if claimable is None:
+        return None
+    reservation = reserve(
+        connection,
+        campaign_id=locked_campaign,
+        work_item_id=claimable.work_item_id,
+        job_id=claimable.job_id,
+        lease_generation=int(claimable.lease_generation) + 1,
+    )
+    if reservation is None:
         return None
     row = connection.execute(
         update(jobs)
-        .where(jobs.c.job_id == claimable, jobs.c.state == "available")
+        .where(jobs.c.job_id == claimable.job_id, jobs.c.state == "available")
         .values(
             state="leased",
             lease_owner=owner,
@@ -328,6 +386,9 @@ def claim(
         idempotency_key=row.idempotency_key,
         correlation_id=row.event_correlation_id,
         last_event_id=appended.event_id,
+        budget_reservation_id=reservation.entry_id,
+        reserved_amount=reservation.amount,
+        budget_unit=reservation.unit,
     )
 
 
@@ -441,12 +502,35 @@ def schedule_retry(
     *,
     failure: dict[str, object] | None = None,
     causation_id: uuid.UUID | None = None,
-) -> datetime | None:
+) -> RetryScheduleResult:
     """Return the job for another attempt, or fail it terminally when attempts are exhausted.
 
     Backoff is exponential in the attempt count and capped, and the delay is applied by the database
     so a worker's clock cannot shorten it.
     """
+    campaign_state = connection.execute(
+        select(campaigns.c.state)
+        .select_from(
+            campaigns.join(work_items, work_items.c.campaign_id == campaigns.c.campaign_id)
+        )
+        .where(work_items.c.work_item_id == lease.work_item_id)
+        .with_for_update(of=campaigns)
+    ).scalar_one()
+    if campaign_state in ("cancelled", "budget_exhausted"):
+        _transition(
+            connection,
+            lease,
+            "cancelled",
+            event_type="job.cancelled",
+            causation_id=causation_id,
+            lease_owner=None,
+            lease_token=None,
+            lease_expires_at=None,
+            last_failure=failure,
+        )
+        return RetryScheduleResult(
+            status=("campaign_cancelled" if campaign_state == "cancelled" else "budget_exhausted")
+        )
     if lease.attempts_exhausted:
         _transition(
             connection,
@@ -459,9 +543,9 @@ def schedule_retry(
             lease_expires_at=None,
             last_failure=failure,
         )
-        return None
+        return RetryScheduleResult(status="retry_cap_reached")
 
-    delay = min(RETRY_BASE_SECONDS**lease.attempt_count, MAX_RETRY_SECONDS)
+    delay = DEFAULT_RETRY_POLICY.backoff_seconds(lease.attempt_count)
     row = connection.execute(
         update(jobs)
         .where(_held(lease))
@@ -482,7 +566,7 @@ def schedule_retry(
         connection, lease.job_id, event_type="job.available", causation_id=causation_id
     )
     available_at: datetime = row.available_at
-    return available_at
+    return RetryScheduleResult(status="scheduled", available_at=available_at)
 
 
 def fail_terminally(
@@ -504,6 +588,89 @@ def fail_terminally(
         lease_expires_at=None,
         last_failure=failure,
     )
+
+
+def cancel_available_for_campaign(
+    connection: Connection,
+    campaign_id: uuid.UUID,
+    *,
+    causation_id: uuid.UUID,
+    reason: str,
+) -> tuple[uuid.UUID, ...]:
+    """Cancel only unleased work; an existing lease retains its right to finish."""
+    rows = connection.execute(
+        select(jobs.c.job_id, jobs.c.work_item_id)
+        .select_from(jobs.join(work_items))
+        .where(
+            work_items.c.campaign_id == campaign_id,
+            jobs.c.state == "available",
+        )
+        .with_for_update(of=jobs)
+    ).all()
+    cancelled_items: list[uuid.UUID] = []
+    for row in rows:
+        connection.execute(
+            update(jobs)
+            .where(jobs.c.job_id == row.job_id, jobs.c.state == "available")
+            .values(
+                state="cancelled",
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                updated_at=func.now(),
+            )
+        )
+        appended = _append_job_event(
+            connection,
+            row.job_id,
+            event_type="job.cancelled",
+            causation_id=causation_id,
+        )
+        live_job = connection.execute(
+            select(jobs.c.job_id)
+            .where(
+                jobs.c.work_item_id == row.work_item_id,
+                jobs.c.state.in_(("leased", "running")),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if live_job is not None:
+            continue
+        changed = connection.execute(
+            update(work_items)
+            .where(
+                work_items.c.work_item_id == row.work_item_id,
+                work_items.c.state.in_(("queued", "quarantined")),
+            )
+            .values(
+                state="cancelled",
+                quarantine_reason=None,
+                updated_at=func.now(),
+            )
+        )
+        if changed.rowcount != 1:
+            continue
+        event_row = connection.execute(
+            select(jobs.c.event_correlation_id).where(jobs.c.job_id == row.job_id)
+        ).one()
+        append_event(
+            connection,
+            campaign_id=campaign_id,
+            aggregate_id=row.work_item_id,
+            aggregate_type="work_item",
+            event_type="work_item.cancelled",
+            payload={"state": "cancelled", "reason": reason},
+            expected_version=current_sequence(
+                connection,
+                campaign_id=campaign_id,
+                aggregate_type="work_item",
+                aggregate_id=row.work_item_id,
+            ),
+            correlation_id=event_row.event_correlation_id,
+            causation_id=appended.event_id,
+        )
+        cancelled_items.append(row.work_item_id)
+    return tuple(cancelled_items)
 
 
 @dataclass(frozen=True)
@@ -550,11 +717,22 @@ def recover_expired_leases(connection: Connection) -> list[ReclaimedLease]:
             jobs.c.max_attempts,
         )
         .select_from(jobs.join(work_items).join(campaigns))
-        .where(expired, campaigns.c.event_stream_contract_version == 1)
+        .where(
+            expired,
+            campaigns.c.event_stream_contract_version.in_(READABLE_STREAM_CONTRACT_VERSIONS),
+        )
         .with_for_update(skip_locked=True, of=jobs)
     ).all()
     reclaimed: list[ReclaimedLease] = []
     for row in recoverable:
+        running_attempt = connection.execute(
+            select(attempts.c.attempt_id).where(
+                attempts.c.job_id == row.job_id,
+                attempts.c.state == "running",
+            )
+        ).scalar_one_or_none()
+        if running_attempt is None:
+            release_outstanding_without_attempt(connection, job_id=row.job_id)
         exhausted = row.attempt_count >= row.max_attempts
         values: dict[str, object] = {
             "state": "failed_terminal" if exhausted else "available",
@@ -574,11 +752,45 @@ def recover_expired_leases(connection: Connection) -> list[ReclaimedLease]:
             .values(**values)
             .returning(jobs.c.lease_generation)
         ).one()
-        _append_job_event(
+        job_event = _append_job_event(
             connection,
             row.job_id,
             event_type="job.failed_terminal" if exhausted else "job.available",
         )
+        if exhausted:
+            reason = "retry_cap_reached:lease_lost"
+            changed = connection.execute(
+                update(work_items)
+                .where(
+                    work_items.c.work_item_id == row.work_item_id,
+                    work_items.c.state.in_(("queued", "quarantined")),
+                )
+                .values(
+                    state="quarantined",
+                    quarantine_reason=reason,
+                    updated_at=func.now(),
+                )
+            )
+            if changed.rowcount == 1:
+                context = connection.execute(
+                    select(jobs.c.event_correlation_id).where(jobs.c.job_id == row.job_id)
+                ).one()
+                append_event(
+                    connection,
+                    campaign_id=_campaign_id_for_job(connection, row.job_id),
+                    aggregate_id=row.work_item_id,
+                    aggregate_type="work_item",
+                    event_type="work_item.quarantined",
+                    payload={"state": "quarantined", "reason": reason},
+                    expected_version=current_sequence(
+                        connection,
+                        campaign_id=_campaign_id_for_job(connection, row.job_id),
+                        aggregate_type="work_item",
+                        aggregate_id=row.work_item_id,
+                    ),
+                    correlation_id=context.event_correlation_id,
+                    causation_id=job_event.event_id,
+                )
         reclaimed.append(
             ReclaimedLease(
                 job_id=row.job_id,

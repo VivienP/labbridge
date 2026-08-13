@@ -132,7 +132,8 @@ async def test_an_unmeasured_location_returns_a_structured_unavailable(
 
     assert isinstance(result, AdapterUnavailable)
     assert result.failure_code == "source_location_unavailable"
-    assert "not measured" in result.reason
+    assert "synthetic replay source" in result.reason
+    assert "measured" not in result.reason
 
 
 async def test_an_unknown_library_is_unavailable_not_an_error(fixture_root: Path) -> None:

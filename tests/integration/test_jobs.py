@@ -23,7 +23,13 @@ import pytest
 from sqlalchemy import Connection, Engine, delete, func, select
 
 from labbridge.domain.idempotency import InstructionConflictError
-from labbridge.infrastructure.persistence.tables import campaigns, events, jobs, work_items
+from labbridge.infrastructure.persistence.tables import (
+    budget_ledger,
+    campaigns,
+    events,
+    jobs,
+    work_items,
+)
 from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import (
     EnqueuedJob,
@@ -180,6 +186,9 @@ def committed_work_item(migrated: Engine) -> Iterator[uuid.UUID]:
         )
     yield work_item_id
     with migrated.begin() as connection:
+        connection.execute(
+            delete(budget_ledger).where(budget_ledger.c.work_item_id == work_item_id)
+        )
         connection.execute(delete(jobs).where(jobs.c.work_item_id == work_item_id))
         connection.execute(delete(events).where(events.c.campaign_id == campaign_id))
         connection.execute(delete(work_items).where(work_items.c.work_item_id == work_item_id))
@@ -530,9 +539,10 @@ def test_a_retry_becomes_available_later_not_immediately(
     lease = claim(connection, owner="worker-a")
     assert lease is not None
 
-    available_at = schedule_retry(connection, lease, failure={"failure_code": "timeout"})
+    result = schedule_retry(connection, lease, failure={"failure_code": "timeout"})
 
-    assert available_at is not None
+    assert result.status == "scheduled"
+    assert result.available_at is not None
     row = connection.execute(
         select(jobs.c.state, jobs.c.last_failure).where(jobs.c.job_id == job_id)
     ).one()
@@ -540,6 +550,29 @@ def test_a_retry_becomes_available_later_not_immediately(
     assert row.last_failure["failure_code"] == "timeout"
     # Not claimable yet: the delay is in the future.
     assert claim(connection, owner="worker-b") is None
+
+
+def test_retry_after_campaign_cancellation_does_not_requeue(
+    connection: Connection, work_item: uuid.UUID
+) -> None:
+    _enqueue(connection, work_item)
+    lease = claim(connection, owner="cancel-race-worker")
+    assert lease is not None
+    campaign_id = connection.execute(
+        select(work_items.c.campaign_id).where(work_items.c.work_item_id == work_item)
+    ).scalar_one()
+    connection.execute(
+        campaigns.update().where(campaigns.c.campaign_id == campaign_id).values(state="cancelled")
+    )
+
+    result = schedule_retry(connection, lease, failure={"failure_code": "timeout"})
+    state = connection.execute(
+        select(jobs.c.state).where(jobs.c.job_id == lease.job_id)
+    ).scalar_one()
+
+    assert result.status == "campaign_cancelled"
+    assert result.available_at is None
+    assert state == "cancelled"
 
 
 def test_a_retry_past_the_attempt_limit_fails_terminally(
@@ -550,7 +583,9 @@ def test_a_retry_past_the_attempt_limit_fails_terminally(
     assert lease is not None
     assert lease.attempts_exhausted
 
-    assert schedule_retry(connection, lease) is None
+    result = schedule_retry(connection, lease)
+    assert result.status == "retry_cap_reached"
+    assert result.available_at is None
 
     state = connection.execute(select(jobs.c.state).where(jobs.c.job_id == job_id)).scalar_one()
     assert state == "failed_terminal"

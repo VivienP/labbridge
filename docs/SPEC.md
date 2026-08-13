@@ -94,11 +94,12 @@ An immutable release package containing the declaration, event export, artifact 
 
 ### Execution mode
 
-- `replay`: returns historical observed data;
+- `replay`: returns bytes already present in an observed archive or generated fixture;
 - `simulation`: generates synthetic data;
 - `live`: reserved for future instrument execution.
 
-These fields are independent. The HER adapter uses `observed + replay`; the biosensor adapter uses `synthetic + simulation`.
+These fields are independent. The HER adapter uses `observed + replay` for an acquired archive and
+`synthetic + replay` for a generated fixture; the biosensor adapter uses `synthetic + simulation`.
 
 ---
 

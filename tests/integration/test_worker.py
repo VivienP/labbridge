@@ -47,7 +47,7 @@ from labbridge.infrastructure.persistence.tables import (
 )
 from labbridge.runtime.events import append_event, read_stream
 from labbridge.runtime.jobs import enqueue
-from labbridge.runtime.worker import Worker, WorkOutcome
+from labbridge.runtime.worker import TransientAdapterError, Worker, WorkOutcome
 
 pytestmark = pytest.mark.integration
 
@@ -55,7 +55,6 @@ SPEC = FixtureSpec(areas_per_library=6, seccm_areas_per_library=2)
 ONE_OUTCOME = 1
 TWO_OUTCOMES = 2
 ONE_OBSERVATION = 1
-ONE_LEDGER_ENTRY = 1
 ONE_EVENT = 1
 #: The LSV analysis writes one row per metric it defines: the extremum current and its potential.
 TWO_METRICS = 2
@@ -94,7 +93,7 @@ def campaign(
                 state="active",
                 declaration={},
                 declaration_hash="f" * 64,
-                event_stream_contract_version=1,
+                event_stream_contract_version=2,
                 event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
@@ -297,14 +296,15 @@ async def test_an_unmeasured_location_is_terminal_and_fabricates_nothing(
         assert stored.failure["retryable"] is False
         assert stored.provenance["code_version"] == "1"
         stream = read_stream(connection, campaign)
-        assert [event["event_type"] for event in stream[-3:]] == [
+        assert [event["event_type"] for event in stream[-4:]] == [
             "attempt.completed",
             "work_item.rejected",
+            "budget.consumed",
             "job.failed_terminal",
         ]
-        assert stream[-2]["payload"]["state"] == "rejected"
-        assert stream[-2]["payload"]["reason"]
-        assert stream[-1]["causation_id"] == stream[-2]["event_id"]
+        assert stream[-3]["payload"]["state"] == "rejected"
+        assert stream[-3]["payload"]["reason"]
+        assert stream[-1]["causation_id"] == stream[-3]["event_id"]
 
 
 async def test_a_redelivered_job_does_not_create_a_second_accepted_outcome(
@@ -324,11 +324,23 @@ async def test_a_redelivered_job_does_not_create_a_second_accepted_outcome(
     with migrated.begin() as connection:
         _deliver_again(connection, campaign, work_item_id)
     second = await worker.run_once()
+    failure_detail = None
+    if second is not None and second.status != "duplicate_suppressed":
+        with migrated.begin() as connection:
+            failure_detail = list(
+                connection.execute(
+                    select(
+                        attempt_outcomes.c.attempt_id,
+                        attempt_outcomes.c.status,
+                        attempt_outcomes.c.failure,
+                    ).where(attempt_outcomes.c.work_item_id == work_item_id)
+                ).mappings()
+            )
 
     assert first is not None
     assert second is not None
     assert first.status == "succeeded"
-    assert second.status == "duplicate_suppressed"
+    assert second.status == "duplicate_suppressed", failure_detail
     with migrated.begin() as connection:
         accepted = connection.execute(
             select(func.count())
@@ -437,6 +449,7 @@ def _acceptance_tally(connection: Connection, campaign_id: uuid.UUID, work_item_
             )
         ).scalar_one(),
         "observation.accepted": stream.count("observation.accepted"),
+        "observation.retained": stream.count("observation.retained"),
         "work_item.accepted": stream.count("work_item.accepted"),
         "attempt.completed": stream.count("attempt.completed"),
     }
@@ -519,8 +532,10 @@ async def test_two_concurrent_deliveries_yield_at_most_one_accepted_outcome(
         "accepted_observations": ONE_OBSERVATION,
         "received_observations": ONE_OBSERVATION,
         "metrics": TWO_METRICS,
-        "consumed": ONE_LEDGER_ENTRY,
+        # Both executed attempts count, including the duplicate-suppressed delivery.
+        "consumed": TWO_OUTCOMES,
         "observation.accepted": ONE_EVENT,
+        "observation.retained": ONE_EVENT,
         "work_item.accepted": ONE_EVENT,
         # One per attempt: suppressing the duplicate must not erase that it reached finalisation.
         "attempt.completed": TWO_OUTCOMES,
@@ -593,8 +608,10 @@ async def test_a_redelivery_after_the_commit_does_not_repeat_the_accepted_effect
         "accepted_observations": ONE_OBSERVATION,
         "received_observations": ONE_OBSERVATION,
         "metrics": TWO_METRICS,
-        "consumed": ONE_LEDGER_ENTRY,
+        # Both executed attempts count, including the duplicate-suppressed redelivery.
+        "consumed": TWO_OUTCOMES,
         "observation.accepted": ONE_EVENT,
+        "observation.retained": ONE_EVENT,
         "work_item.accepted": ONE_EVENT,
         # One per attempt: suppressing the duplicate must not erase that it reached finalisation.
         "attempt.completed": TWO_OUTCOMES,
@@ -621,15 +638,17 @@ async def test_the_accepted_observation_is_recorded_as_an_event(
         "campaign.created",
         "work_item.queued",
         "job.enqueued",
+        "budget.reserved",
         "job.leased",
         "job.started",
         "attempt.started",
         "observation.accepted",
+        "budget.consumed",
         "attempt.completed",
         "work_item.accepted",
         "job.succeeded",
     ]
-    assert [event["campaign_position"] for event in stream] == list(range(1, 11))
+    assert [event["campaign_position"] for event in stream] == list(range(1, 13))
     assert len({event["correlation_id"] for event in stream}) == 1
     assert stream[0]["causation_id"] is None
     assert all(event["causation_id"] is not None for event in stream[1:])
@@ -734,11 +753,81 @@ async def test_every_attempt_appends_a_budget_entry_in_the_same_transaction(
             select(budget_ledger).where(budget_ledger.c.campaign_id == campaign)
         ).all()
 
-    assert len(entries) == TWO_OUTCOMES
+    assert len(entries) == TWO_OUTCOMES * 2
+    assert [entry.kind for entry in entries].count("reserved") == TWO_OUTCOMES
+    assert [entry.kind for entry in entries].count("consumed") == TWO_OUTCOMES
     for entry in entries:
-        assert entry.kind == "consumed"
+        assert entry.kind in {"reserved", "consumed"}
         assert entry.unit == "attempt"
         assert entry.reason
+
+
+async def test_actual_cost_overrun_keeps_the_accepted_result_and_stops_new_work(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    locations = adapter.known_locations()[:2]
+    with migrated.begin() as connection:
+        connection.execute(
+            campaigns.update()
+            .where(campaigns.c.campaign_id == campaign)
+            .values(hard_budget=2, per_attempt_estimate=1, budget_unit="attempt")
+        )
+    first_work, _ = _submit(
+        migrated,
+        campaign,
+        _candidate(locations[0].library_id, locations[0].measurement_area_id),
+    )
+    _submit(
+        migrated,
+        campaign,
+        _candidate(locations[1].library_id, locations[1].measurement_area_id),
+    )
+    worker = Worker(
+        migrated,
+        adapter,
+        object_store,
+        name="worker-overrun",
+        actual_cost_policy=lambda _result, _lease: Decimal("3"),
+    )
+
+    outcome = await worker.run_once()
+
+    assert outcome is not None
+    assert outcome.status == "succeeded"
+    with migrated.begin() as connection:
+        stored = connection.execute(
+            select(attempt_outcomes).where(attempt_outcomes.c.work_item_id == first_work)
+        ).one()
+        ledger = connection.execute(
+            select(budget_ledger)
+            .where(budget_ledger.c.campaign_id == campaign)
+            .order_by(budget_ledger.c.recorded_at)
+        ).all()
+        campaign_state = connection.execute(
+            select(campaigns.c.state).where(campaigns.c.campaign_id == campaign)
+        ).scalar_one()
+        job_states = (
+            connection.execute(
+                select(jobs.c.state).join(work_items).where(work_items.c.campaign_id == campaign)
+            )
+            .scalars()
+            .all()
+        )
+        accepted = connection.execute(
+            select(func.count())
+            .select_from(observations)
+            .where(observations.c.campaign_id == campaign, observations.c.status == "accepted")
+        ).scalar_one()
+
+    assert stored.cost["budget_estimate"] == {"value": "1", "unit": "attempt"}
+    assert stored.cost["budget_reserved"] == {"value": "1", "unit": "attempt"}
+    assert stored.cost["budget_incurred"] == {"value": "3", "unit": "attempt"}
+    assert stored.cost["budget_actual"] == {"value": "3", "unit": "attempt"}
+    assert [entry.kind for entry in ledger] == ["reserved", "consumed"]
+    assert [Decimal(entry.amount) for entry in ledger] == [Decimal("1"), Decimal("3")]
+    assert campaign_state == "budget_exhausted"
+    assert sorted(job_states) == ["cancelled", "succeeded"]
+    assert accepted == 1
 
 
 async def test_a_campaign_declaring_the_wrong_origin_is_refused_not_relabelled(
@@ -850,7 +939,7 @@ async def test_an_adapter_crash_still_records_an_outcome(
     outcome = await worker.run_once()
 
     assert outcome is not None
-    assert outcome.status == "failed_retryable"
+    assert outcome.status == "failed_terminal"
     with migrated.begin() as connection:
         stored = connection.execute(
             select(attempt_outcomes).where(attempt_outcomes.c.work_item_id == work_item_id)
@@ -860,14 +949,95 @@ async def test_an_adapter_crash_still_records_an_outcome(
         ).scalar_one()
         stream = read_stream(connection, campaign)
     assert stored.failure["exception_type"] == "OSError"
-    assert stored.failure["retryable"] is True
-    assert attempt_state == "failed_retryable"
-    assert [event["event_type"] for event in stream[-2:]] == [
+    assert stored.failure["failure_code"] == "unexpected_adapter_error"
+    assert stored.failure["retryable"] is False
+    assert attempt_state == "failed_terminal"
+    assert [event["event_type"] for event in stream[-4:]] == [
         "attempt.completed",
-        "job.available",
+        "work_item.rejected",
+        "budget.consumed",
+        "job.failed_terminal",
     ]
-    assert stream[-1]["payload"]["state"] == "available"
-    assert stream[-1]["causation_id"] == stream[-2]["event_id"]
+    assert stream[-1]["payload"]["state"] == "failed_terminal"
+    assert stream[-1]["causation_id"] == stream[-3]["event_id"]
+
+
+async def test_explicit_transient_adapter_failure_is_retried(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    key = adapter.known_locations()[0]
+    _submit(migrated, campaign, _candidate(key.library_id, key.measurement_area_id))
+
+    class TemporarilyUnavailable:
+        environment = adapter.environment
+
+        def known_locations(self) -> object:
+            return adapter.known_locations()
+
+        async def execute(self, candidate: object) -> object:
+            raise TransientAdapterError("adapter endpoint temporarily unavailable")
+
+        def synthetic_root(self) -> object:
+            return adapter.synthetic_root()
+
+    outcome = await Worker(
+        migrated,
+        TemporarilyUnavailable(),  # type: ignore[arg-type]
+        object_store,
+        name="worker-transient",
+    ).run_once()
+
+    assert outcome is not None
+    assert outcome.status == "failed_retryable"
+    assert outcome.failure_code == "adapter_transient"
+
+
+async def test_retryable_failure_after_campaign_cancel_cancels_the_work_item(
+    migrated: Engine, adapter: HerReplayAdapter, object_store: S3ObjectStore, campaign: uuid.UUID
+) -> None:
+    key = adapter.known_locations()[0]
+    work_item_id, _ = _submit(
+        migrated, campaign, _candidate(key.library_id, key.measurement_area_id)
+    )
+
+    class CancelThenFail:
+        environment = adapter.environment
+
+        def known_locations(self) -> object:
+            return adapter.known_locations()
+
+        async def execute(self, candidate: object) -> object:
+            with migrated.begin() as connection:
+                connection.execute(
+                    campaigns.update()
+                    .where(campaigns.c.campaign_id == campaign)
+                    .values(state="cancelled")
+                )
+            raise TransientAdapterError("cancel raced with transient failure")
+
+        def synthetic_root(self) -> object:
+            return adapter.synthetic_root()
+
+    outcome = await Worker(
+        migrated,
+        CancelThenFail(),  # type: ignore[arg-type]
+        object_store,
+        name="worker-cancel-race",
+    ).run_once()
+
+    assert outcome is not None
+    with migrated.begin() as connection:
+        item = connection.execute(
+            select(work_items.c.state, work_items.c.quarantine_reason).where(
+                work_items.c.work_item_id == work_item_id
+            )
+        ).one()
+        job_state = connection.execute(
+            select(jobs.c.state).where(jobs.c.work_item_id == work_item_id)
+        ).scalar_one()
+    assert item.state == "cancelled"
+    assert item.quarantine_reason is None
+    assert job_state == "cancelled"
 
 
 async def test_an_unavailable_location_is_not_recorded_as_an_instrument_fault(

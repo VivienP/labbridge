@@ -69,7 +69,7 @@ def _declare(engine: Engine, adapter: HerReplayAdapter, name: str) -> uuid.UUID:
                 state="active",
                 declaration=declaration,
                 declaration_hash="0" * 64,
-                event_stream_contract_version=1,
+                event_stream_contract_version=2,
                 event_stream_last_position=0,
                 created_at=func.now(),
                 updated_at=func.now(),
@@ -157,9 +157,9 @@ async def run_demo(
 ) -> DemoReport:
     """Declare, submit, drain the queue, export, verify.
 
-    `include_unmeasured` submits one location the source never measured, so the demonstration shows
-    a terminal outcome alongside the successes. A demo that only ever succeeded would say nothing
-    about the runtime's actual job, which is handling the failures.
+    `include_unmeasured` submits one location for which the replay source has no LSV, so the
+    demonstration shows a terminal outcome alongside the successes. This wording applies equally to
+    observed archives and generated fixtures without interpreting synthetic absence as measurement.
     """
     campaign_id = _declare(engine, adapter, "LabBridge demonstration")
     known = adapter.known_locations()[:locations]

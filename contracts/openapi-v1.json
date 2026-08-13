@@ -32,10 +32,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
                 "type": "string"
               },
               {
@@ -84,10 +80,6 @@
           },
           "value": {
             "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
               {
                 "type": "string"
               },
@@ -407,6 +399,134 @@
         "title": "CVMetadata",
         "type": "object"
       },
+      "CampaignAttemptsView": {
+        "properties": {
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Status",
+            "type": "object"
+          },
+          "failure_codes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Failure Codes",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "by_status",
+          "failure_codes"
+        ],
+        "title": "CampaignAttemptsView",
+        "type": "object"
+      },
+      "CampaignBudgetView": {
+        "properties": {
+          "consumed": {
+            "title": "Consumed",
+            "type": "string"
+          },
+          "hard_limit": {
+            "title": "Hard Limit",
+            "type": "string"
+          },
+          "outstanding": {
+            "title": "Outstanding",
+            "type": "string"
+          },
+          "released": {
+            "title": "Released",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "string"
+          },
+          "reserved": {
+            "title": "Reserved",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hard_limit",
+          "unit",
+          "reserved",
+          "consumed",
+          "released",
+          "outstanding",
+          "remaining"
+        ],
+        "title": "CampaignBudgetView",
+        "type": "object"
+      },
+      "CampaignControlRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "CampaignControlRequest",
+        "type": "object"
+      },
+      "CampaignControlResult": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "ready",
+              "active",
+              "paused",
+              "completed",
+              "budget_exhausted",
+              "cancelled",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "state",
+          "version",
+          "replayed"
+        ],
+        "title": "CampaignControlResult",
+        "type": "object"
+      },
       "CampaignCreated": {
         "properties": {
           "campaign_id": {
@@ -431,6 +551,61 @@
         "title": "CampaignCreated",
         "type": "object"
       },
+      "CampaignDeclaration": {
+        "additionalProperties": false,
+        "description": "The execution limits that must be known before a campaign becomes active.",
+        "properties": {
+          "budget_unit": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Budget Unit",
+            "type": "string"
+          },
+          "hard_budget": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Hard Budget"
+          },
+          "max_attempts": {
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "per_attempt_estimate": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Per Attempt Estimate"
+          },
+          "stopping_rule": {
+            "const": "hard_budget_exhausted",
+            "title": "Stopping Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hard_budget",
+          "per_attempt_estimate",
+          "budget_unit",
+          "max_attempts",
+          "stopping_rule"
+        ],
+        "title": "CampaignDeclaration",
+        "type": "object"
+      },
       "CampaignRequest": {
         "additionalProperties": false,
         "properties": {
@@ -438,6 +613,16 @@
             "minLength": 1,
             "title": "Adapter Version",
             "type": "string"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignDeclaration"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "candidates": {
             "items": {
@@ -489,6 +674,12 @@
       },
       "CampaignView": {
         "properties": {
+          "attempts": {
+            "$ref": "#/components/schemas/CampaignAttemptsView"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/CampaignBudgetView"
+          },
           "campaign_id": {
             "format": "uuid",
             "title": "Campaign Id",
@@ -531,7 +722,9 @@
           "execution_mode",
           "work_items",
           "succeeded",
-          "failed"
+          "failed",
+          "budget",
+          "attempts"
         ],
         "title": "CampaignView",
         "type": "object"
@@ -601,16 +794,8 @@
             "type": "string"
           },
           "value": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "title": "Value"
+            "title": "Value",
+            "type": "string"
           }
         },
         "required": [
@@ -1342,10 +1527,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
                 "type": "string"
               },
               {
@@ -1388,10 +1569,6 @@
           },
           "value": {
             "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
               {
                 "type": "string"
               },
@@ -1664,7 +1841,6 @@
           },
           "values": {
             "items": {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
               "type": "string"
             },
             "minItems": 1,
@@ -2087,7 +2263,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -2097,7 +2272,6 @@
                       "type": "number"
                     },
                     {
-                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                       "type": "string"
                     }
                   ]
@@ -2781,6 +2955,204 @@
           }
         },
         "summary": "Read Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}/cancel": {
+      "post": {
+        "operationId": "cancel_campaign_campaigns__campaign_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}/pause": {
+      "post": {
+        "operationId": "pause_campaign_campaigns__campaign_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Campaign"
+      }
+    },
+    "/campaigns/{campaign_id}/resume": {
+      "post": {
+        "operationId": "resume_campaign_campaigns__campaign_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignControlResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Campaign"
       }
     },
     "/cv/import-profiles": {

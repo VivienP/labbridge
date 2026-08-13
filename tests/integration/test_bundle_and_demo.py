@@ -54,6 +54,7 @@ pytestmark = pytest.mark.integration
 SPEC = FixtureSpec(areas_per_library=6, seccm_areas_per_library=2)
 LOCATIONS = 2
 EXPECTED_MEMBERS = 3
+COMPLETE_EVENT_STREAM_CONTRACT = 2
 GENERATED_AT = datetime(2026, 8, 1, tzinfo=UTC)
 
 
@@ -109,7 +110,7 @@ def test_the_manifest_declares_the_origin_machine_readably(
 
     assert manifest["data_origin"] == "synthetic"
     assert manifest["execution_mode"] == "replay"
-    assert manifest["event_stream_contract_version"] == 1
+    assert manifest["event_stream_contract_version"] == COMPLETE_EVENT_STREAM_CONTRACT
     assert manifest["event_stream_completeness"] == "complete"
 
 
@@ -374,7 +375,7 @@ def test_the_bundle_records_both_the_successes_and_the_terminal_failure(
     demo: tuple[Engine, Path, uuid.UUID],
 ) -> None:
     """A bundle that showed only what worked would misrepresent the campaign. The demonstration
-    submits one location the source never measured precisely so this is observable."""
+    submits one location for which the replay source has no LSV precisely so this is observable."""
     engine, bundle_path, campaign_id = demo
 
     observations_payload = json.loads(

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import zipfile
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,14 +43,22 @@ from labbridge.domain.experiments import (
 from labbridge.domain.identity import DataOrigin, ExecutionMode
 from labbridge.domain.parser_diagnostics import ParserRecord
 from labbridge.domain.source_artifacts import source_artifact_id
+from labbridge.infrastructure.objectstore import ObjectStore
 
 from .manifest import canonical_json, digest
 from .passport import ExperimentPassport, render_passport_html, render_passport_json
+
+if TYPE_CHECKING:
+    from .campaign_package import CampaignPackageVerification
 
 PACKAGE_SCHEMA_VERSION = "2"
 LEGACY_PACKAGE_SCHEMA_VERSION = "1"
 ELECTROLYSIS_PACKAGE_SCHEMA_VERSION = "3"
 MANIFEST_MEMBER = "manifest.json"
+MAX_PACKAGE_MEMBERS = 128
+MAX_PACKAGE_MEMBER_SIZE = 32 * 1024 * 1024
+MAX_PACKAGE_UNCOMPRESSED_SIZE = 64 * 1024 * 1024
+MAX_PACKAGE_COMPRESSION_RATIO = 100
 
 _ELECTROLYSIS_PROFILE_ASSERTION_REQUIREMENTS: dict[str, RequirementClass] = {
     "source_artifact": "required",
@@ -334,6 +343,23 @@ def _open_members(package_bytes: bytes) -> dict[str, bytes]:
                 raise ExperimentPackageVerificationError(
                     "package_member_duplicate", "the archive contains duplicate member names"
                 )
+            infos = archive.infolist()
+            total_size = sum(info.file_size for info in infos)
+            limits_exceeded = (
+                len(infos) > MAX_PACKAGE_MEMBERS
+                or total_size > MAX_PACKAGE_UNCOMPRESSED_SIZE
+                or any(info.file_size > MAX_PACKAGE_MEMBER_SIZE for info in infos)
+                or any(
+                    info.file_size > 0
+                    and info.file_size / max(info.compress_size, 1) > MAX_PACKAGE_COMPRESSION_RATIO
+                    for info in infos
+                )
+            )
+            if limits_exceeded:
+                raise ExperimentPackageVerificationError(
+                    "package_archive_limits_exceeded",
+                    "the archive exceeds a member, size, or compression-ratio limit",
+                )
             for name in names:
                 path = PurePosixPath(name)
                 if path.is_absolute() or ".." in path.parts or "\\" in name:
@@ -383,6 +409,10 @@ def _verify_members(members: dict[str, bytes], manifest: dict[str, object]) -> N
                 "package_manifest_invalid", "manifest member entry is not an object"
             )
         name = str(raw.get("name", ""))
+        if name in listed:
+            raise ExperimentPackageVerificationError(
+                "package_manifest_invalid", f"manifest repeats member {name}"
+            )
         listed.add(name)
         data = members.get(name)
         if data is None:
@@ -1250,10 +1280,37 @@ def _verify_lineage(  # noqa: PLR0912,PLR0915
         )
 
 
-def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
-    """Verify package closure, report parity, and lineage without a database or object store."""
+def verify_experiment_package(
+    package_bytes: bytes,
+    *,
+    object_store: ObjectStore | None = None,
+) -> PackageVerification | CampaignPackageVerification:
+    """Verify shared closure and producer-specific report, lineage, and object contracts."""
     members = _open_members(package_bytes)
     manifest = _manifest(members)
+    _verify_members(members, manifest)
+    core = {key: value for key, value in manifest.items() if key != "package_id"}
+    expected_package_id = content_id("experiment-package", core)
+    if manifest.get("package_id") != expected_package_id:
+        raise ExperimentPackageVerificationError(
+            "package_identity_mismatch", "package_id does not match the canonical manifest"
+        )
+    producer_kind = manifest.get("producer_kind", "cv")
+    if producer_kind == "campaign":
+        campaign_package = importlib.import_module("labbridge.evidence.campaign_package")
+        return cast(
+            "CampaignPackageVerification",
+            campaign_package.verify_campaign_package_members(
+                package_bytes,
+                members,
+                manifest,
+                object_store=object_store,
+            ),
+        )
+    if producer_kind != "cv":
+        raise ExperimentPackageVerificationError(
+            "package_producer_unsupported", "the Package producer is not supported"
+        )
     schema_version = manifest.get("schema_version")
     if schema_version not in {
         LEGACY_PACKAGE_SCHEMA_VERSION,
@@ -1262,13 +1319,6 @@ def verify_experiment_package(package_bytes: bytes) -> PackageVerification:
     }:
         raise ExperimentPackageVerificationError(
             "package_schema_unsupported", "the Package schema version is not supported"
-        )
-    _verify_members(members, manifest)
-    core = {key: value for key, value in manifest.items() if key != "package_id"}
-    expected_package_id = content_id("experiment-package", core)
-    if manifest.get("package_id") != expected_package_id:
-        raise ExperimentPackageVerificationError(
-            "package_identity_mismatch", "package_id does not match the canonical manifest"
         )
     try:
         passport = ExperimentPassport.model_validate_json(members["passport/passport.json"])

@@ -1,0 +1,22 @@
+{
+  "acceptance_met": true,
+  "campaigns_executed": 100,
+  "corrupted_receipts_retained": 0,
+  "duplicate_suppressions": 100,
+  "failed_package_verifications": 0,
+  "failure_code_counts": {
+    "lease_lost": 51
+  },
+  "fault_point_counts": {
+    "after_adapter_return_before_upload": 17,
+    "after_commit_before_acknowledgement": 16,
+    "after_lease_acquisition": 17,
+    "after_upload_before_outcome_transaction": 17,
+    "during_evidence_export": 16,
+    "during_object_upload": 17
+  },
+  "hard_budget_overspends": 0,
+  "lost_accepted_observations": 0,
+  "projection_mismatches": 0,
+  "unintended_duplicate_acceptances": 0
+}

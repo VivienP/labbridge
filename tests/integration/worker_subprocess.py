@@ -11,8 +11,8 @@ Run by path, not by module: `tests/` is not a package, so `-m` does not resolve 
 
 The stage says where to stop. At that point the process writes everything the parent needs to prove
 what recovery did — the identifiers, the lease it held, the fencing token, any staged object key —
-and then blocks forever waiting to be killed. One harness, four boundaries; a second fault framework
-would be a second thing to keep honest.
+and then blocks forever waiting to be killed. One harness, every worker boundary; a second fault
+framework would be a second thing to keep honest.
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ from labbridge.runtime.worker import Worker
 KILL_STAGES = (
     "after_lease_acquisition",
     "after_adapter_return_before_upload",
+    "during_object_upload",
     "after_upload_before_outcome_transaction",
     "after_commit_before_acknowledgement",
 )
@@ -96,19 +97,25 @@ class _Reporter:
                 return
 
     def halt(self, stage: str) -> None:
-        """Report that this boundary was reached, then wait to be killed."""
+        """Report that this boundary was reached, then wait to be killed or resumed."""
         if self._publish_lease is not None:
             self._publish_lease()
         self.record(kill_stage=stage, reached=True)
+        resume_path_value = os.environ.get("LABBRIDGE_RESUME_PATH")
+        resume_path = Path(resume_path_value) if resume_path_value else None
         while True:  # pragma: no cover - the parent kills the process here
+            if resume_path is not None and resume_path.exists():
+                self.record(resumed=True)
+                return
             time.sleep(0.05)
 
 
 class StagedStore:
     """The real store, stopped either side of the upload according to the chosen stage."""
 
-    def __init__(self, inner: S3ObjectStore, reporter: _Reporter, stage: str) -> None:
+    def __init__(self, inner: S3ObjectStore, client: Any, reporter: _Reporter, stage: str) -> None:
         self._inner = inner
+        self._client = client
         self._reporter = reporter
         self._stage = stage
         self.bucket = inner.bucket
@@ -116,6 +123,22 @@ class StagedStore:
     def put_and_verify(self, key: str, data: bytes, *, media_type: str) -> StoredObject:
         if self._stage == "after_adapter_return_before_upload":
             # The adapter has returned and the `pending` row is written, but no bytes exist yet.
+            self._reporter.halt(self._stage)
+        if self._stage == "during_object_upload":
+            multipart = self._client.create_multipart_upload(
+                Bucket=self.bucket, Key=key, ContentType=media_type
+            )
+            upload_id = str(multipart["UploadId"])
+            self._client.upload_part(
+                Bucket=self.bucket,
+                Key=key,
+                UploadId=upload_id,
+                PartNumber=1,
+                Body=data[: max(1, len(data) // 2)],
+            )
+            self._reporter.record(
+                object_keys=[key], multipart_upload_id=upload_id, multipart_part_count=1
+            )
             self._reporter.halt(self._stage)
         stored = self._inner.put_and_verify(key, data, media_type=media_type)
         self._reporter.record(object_keys=[key], sha256=stored.sha256, byte_size=stored.byte_size)
@@ -235,7 +258,9 @@ def main() -> int:
         config=BotoConfig(signature_version="s3v4"),
         region_name=settings.region,
     )
-    store = S3ObjectStore(client, bucket=f"{settings.bucket}-tests")
+    store = S3ObjectStore(
+        client, bucket=os.environ.get("LABBRIDGE_FAULT_BUCKET", f"{settings.bucket}-tests")
+    )
     engine = create_engine(DatabaseSettings().dsn, future=True)
     worker_name = os.environ.get("LABBRIDGE_WORKER_NAME", "worker-subprocess")
     lease_seconds = int(os.environ.get("LABBRIDGE_LEASE_SECONDS", "60"))
@@ -243,7 +268,7 @@ def main() -> int:
     worker = _StagedWorker(
         engine,
         HerReplayAdapter(fixture_root),
-        StagedStore(store, reporter, stage),  # type: ignore[arg-type]
+        StagedStore(store, client, reporter, stage),  # type: ignore[arg-type]
         name=worker_name,
         reporter=reporter,
         stage=stage,

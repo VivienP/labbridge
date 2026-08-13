@@ -204,6 +204,7 @@ def _observation_rows(connection: Connection, campaign_id: uuid.UUID) -> list[di
     return [
         {
             "observation_id": row["observation_id"],
+            "campaign_id": str(row["campaign_id"]),
             "attempt_id": str(row["attempt_id"]),
             "work_item_id": str(row["work_item_id"]),
             "sha256": row["sha256"],
@@ -218,6 +219,7 @@ def _observation_rows(connection: Connection, campaign_id: uuid.UUID) -> list[di
             "data_origin": row["data_origin"],
             "execution_mode": row["execution_mode"],
             "provenance": row["provenance"],
+            "received_at": row["received_at"],
         }
         for row in rows
     ]
@@ -347,12 +349,17 @@ def _metric_rows(connection: Connection, campaign_id: uuid.UUID) -> list[dict[st
             "value": row["value"],
             "unit": row["unit"],
             "normalisation_basis": row["normalisation_basis"],
+            "uncertainty": row["uncertainty"],
             "analysis_name": row["analysis_name"],
             "analysis_version": row["analysis_version"],
             "parameter_hash": row["parameter_hash"],
             "quality_status": row["quality_status"],
             "quality_reason": row["quality_reason"],
+            "environment_id": row["provenance"]["environment"]["environment_id"],
+            "data_origin": row["provenance"]["environment"]["data_origin"],
+            "execution_mode": row["provenance"]["environment"]["execution_mode"],
             "provenance": row["provenance"],
+            "created_at": row["created_at"],
         }
         for row in rows
     ]
@@ -421,7 +428,9 @@ def build_bundle(
         "execution_mode": campaign["execution_mode"],
         "event_stream_contract_version": campaign["event_stream_contract_version"],
         "event_stream_completeness": (
-            "complete" if campaign["event_stream_contract_version"] == 1 else "legacy_incomplete"
+            "complete"
+            if campaign["event_stream_contract_version"] in (1, 2)
+            else "legacy_incomplete"
         ),
         "generated_at": generated_at.astimezone(UTC).isoformat(),
         "files": files,
@@ -553,9 +562,9 @@ def _verify_manifest_identity(manifest: dict[str, object]) -> None:
     event_stream_marker_is_valid = (
         event_stream_contract_version is None and event_stream_completeness is None
     ) or (
-        event_stream_contract_version in (0, 1)
+        event_stream_contract_version in (0, 1, 2)
         and event_stream_completeness
-        == ("complete" if event_stream_contract_version == 1 else "legacy_incomplete")
+        == ("complete" if event_stream_contract_version in (1, 2) else "legacy_incomplete")
     )
     generated_at = manifest.get("generated_at")
     try:
