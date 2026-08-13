@@ -27,6 +27,7 @@ fixtures/source/synthetic-gamry-cv.dta -text
 fixtures/source/synthetic-galvanostatic-electrolysis.csv -text
 fixtures/source/synthetic-galvanostatic-electrolysis.provenance.json -text
 frontend/public/demo-fixtures/synthetic-cv-passport-demo.csv -text
+frontend/src/generated/api-v1.ts text eol=lf
 src/labbridge/evidence/schemas/** -text whitespace=-trailing-space
 contracts/openapi-v1.json -text
 
