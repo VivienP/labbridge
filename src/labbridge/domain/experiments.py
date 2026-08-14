@@ -288,14 +288,26 @@ def add_user_assertion(
         supplements_assertion_id=supplements_assertion_id,
         supersedes_assertion_id=supersedes_assertion_id,
     )
+    if assertion.assertion_id in by_id:
+        raise ValueError("the experiment already records this assertion")
     active_ids.append(assertion.assertion_id)
-    return experiment.model_copy(
-        update={
-            "version": experiment.version + 1,
-            "assertions": (*experiment.assertions, assertion),
-            "active_assertion_ids": tuple(active_ids),
-            "supersedes_version": experiment.version,
-        }
+    # Constructed rather than copied: `model_copy` skips the aggregate validator, so an invalid
+    # version could be persisted and then fail every later read of the experiment.
+    return Experiment(
+        experiment_id=experiment.experiment_id,
+        schema_version=experiment.schema_version,
+        version=experiment.version + 1,
+        observation_id=experiment.observation_id,
+        source_artifact_id=experiment.source_artifact_id,
+        import_profile_id=experiment.import_profile_id,
+        technique=experiment.technique,
+        data_origin=experiment.data_origin,
+        execution_mode=experiment.execution_mode,
+        environment_id=experiment.environment_id,
+        transformation_ids=experiment.transformation_ids,
+        assertions=(*experiment.assertions, assertion),
+        active_assertion_ids=tuple(active_ids),
+        supersedes_version=experiment.version,
     )
 
 
