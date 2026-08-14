@@ -110,10 +110,22 @@ else
 fi
 
 # --- artifact validation ----------------------------------------------------------------------------
-if have labbridge && labbridge validate-artifacts --help >/dev/null 2>&1; then
-  run "artifact validation" labbridge validate-artifacts
+# Run the checkout's own CLI rather than whatever `labbridge` resolves to on PATH: an editable
+# install can point at a different worktree, which would gate this commit on another tree's bytes.
+# This is the gate that must not be able to pass by not running, so resolve an interpreter under
+# either common name rather than skipping on a platform where only `python3` exists.
+python_bin=""
+if have python; then
+  python_bin=python
+elif have python3; then
+  python_bin=python3
+fi
+if [ -n "$python_bin" ] && [ -d src/labbridge ]; then
+  # `src` first so an editable install pointing at another worktree cannot decide this commit.
+  export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
+  run "artifact validation" "$python_bin" -m labbridge.cli validate-artifacts
 else
-  echo "  [skip] artifact validation (validate-artifacts not implemented yet)"
+  echo "  [skip] artifact validation (no python interpreter or no src/labbridge in this checkout)"
 fi
 
 # --- secret scan on staged content ------------------------------------------------------------------

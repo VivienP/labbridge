@@ -2,13 +2,13 @@
   "campaign_rows_after": 1,
   "campaign_rows_before": 1,
   "contract_version_2_constraint_present": true,
-  "database_name": "labbridge_phase7_fault_release2_migration",
-  "duration_seconds": 0.156,
-  "finished_at": "2026-08-13T15:34:22.160631+00:00",
+  "database_name": "labbridge_phase7_fault_release3_migration",
+  "duration_seconds": 0.234,
+  "finished_at": "2026-08-14T10:25:09.867923+00:00",
   "from_revision": "74e1b6a09d22",
   "legacy_contract_version_preserved": 1,
   "passed": true,
-  "started_at": "2026-08-13T15:34:19.798310+00:00",
+  "started_at": "2026-08-14T10:25:08.290634+00:00",
   "status": "PASSED",
-  "to_revision": "a93b7c1e4d62"
+  "to_revision": "d9c4e7a1b280"
 }

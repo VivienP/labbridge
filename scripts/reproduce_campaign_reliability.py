@@ -37,6 +37,7 @@ from labbridge.infrastructure.persistence.tables import campaigns
 from labbridge.reliability.backup_restore import verify_backup_restore
 from labbridge.reliability.fault_campaign import plan_fault_points
 from labbridge.reliability.migration_rehearsal import rehearse_migration
+from labbridge.reliability.producer_identity import require_clean_committed_producer
 from labbridge.reliability.release import (
     verify_fault_campaign_release,
     write_fault_campaign_release,
@@ -90,7 +91,11 @@ def _command_output(argv: list[str]) -> str:
 
 
 def _environment_manifest(
-    *, database_name: str, bucket: str, fixture_manifest_sha256: str
+    *,
+    database_name: str,
+    bucket: str,
+    fixture_manifest_sha256: str,
+    producer: dict[str, object],
 ) -> dict[str, object]:
     versions = {}
     for distribution in ("labbridge", "sqlalchemy", "psycopg", "boto3", "alembic"):
@@ -104,8 +109,11 @@ def _environment_manifest(
         "python": sys.version,
         "python_executable": sys.executable,
         "dependency_versions": versions,
-        "git_head": _command_output(["git", "rev-parse", "HEAD"]),
-        "origin_main": _command_output(["git", "rev-parse", "origin/main"]),
+        "git_head": producer["git_head"],
+        "origin_main": producer["origin_main"],
+        "merge_base_with_origin_main": producer["merge_base_with_origin_main"],
+        "origin_main_contained": producer["origin_main_contained"],
+        "working_tree": producer["working_tree"],
         "source_tree_sha256": _source_tree_digest(),
         "docker_version": _command_output(["docker", "version", "--format", "{{.Server.Version}}"]),
         "compose_images": _command_output(["docker", "compose", "images", "--format", "json"]),
@@ -120,6 +128,7 @@ def _environment_manifest(
 
 
 async def _run(args: argparse.Namespace) -> list[CampaignExecution]:
+    producer = require_clean_committed_producer(REPO_ROOT, allow_dirty=args.allow_dirty)
     os.environ["LABBRIDGE_DB_NAME"] = args.database_name
     os.environ["LABBRIDGE_S3_BUCKET"] = args.bucket
     _ensure_database(args.database_name)
@@ -193,6 +202,7 @@ async def _run(args: argparse.Namespace) -> list[CampaignExecution]:
         database_name=args.database_name,
         bucket=args.bucket,
         fixture_manifest_sha256=fixture_sha,
+        producer=dict(producer),
     )
     operational = verify_backup_restore(
         source_engine=engine,
@@ -230,6 +240,11 @@ def main() -> int:
     parser.add_argument("--database-name", default="labbridge_phase7_fault_campaign")
     parser.add_argument("--bucket", default="labbridge-phase7-fault-campaign")
     parser.add_argument("--output", type=Path, default=Path("build/phase7-fault-campaign"))
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow an uncommitted worktree; still records working_tree=dirty in the manifest.",
+    )
     args = parser.parse_args()
     if args.output.exists() and any(args.output.iterdir()):
         raise SystemExit(f"output directory is not empty: {args.output}")

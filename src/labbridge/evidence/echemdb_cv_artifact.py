@@ -71,6 +71,15 @@ contact area, scan rate, and cycle information are omitted and listed in `mappin
 EchemDB figure type is an explicitly asserted lossy projection; LabBridge `data_origin` and
 `execution_mode` remain independently represented in `labbridge-provenance.json`.
 
+Two boundaries of that companion arrangement are explicit rather than resolved. `datapackage.json`
+declares one resource, `cv.csv`, and does not reference `labbridge-provenance.json`, so a consumer
+reading the package only as Frictionless defines it receives the table without LabBridge origin,
+execution mode, or evidence identities; those are found by reading the companion beside it.
+`cv.csv` itself carries no synthetic marker in its filename or its columns, because its field set
+is fixed by the pinned EchemDB `figureDescription`. Within this package the synthetic origin is
+declared by `source.citationKey`, `source.originalFilename`, `figureDescription.type`, and the
+companion; detached from them the table does not identify itself as synthetic.
+
 The capability status is `implemented`; this uncommitted candidate is not evidence of clean-checkout
 demonstration, EchemDB ingestion, EchemDB publication, or production deployment.
 """

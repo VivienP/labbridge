@@ -6,59 +6,59 @@
   "execution_mode": "replay",
   "files": [
     {
-      "byte_size": 285,
+      "byte_size": 224,
       "name": "LIMITATIONS.md",
-      "sha256": "f11c873e928504e8eaf7da72f6945dcb615a92991b531b403e4226b704be059f"
+      "sha256": "b479e90e84c58f52ee1d228bb3e82e6436b6db5bb8db0f01efb3fad1d200ddf8"
     },
     {
       "byte_size": 214,
       "name": "REPRODUCE.txt",
-      "sha256": "2aa59b645184cb6894fa6dd793f848f062dcad310ecefeef7c44e68b6753af4b"
+      "sha256": "c2d7fe3cc84c6c271eee88478e9293ad59347ad65f800ee2047f735c00124ece"
     },
     {
-      "byte_size": 75579,
+      "byte_size": 75577,
       "name": "audit-log.jsonl",
-      "sha256": "1ae669fa465df8ff4fdc4dcb5046abcb806f5fa78d26a4db082b07a5c338f48b"
+      "sha256": "a4dde66a6fd468bd16d63d2694c365a6019272cf60ddc202c337ed3d3066eb29"
     },
     {
-      "byte_size": 26649,
+      "byte_size": 26899,
       "name": "backup-restore.json",
-      "sha256": "452fc936f4bc72fa04301ca108a336b51bac2772edfca31cd55b9d37dedb5bd9"
+      "sha256": "90da337b90e042ed595d7afb3cd4d707bf42168171d335092e2b4d477c5af9ff"
     },
     {
-      "byte_size": 1668,
+      "byte_size": 2308,
       "name": "environment-manifest.json",
-      "sha256": "932bbab07d7eb97ae2cabeea731d58484e6d12f3ed250cf6bc7be979c6fbdb71"
+      "sha256": "91981c0fe46a926f7e9d84e6b460345971949fd1413b508bfa5a544f0927d544"
     },
     {
-      "byte_size": 1485,
+      "byte_size": 1424,
       "name": "fault-campaign-report.html",
-      "sha256": "fb08b13786addcae2f501a20d4dbb01bcfea625324798d966f8668616d98792d"
+      "sha256": "249ba202043b2d2c3b30288cb3844b4d803d6c1b645386a13cfa780e8f4a29c7"
     },
     {
-      "byte_size": 29421,
+      "byte_size": 29622,
       "name": "fault-campaign-report.json",
-      "sha256": "e03fbd2adfa426530da9dc36ca22148f8482a61678901ea7be5221f2c940aa9a"
+      "sha256": "105ac1b8663bafc0c8eee959ed3fa9240e6ecdf9abc7f0d4e0a4603aad68f722"
     },
     {
       "byte_size": 457,
       "name": "migration-checks.json",
-      "sha256": "7d2bc785d2a0c3e7a19739c8ac007fe099e319767750f5464f8c58acf6ed4151"
+      "sha256": "910e99a46b184445f0cd62f9c96b8bd95fe2464c4d484d66b93e077b0736aa29"
     },
     {
       "byte_size": 30803,
       "name": "package-verifications.json",
-      "sha256": "6f0656e8883c0e7d981d4a4fe392b5e9557c337383c972636b45009d379deb74"
+      "sha256": "f385477ea428ca5c28be7cb8ce9d47740b5ff7bc48bdd2212762b230ab9e137d"
     },
     {
-      "byte_size": 1213429,
+      "byte_size": 1213305,
       "name": "packages.zip",
-      "sha256": "b1dbec349277b29bedcb4c113df193dd96c0a87c1445884f522c8423ad4a1146"
+      "sha256": "1de8ebfa0b8f9c0d5a1428d087f50d7632b6e8cc6968537ba2448bac0c1b0b1f"
     },
     {
-      "byte_size": 41318,
+      "byte_size": 41316,
       "name": "raw-results.csv",
-      "sha256": "bf51941e1f8a6ed7e2a30f2ab73ee4f32a1ee268248d4fe9ebfd25a530de0c11"
+      "sha256": "c38e905046e47c0916dc8620398ef55084dbfde05b058cf9306fc1a4e3027b99"
     },
     {
       "byte_size": 236,
@@ -71,7 +71,7 @@
       "sha256": "e92d16b76eabf629c16663a3df535e5cd5d9217748ba64bf21d6294dd0f1ef08"
     }
   ],
-  "files_digest": "dc9f787ce2de0a1d4d3c075ecac4d28e594bbc50ea6834b4de537c0c451d318e",
+  "files_digest": "254d817a34dd43d56ea3103789faa9505f1199ec6b3729f0dc5b3635c6cf5740",
   "run_id": "phase7-20260813-100",
   "schema_version": "1",
   "summary": {

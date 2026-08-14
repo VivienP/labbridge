@@ -34,6 +34,7 @@ def test_fault_campaign_crosses_every_process_boundary_and_restores(tmp_path: Pa
             bucket,
             "--output",
             str(output),
+            "--allow-dirty",
         ],
         cwd=REPO_ROOT,
         env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")},

@@ -45,6 +45,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/campaigns/{campaign_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Campaign */
+        post: operations["cancel_campaign_campaigns__campaign_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/campaigns/{campaign_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Campaign */
+        post: operations["pause_campaign_campaigns__campaign_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/campaigns/{campaign_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Campaign */
+        post: operations["resume_campaign_campaigns__campaign_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cv/import-profiles": {
         parameters: {
             query?: never;
@@ -158,6 +209,74 @@ export interface paths {
         put?: never;
         /** Inspect Source */
         post: operations["inspect_source_cv_source_inspections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/electrolysis/import-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Profile */
+        post: operations["create_profile_electrolysis_import_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/electrolysis/import-profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Profile */
+        get: operations["read_profile_electrolysis_import_profiles__profile_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/electrolysis/normalisations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Normalise */
+        post: operations["normalise_electrolysis_normalisations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/electrolysis/normalised-observations/{observation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Normalisation */
+        get: operations["read_normalisation_electrolysis_normalised_observations__observation_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -462,6 +581,72 @@ export interface components {
             value?: string | boolean | number | null;
         };
         /**
+         * AuxiliaryAnalyticalResult
+         * @description A declared analytical result linked to retained electrical and analytical sources.
+         */
+        "AuxiliaryAnalyticalResult-Input": {
+            /** Analyte */
+            analyte: string;
+            /** Collection Point */
+            collection_point: string;
+            /** Electrical Source Artifact Id */
+            electrical_source_artifact_id: string;
+            /** Method Name */
+            method_name: string;
+            /** Method Version */
+            method_version: string;
+            /**
+             * Quantity Kind
+             * @constant
+             */
+            quantity_kind: "concentration";
+            /** Result Id */
+            result_id: string;
+            /** Sample Id */
+            sample_id: string;
+            /** Source Artifact Id */
+            source_artifact_id: string;
+            /** Source Location */
+            source_location: string;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: number | string;
+        };
+        /**
+         * AuxiliaryAnalyticalResult
+         * @description A declared analytical result linked to retained electrical and analytical sources.
+         */
+        "AuxiliaryAnalyticalResult-Output": {
+            /** Analyte */
+            analyte: string;
+            /** Collection Point */
+            collection_point: string;
+            /** Electrical Source Artifact Id */
+            electrical_source_artifact_id: string;
+            /** Method Name */
+            method_name: string;
+            /** Method Version */
+            method_version: string;
+            /**
+             * Quantity Kind
+             * @constant
+             */
+            quantity_kind: "concentration";
+            /** Result Id */
+            result_id: string;
+            /** Sample Id */
+            sample_id: string;
+            /** Source Artifact Id */
+            source_artifact_id: string;
+            /** Source Location */
+            source_location: string;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * CVImportProfile
          * @description Versioned, complete and immutable instructions for parsing one CSV shape.
          */
@@ -578,6 +763,58 @@ export interface components {
             reference_scale: components["schemas"]["MetadataValue-Output"];
             scan_rate: components["schemas"]["MetadataValue-Output"];
         };
+        /** CampaignAttemptsView */
+        CampaignAttemptsView: {
+            /** By Status */
+            by_status: {
+                [key: string]: number;
+            };
+            /** Failure Codes */
+            failure_codes: {
+                [key: string]: number;
+            };
+            /** Total */
+            total: number;
+        };
+        /** CampaignBudgetView */
+        CampaignBudgetView: {
+            /** Consumed */
+            consumed: string;
+            /** Hard Limit */
+            hard_limit: string;
+            /** Outstanding */
+            outstanding: string;
+            /** Released */
+            released: string;
+            /** Remaining */
+            remaining: string;
+            /** Reserved */
+            reserved: string;
+            /** Unit */
+            unit: string;
+        };
+        /** CampaignControlRequest */
+        CampaignControlRequest: {
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** CampaignControlResult */
+        CampaignControlResult: {
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Replayed */
+            replayed: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "ready" | "active" | "paused" | "completed" | "budget_exhausted" | "cancelled" | "failed";
+            /** Version */
+            version: number;
+        };
         /** CampaignCreated */
         CampaignCreated: {
             /**
@@ -590,10 +827,30 @@ export interface components {
             /** Work Items */
             work_items: number;
         };
+        /**
+         * CampaignDeclaration
+         * @description The execution limits that must be known before a campaign becomes active.
+         */
+        CampaignDeclaration: {
+            /** Budget Unit */
+            budget_unit: string;
+            /** Hard Budget */
+            hard_budget: number | string;
+            /** Max Attempts */
+            max_attempts: number;
+            /** Per Attempt Estimate */
+            per_attempt_estimate: number | string;
+            /**
+             * Stopping Rule
+             * @constant
+             */
+            stopping_rule: "hard_budget_exhausted";
+        };
         /** CampaignRequest */
         CampaignRequest: {
             /** Adapter Version */
             adapter_version: string;
+            budget?: components["schemas"]["CampaignDeclaration"] | null;
             /** Candidates */
             candidates: components["schemas"]["HerCandidate"][];
             /**
@@ -613,6 +870,8 @@ export interface components {
         };
         /** CampaignView */
         CampaignView: {
+            attempts: components["schemas"]["CampaignAttemptsView"];
+            budget: components["schemas"]["CampaignBudgetView"];
             /**
              * Campaign Id
              * Format: uuid
@@ -676,6 +935,174 @@ export interface components {
             expected_experiment_version: number;
             /** Passport Id */
             passport_id: string;
+        };
+        /**
+         * ElectrolysisColumnMapping
+         * @description One explicit electrolysis source-column role and unit conversion.
+         */
+        ElectrolysisColumnMapping: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "time" | "current" | "current_density" | "potential" | "ignored";
+            /** Source Column */
+            source_column: string;
+            /** Source Unit */
+            source_unit?: string | null;
+            /** Target Unit */
+            target_unit?: string | null;
+        };
+        /**
+         * ElectrolysisImportProfile
+         * @description Complete instructions for one galvanostatic-electrolysis CSV shape.
+         */
+        "ElectrolysisImportProfile-Input": {
+            /** Auxiliary Results */
+            auxiliary_results: components["schemas"]["AuxiliaryAnalyticalResult-Input"][];
+            /** Columns */
+            columns: components["schemas"]["ElectrolysisColumnMapping"][];
+            /**
+             * Decimal Convention
+             * @enum {string}
+             */
+            decimal_convention: "point" | "comma";
+            /** Delimiter */
+            delimiter: string;
+            /**
+             * Encoding
+             * @enum {string}
+             */
+            encoding: "utf-8" | "utf-8-sig";
+            /** Environment Id */
+            environment_id: string;
+            /** Header Row */
+            header_row: number;
+            metadata: components["schemas"]["ElectrolysisMetadata-Input"];
+            /** Missing Value Tokens */
+            missing_value_tokens: string[];
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "1";
+            /**
+             * Technique
+             * @constant
+             */
+            technique: "galvanostatic_electrolysis";
+        };
+        /**
+         * ElectrolysisImportProfile
+         * @description Complete instructions for one galvanostatic-electrolysis CSV shape.
+         */
+        "ElectrolysisImportProfile-Output": {
+            /** Auxiliary Results */
+            auxiliary_results: components["schemas"]["AuxiliaryAnalyticalResult-Output"][];
+            /** Columns */
+            columns: components["schemas"]["ElectrolysisColumnMapping"][];
+            /**
+             * Decimal Convention
+             * @enum {string}
+             */
+            decimal_convention: "point" | "comma";
+            /** Delimiter */
+            delimiter: string;
+            /**
+             * Encoding
+             * @enum {string}
+             */
+            encoding: "utf-8" | "utf-8-sig";
+            /** Environment Id */
+            environment_id: string;
+            /** Header Row */
+            header_row: number;
+            metadata: components["schemas"]["ElectrolysisMetadata-Output"];
+            /** Missing Value Tokens */
+            missing_value_tokens: string[];
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "1";
+            /**
+             * Technique
+             * @constant
+             */
+            technique: "galvanostatic_electrolysis";
+        };
+        /** ElectrolysisLineage */
+        ElectrolysisLineage: {
+            /** Auxiliary Source Artifact Ids */
+            auxiliary_source_artifact_ids: string[];
+            /** Environment Id */
+            environment_id: string;
+            /** Import Profile Id */
+            import_profile_id: string;
+            /** Source Artifact Id */
+            source_artifact_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Transformation Ids */
+            transformation_ids: string[];
+        };
+        /**
+         * ElectrolysisMetadata
+         * @description Declared electrical context without product-quantification inference.
+         */
+        "ElectrolysisMetadata-Input": {
+            cell_geometry: components["schemas"]["MetadataValue-Input"];
+            chemical_analysis: components["schemas"]["MetadataValue-Input"];
+            current_basis: components["schemas"]["MetadataValue-Input"];
+            current_sign_convention: components["schemas"]["MetadataValue-Input"];
+            electrode_area: components["schemas"]["MetadataValue-Input"];
+            interruptions: components["schemas"]["MetadataValue-Input"];
+            potential_treatment: components["schemas"]["MetadataValue-Input"];
+            reference_scale: components["schemas"]["MetadataValue-Input"];
+            sampling_interval: components["schemas"]["MetadataValue-Input"];
+        };
+        /**
+         * ElectrolysisMetadata
+         * @description Declared electrical context without product-quantification inference.
+         */
+        "ElectrolysisMetadata-Output": {
+            cell_geometry: components["schemas"]["MetadataValue-Output"];
+            chemical_analysis: components["schemas"]["MetadataValue-Output"];
+            current_basis: components["schemas"]["MetadataValue-Output"];
+            current_sign_convention: components["schemas"]["MetadataValue-Output"];
+            electrode_area: components["schemas"]["MetadataValue-Output"];
+            interruptions: components["schemas"]["MetadataValue-Output"];
+            potential_treatment: components["schemas"]["MetadataValue-Output"];
+            reference_scale: components["schemas"]["MetadataValue-Output"];
+            sampling_interval: components["schemas"]["MetadataValue-Output"];
+        };
+        /** ElectrolysisNormalisationRequest */
+        ElectrolysisNormalisationRequest: {
+            /** Profile Id */
+            profile_id: string;
+            /** Source Artifact Id */
+            source_artifact_id: string;
+        };
+        /** ElectrolysisNormalisationResult */
+        ElectrolysisNormalisationResult: {
+            /** Findings */
+            findings: components["schemas"]["StructuralFinding"][];
+            graph: components["schemas"]["TransformationGraph"];
+            observation: components["schemas"]["NormalisedElectrolysisObservation"];
+        };
+        /** ElectrolysisNormalisationView */
+        ElectrolysisNormalisationView: {
+            /** Replayed */
+            replayed: boolean;
+            result: components["schemas"]["ElectrolysisNormalisationResult"];
+        };
+        /** ElectrolysisProfileView */
+        ElectrolysisProfileView: {
+            profile: components["schemas"]["ElectrolysisImportProfile-Output"];
+            /** Profile Id */
+            profile_id: string;
+            /** Replayed */
+            replayed: boolean;
         };
         /** ExpectedVersionRequest */
         ExpectedVersionRequest: {
@@ -1026,6 +1453,51 @@ export interface components {
             series: components["schemas"]["NormalisedSeries"][];
             /** Source Artifact Id */
             source_artifact_id: string;
+            /** Transformation Ids */
+            transformation_ids: string[];
+        };
+        /** NormalisedElectrolysisObservation */
+        NormalisedElectrolysisObservation: {
+            /** Auxiliary Results */
+            auxiliary_results: components["schemas"]["AuxiliaryAnalyticalResult-Output"][];
+            /**
+             * Data Origin
+             * @enum {string}
+             */
+            data_origin: "observed" | "synthetic";
+            /** Environment Id */
+            environment_id: string;
+            /**
+             * Execution Mode
+             * @enum {string}
+             */
+            execution_mode: "replay" | "simulation" | "live";
+            /** Import Profile Id */
+            import_profile_id: string;
+            metadata: components["schemas"]["ElectrolysisMetadata-Output"];
+            /** Normalisation Version */
+            normalisation_version: string;
+            /** Observation Id */
+            observation_id: string;
+            /** Parser Version */
+            parser_version: string;
+            provenance: components["schemas"]["ElectrolysisLineage"];
+            /** Row Count */
+            row_count: number;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "1";
+            /** Series */
+            series: components["schemas"]["NormalisedSeries"][];
+            /** Source Artifact Id */
+            source_artifact_id: string;
+            /**
+             * Technique
+             * @constant
+             */
+            technique: "galvanostatic_electrolysis";
             /** Transformation Ids */
             transformation_ids: string[];
         };
@@ -1511,6 +1983,117 @@ export interface operations {
             };
         };
     };
+    cancel_campaign_campaigns__campaign_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignControlResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_campaign_campaigns__campaign_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignControlResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_campaign_campaigns__campaign_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignControlResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_profile_cv_import_profiles_post: {
         parameters: {
             query?: never;
@@ -1725,6 +2308,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceInspectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_profile_electrolysis_import_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElectrolysisImportProfile-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectrolysisProfileView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_profile_electrolysis_import_profiles__profile_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectrolysisProfileView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    normalise_electrolysis_normalisations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElectrolysisNormalisationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectrolysisNormalisationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_normalisation_electrolysis_normalised_observations__observation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectrolysisNormalisationView"];
                 };
             };
             /** @description Validation Error */

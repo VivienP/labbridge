@@ -586,8 +586,8 @@ for techniques not demonstrated in earlier phases.
 
 ## Phase 7 — campaign reliability demonstration
 
-**Status:** `demonstrated` for synthetic replay in the recorded environment; observed replay and
-future live execution were not run.
+**Status:** `demonstrated` for synthetic replay across the six declared process-termination
+boundaries. Observed HER replay and future live execution were not run.
 
 ### Objective
 
@@ -635,7 +635,8 @@ zero lost accepted observations, unintended duplicate acceptances, hard-budget o
 projection mismatches, or Package-verification failures; it also records 51 `lease_lost` failures
 and 100 suppressed redeliveries. The deployment restore reverified 100 stored objects, replayed 100
 campaigns, and fully verified 100 restored campaign Packages. These are synthetic-replay reliability
-measurements, not scientific or live-instrument results.
+measurements, not scientific or live-instrument results. Observed replay and future live execution
+were not run.
 
 ### Out of scope
 

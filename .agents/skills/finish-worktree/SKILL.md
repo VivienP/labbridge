@@ -51,6 +51,20 @@ If a substantial unrelated change is present, stop and report it instead of sile
 
 ## 3. Perform targeted validation
 
+Confirm the task branch contains the current `origin/main` before running final validation of
+generated contracts or release evidence:
+
+```bash
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base HEAD origin/main
+```
+
+The branch contains `origin/main` only when the merge-base equals `origin/main`. If it does not,
+STOP. Do not merge or rebase as part of this check. Require an explicit synchronization decision
+before regenerating OpenAPI, generated TypeScript, or release evidence.
+
 Determine validation from the files and behavior changed by this task.
 
 Run the relevant targeted:

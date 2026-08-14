@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import zipfile
 from datetime import UTC, datetime
 
@@ -19,14 +20,19 @@ from labbridge.application.experiments import (
     experiment_from_electrolysis_normalisation,
     experiment_from_normalisation,
 )
+from labbridge.domain.canonical import content_id
 from labbridge.domain.experiments import AssertionValue, make_assertion, validate_experiment
 from labbridge.evidence.experiment_package import (
+    MANIFEST_MEMBER,
     AuxiliaryPackageSource,
     ExperimentPackageVerificationError,
     PackageInputs,
+    _member_entry,
+    _zip,
     build_experiment_package,
     verify_experiment_package,
 )
+from labbridge.evidence.manifest import canonical_json, digest
 from labbridge.evidence.passport import build_passport
 
 RELEASED_AT = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
@@ -372,3 +378,82 @@ def test_independent_verifier_accepts_active_unavailable_unsupported_claim() -> 
     )
 
     assert verify_experiment_package(package.archive_bytes).verified is True
+
+
+def _reforge(archive_bytes: bytes, *, replace: dict[str, bytes]) -> bytes:
+    """Rebuild an archive around changed members with every hash and identity recomputed.
+
+    This is the adversary the member checks cannot catch: entry digests, `members_digest`, and
+    `package_id` are all derived exactly as the builder derives them, so the archive is internally
+    consistent. Only a semantic check can reject it.
+    """
+    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    manifest = json.loads(members[MANIFEST_MEMBER])
+    members.update(replace)
+    del members[MANIFEST_MEMBER]
+    entries = [_member_entry(name, data) for name, data in sorted(members.items())]
+    core = {
+        key: value
+        for key, value in manifest.items()
+        if key not in {"package_id", "members", "members_digest"}
+    }
+    core["members"] = entries
+    core["members_digest"] = digest(canonical_json(entries))
+    ordered = {key: core[key] for key in manifest if key in core}
+    ordered["package_id"] = content_id("experiment-package", ordered)
+    members[MANIFEST_MEMBER] = canonical_json(ordered)
+    return _zip(members)
+
+
+def test_a_rehashed_archive_cannot_swap_technique_to_skip_electrolysis_semantics() -> None:
+    """A self-consistent forgery must not reach the CV branch and skip electrolysis checks.
+
+    Branching on the import profile while every other check read the Passport meant a Passport
+    declaring `galvanostatic_electrolysis` was inspected under CV rules, so
+    `_verify_electrolysis_passport_semantics` never ran. The archive was still refused, but by a
+    downstream `package_lineage_open` rather than by the contradiction that caused it. One
+    authoritative technique makes the refusal name the real defect.
+    """
+    inputs = _electrolysis_inputs()
+    package = build_experiment_package(
+        inputs, producing_versions={"labbridge": "0.1.0", "experiment_package": "3"}
+    )
+    assert verify_experiment_package(package.archive_bytes).verified is True
+
+    with zipfile.ZipFile(io.BytesIO(package.archive_bytes)) as archive:
+        profile = json.loads(archive.read("phase2/import-profile.json"))
+    profile["technique"] = "cyclic_voltammetry"
+    forged = _reforge(
+        package.archive_bytes,
+        replace={"phase2/import-profile.json": canonical_json(profile)},
+    )
+
+    with pytest.raises(ExperimentPackageVerificationError) as raised:
+        verify_experiment_package(forged)
+
+    # Not package_identity_mismatch or a member digest failure: the forgery is self-consistent and
+    # defeats every hash check, so this proves the semantic gate is what stops it.
+    assert raised.value.code == "package_technique_mismatch"
+
+
+def test_a_rehashed_cv_archive_cannot_claim_the_electrolysis_profile() -> None:
+    """The mismatch is rejected in both directions, not only for the electrolysis Passport."""
+    inputs = _cv_inputs()
+    package = build_experiment_package(
+        inputs, producing_versions={"labbridge": "0.1.0", "experiment_package": "1"}
+    )
+    assert verify_experiment_package(package.archive_bytes).verified is True
+
+    with zipfile.ZipFile(io.BytesIO(package.archive_bytes)) as archive:
+        profile = json.loads(archive.read("phase2/import-profile.json"))
+    profile["technique"] = "galvanostatic_electrolysis"
+    forged = _reforge(
+        package.archive_bytes,
+        replace={"phase2/import-profile.json": canonical_json(profile)},
+    )
+
+    with pytest.raises(ExperimentPackageVerificationError) as raised:
+        verify_experiment_package(forged)
+
+    assert raised.value.code == "package_technique_mismatch"

@@ -32,7 +32,7 @@ RELEASED_AT: Final = datetime(2026, 8, 13, 8, 0, tzinfo=UTC)
 REPRODUCTION_COMMAND: Final = (
     "python scripts/reproduce_gamry_dta_cv.py --output build/gamry-dta-cv\n"
     "labbridge package verify build/gamry-dta-cv/experiment-package.zip --json\n"
-    "labbridge validate-artifacts build/gamry-dta-cv\n"
+    "labbridge validate-artifacts --bundle build/gamry-dta-cv\n"
 )
 SUPPORT: Final = """# Supported Gamry DTA CV variant
 
