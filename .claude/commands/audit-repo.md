@@ -22,7 +22,7 @@ exists.
 ## 2. Documentation consistency
 
 - Do `AI_CONTRACT.md`, `docs/SPEC.md`, `docs/ARCHITECTURE_DECISIONS.md`, `docs/DATA_STRATEGY.md`,
-  `docs/SIMULATOR_MODEL.md`, `docs/FAILURE_MATRIX.md`, and `docs/ROADMAP.md` agree? Resolve conflicts by
+  `docs/SIMULATOR_MODEL.md`, `docs/FAILURE_MATRIX.md`, and `docs/PROJECT_STATUS.md` agree? Resolve conflicts by
   the precedence in `AI_CONTRACT.md`, section *"When documents conflict"*, and **report** the conflict —
   never pick the convenient reading silently.
 - Do `CLAUDE.md`, `AGENTS.md`, `.claude/`, and `.agents/` contradict `AI_CONTRACT.md` anywhere?
@@ -48,7 +48,7 @@ Establish the active slice from what exists on disk, not from what the documents
 Gate 0 and Slices 1–7: deliverables present, exit criteria met, stop conditions cleared. Report the
 first slice whose exit criteria are not met — that is where work belongs.
 
-Check the V1 release blockers in `docs/ROADMAP.md` and report which are currently open.
+Check the open gaps and deferred tracks in `docs/ROADMAP.md` and report which are still open.
 
 ## 5. Failure and proof coverage
 

@@ -1,6 +1,6 @@
 # LabBridge — data strategy
 
-**Status:** planned  
+**Status:** normative data and provenance strategy  
 **Scope:** observed HER replay data, synthetic biosensor data, provenance, redistribution, and scientific claim boundaries
 
 LabBridge uses two environments behind one runtime adapter protocol:

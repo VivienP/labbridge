@@ -7,7 +7,7 @@ paths: alembic/**, migrations/**, src/labbridge/infrastructure/postgres/**, src/
 # Migration and schema evolution
 
 Authority: `AI_CONTRACT.md` §6 and §9; `docs/SPEC.md` §4.1, §5; `docs/FAILURE_MATRIX.md` F-019, F-039,
-F-042; `docs/ROADMAP.md` Slice 3 and Slice 6.
+F-042; `AI_CONTRACT.md` §10 and `docs/ROADMAP.md`.
 
 Two distinct kinds of evolution live here. Do not conflate them.
 
@@ -58,7 +58,7 @@ migration upgrade tests and downgrade tests where safe and supported.
 
 ### Deployment
 
-`docs/ROADMAP.md` Slice 6 requires a migration exercised against production-like data and a documented
+`AI_CONTRACT.md` §10 requires a migration exercised against production-like data and a documented
 application rollback procedure, plus the interrupted-migration recovery path. Until that has been run
 and recorded, migration safety is `implemented`, never `demonstrated`.
 

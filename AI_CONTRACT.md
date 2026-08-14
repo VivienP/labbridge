@@ -12,7 +12,8 @@ The companion documents define:
 
 - `docs/SPEC.md`: what the system must do;
 - `docs/DATA_STRATEGY.md`: data sources and scientific boundaries;
-- `docs/ROADMAP.md`: dependency order and exit criteria;
+- `docs/PROJECT_STATUS.md`: the current status of every capability and the evidence behind it;
+- `docs/ROADMAP.md`: what remains open and what is deferred;
 - `docs/SIMULATOR_MODEL.md`: the biosensor simulator's scientific contract;
 - `docs/FAILURE_MATRIX.md`: failure scenarios the runtime must handle;
 - `docs/ARCHITECTURE_DECISIONS.md`: accepted architectural decisions.
@@ -38,7 +39,7 @@ An implementation agent MUST report a contradiction rather than silently choosin
 - Write code, comments, identifiers, schemas, commit messages, and technical documentation in English.
 - Be short and direct. Do not add promotional narration.
 - Ask a question only when an ambiguity materially changes scientific validity, architecture, data integrity, or public claims.
-- When a safe, simpler interpretation exists within the current roadmap slice, use it and state the assumption instead of blocking progress.
+- When a safe, simpler interpretation exists within the current task's scope, use it and state the assumption instead of blocking progress.
 - Present alternatives when they carry meaningfully different trade-offs.
 
 ### Behavioural guidelines
@@ -99,10 +100,10 @@ diary.
 
 Turn failure-prone electrochemical measurement records into validated, provenance-tracked scientific datasets, and execute experimental campaigns through a durable, auditable, resumable runtime that treats failures and recovery as explicit domain outcomes.
 
-LabBridge is demonstrated through two separate environments behind a shared runtime interface:
+LabBridge defines two separate environments behind a shared runtime interface:
 
-- an observed Au–Ir–Rh HER dataset executed in replay mode;
-- a synthetic, electrochemistry-informed biosensor environment executed in simulation mode.
+- an observed Au–Ir–Rh HER dataset executed in replay mode, which is implemented;
+- a synthetic, electrochemistry-informed biosensor environment executed in simulation mode, which is `deferred` and has no adapter.
 
 The two environments test the same infrastructure abstractions. They are not fidelities of one shared scientific candidate space.
 
@@ -319,7 +320,7 @@ The V1 stack is intentionally small:
 - pytest and pytest-asyncio;
 - mypy or pyright in strict mode;
 - ruff for formatting and linting;
-- one managed cloud deployment during portfolio hardening.
+- one managed cloud deployment.
 
 No heavyweight ML framework or GPU path belongs in V1.
 
@@ -512,7 +513,7 @@ The V1 release MUST satisfy the proof obligations in `docs/SPEC.md` and the mand
 
 A change is complete only when:
 
-1. it is in scope for the current roadmap slice;
+1. it is in scope for the requested task and does not silently start a deferred track;
 2. its typed interface exists;
 3. relevant failure modes are explicit;
 4. relevant unit and integration tests pass;
@@ -589,10 +590,10 @@ Implementation agents MUST NOT:
 
 ## 12. Agent execution protocol
 
-Before coding a roadmap slice, an implementation agent MUST:
+Before coding a task, an implementation agent MUST:
 
 1. read this contract and the relevant specification sections;
-2. confirm that the task belongs to the current roadmap slice;
+2. confirm that the task is in scope and is not a deferred track in `docs/ROADMAP.md`;
 3. identify the invariants touched;
 4. state the intended transaction, process, and failure boundaries;
 5. list the tests and artifacts that will prove the exit criterion;

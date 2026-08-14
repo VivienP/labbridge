@@ -6,7 +6,7 @@ paths: scripts/fetch_her.py, scripts/inspect_her.py, src/labbridge/infrastructur
 
 # HER source discipline
 
-Authority: `AI_CONTRACT.md` invariant 11 and §7; `docs/DATA_STRATEGY.md` §2; `docs/ROADMAP.md` Gate 0.
+Authority: `AI_CONTRACT.md` invariant 11 and §7; `docs/DATA_STRATEGY.md` §2, including the §2.3 source, licence, and schema gate.
 
 Pinned sources: Zenodo DOI `10.5281/zenodo.20439519` (dataset, authoritative for archive contents) and
 arXiv `2606.00779` (preprint, authoritative for method and interpretation).

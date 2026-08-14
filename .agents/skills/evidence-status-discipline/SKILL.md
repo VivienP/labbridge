@@ -34,7 +34,7 @@ These are the specific overclaims this architecture invites. Use the right-hand 
 | exactly-once execution | at-least-once delivery with idempotent effect handling; at most one accepted outcome per intended attempt | The worker protocol is at-least-once (ADR-002). Uniqueness constraints deduplicate *effects*; they do not make *execution* exactly-once. |
 | deterministic execution | deterministic state reconstruction from the ordered event stream | Invariant 6 promises replay reproduces logical state. Infrastructure timing may differ between executions. |
 | guaranteed no data loss | no accepted observation lost across the tested process-termination boundaries | A guarantee is universal; a test covers the boundaries it injected. Name them. |
-| production-ready | deployed and operated under the documented runbook, with the recovery evidence in `<artifact>` | `docs/ROADMAP.md` Slice 6: a cloud URL is not production proof. |
+| production-ready | deployed and operated under the documented runbook, with the recovery evidence in `<artifact>` | `docs/ROADMAP.md` open operational gaps: a cloud URL is not production proof. |
 | demonstrates / proves | implements, when there is no artifact | Reserve for `demonstrated`. |
 | fault-tolerant | fault-aware: every failure produces a durable outcome and a classified failure code | Tolerance implies continued correct service; awareness is what the design provides. |
 | calibrated uncertainty | model uncertainty from `<policy>`, uncalibrated | `AI_CONTRACT.md` §11 forbids calibrated-uncertainty claims without a defined calibration procedure and evaluation. |

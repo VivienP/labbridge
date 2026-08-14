@@ -44,5 +44,5 @@ Use the review block at the end of the `migration-and-schema-evolution` skill. C
 `SAFE`, `SAFE WITH SEQUENCING`, or `UNSAFE` — and an explicit *Untested claims* line.
 
 The migration file existing is not evidence the migration is safe. Until it has been exercised against
-production-like data with a documented rollback (`docs/ROADMAP.md` Slice 6), migration safety is
+production-like data with a documented rollback (`AI_CONTRACT.md` §10), migration safety is
 `implemented`, never `demonstrated`.
