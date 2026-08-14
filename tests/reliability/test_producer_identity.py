@@ -96,6 +96,23 @@ def test_inherited_git_dir_does_not_redirect_the_inspected_tree(
     assert identity["working_tree"] == "clean"
 
 
+def test_linked_worktree_of_a_bare_common_dir_is_inspectable(tmp_path: Path) -> None:
+    seed = _repo(tmp_path)
+    bare = tmp_path / "bare.git"
+    _run(seed, "clone", "--bare", str(seed), str(bare))
+    work = tmp_path / "linked"
+    _run(bare, "worktree", "add", str(work), "main")
+    head = _run(work, "rev-parse", "HEAD")
+    _run(work, "update-ref", "refs/remotes/origin/main", head)
+
+    identity = require_clean_committed_producer(work)
+
+    assert (work / ".git").is_file()
+    assert identity["git_head"] == head
+    assert identity["origin_main"] == head
+    assert identity["working_tree"] == "clean"
+
+
 def test_stale_base_that_does_not_contain_origin_main_fails_closed(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _run(repo, "checkout", "-b", "task")

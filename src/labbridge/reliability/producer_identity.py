@@ -34,9 +34,23 @@ class ProducerIdentity(TypedDict):
     working_tree: str
 
 
+def _git_invocation(repo_root: Path) -> list[str]:
+    """Pin linked worktrees so a bare common dir is not inspected as the producer."""
+    git_meta = repo_root / ".git"
+    if git_meta.is_file():
+        for raw in git_meta.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line.lower().startswith("gitdir:"):
+                pointed = Path(line.split(":", 1)[1].strip())
+                if not pointed.is_absolute():
+                    pointed = (repo_root / pointed).resolve()
+                return ["git", f"--git-dir={pointed}", f"--work-tree={repo_root}"]
+    return ["git"]
+
+
 def _git(repo_root: Path, *args: str) -> str:
     completed = subprocess.run(
-        ["git", *args],
+        [*_git_invocation(repo_root), *args],
         cwd=repo_root,
         env=_git_subprocess_env(),
         capture_output=True,
