@@ -61,15 +61,20 @@ test("synthetic bytes reach a superseding Passport and CLI-verified Package", as
   await expect(page).toHaveTitle("LabBridge — CV Passport")
   await expect(page.getByText(/classification awaits human electrochemistry domain review/i)).toBeVisible()
   await page.keyboard.press("Tab")
-  const focused = page.getByRole("button", { name: "Load synthetic fixture" })
-  await expect(focused).toBeFocused()
-  expect(await focused.evaluate((element) => getComputedStyle(element).outlineWidth)).not.toBe("0px")
-  const loadFixtureButton = page.locator(".source-actions > button").first()
-  const heroColours = await page.locator(".hero").evaluate((element) => {
+  const skipLink = page.getByRole("link", { name: "Skip to workflow" })
+  await expect(skipLink).toBeFocused()
+  expect(await skipLink.evaluate((element) => getComputedStyle(element).outlineWidth)).not.toBe("0px")
+  const loadFixtureButton = page.getByRole("button", { name: "Load synthetic fixture" })
+  await loadFixtureButton.focus()
+  expect(
+    await loadFixtureButton.evaluate((element) => getComputedStyle(element).outlineWidth),
+  ).not.toBe("0px")
+  const headerColours = await page.locator(".app-header").evaluate((element) => {
     const style = getComputedStyle(element)
     return { foreground: style.color, background: style.backgroundColor }
   })
-  expect(contrastRatio(heroColours.foreground, heroColours.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(headerColours.foreground, headerColours.background)).toBeGreaterThanOrEqual(4.5)
+  await expect(page.getByRole("navigation", { name: "Workflow progress" })).toBeVisible()
 
   let continueSourceRequest: (() => void) | undefined
   const sourceRequestGate = new Promise<void>((resolve) => { continueSourceRequest = resolve })
@@ -78,10 +83,11 @@ test("synthetic bytes reach a superseding Passport and CLI-verified Package", as
     await route.continue()
   }, { times: 1 })
   await loadFixtureButton.click()
-  await expect(loadFixtureButton).toHaveText("Retaining source…")
+  await expect(loadFixtureButton).toHaveAttribute("aria-busy", "true")
+  await expect(page.getByText("Retaining source bytes…")).toBeVisible()
   continueSourceRequest?.()
   await expect(page.getByText("synthetic-cv-passport-demo.csv")).toBeVisible()
-  const retainedSource = page.locator(".source-card code").last()
+  const retainedSource = page.locator("[data-identity='source-artifact']")
   const sourceIdentity = await retainedSource.textContent()
   expect(sourceIdentity).toMatch(/^source:/)
 
@@ -116,7 +122,7 @@ test("synthetic bytes reach a superseding Passport and CLI-verified Package", as
 
   await page.getByRole("button", { name: "Release initial Passport" }).click()
   await expect(page.getByText("Synthetic Experiment Passport")).toBeVisible()
-  const initialPassport = await page.locator(".passport-card code").first().textContent()
+  const initialPassport = await page.locator("[data-identity='initial-passport']").textContent()
   expect(initialPassport).toMatch(/^passport:/)
   await expect(page.getByText(/does not infer or validate this reference scale as physically correct/i)).toBeVisible()
 
@@ -133,7 +139,7 @@ test("synthetic bytes reach a superseding Passport and CLI-verified Package", as
 
   await page.getByRole("button", { name: "Add user-supplied RHE declaration" }).click()
   await expect(page.getByText("Passport preview")).toBeVisible()
-  const referenceRow = page.getByRole("row", { name: /reference_scale RHE user_supplied/ })
+  const referenceRow = page.getByRole("row", { name: /reference_scale.*RHE.*user_supplied/ })
   await expect(referenceRow).toContainText("RHE")
   await expect(referenceRow).toContainText("user_supplied")
 
@@ -142,7 +148,7 @@ test("synthetic bytes reach a superseding Passport and CLI-verified Package", as
   await expect(page.getByText(`Supersedes ${initialPassport}`)).toBeVisible()
   await page.getByRole("button", { name: "Create Experiment Package" }).click()
   await expect(page.getByText("Synthetic Experiment Package")).toBeVisible()
-  const packageIdentity = await page.locator(".package-card dd code").first().textContent()
+  const packageIdentity = await page.locator("[data-identity='package']").textContent()
   expect(packageIdentity).toMatch(/^experiment-package:/)
   const visibleFindingIds = await page.locator(".finding-id").allTextContents()
   const cliValidation = runContainerCli<{
@@ -164,9 +170,11 @@ test("synthetic bytes reach a superseding Passport and CLI-verified Package", as
     "--passport-id", cliPassport.passport.passport_id,
     "--expected-version", "2", "--idempotency-key", "cli-parity-package",
   ])
-  const uiPackageChecksum = await page.locator(".package-card dd code").nth(2).textContent()
+  const uiPackageChecksum = await page.locator("[data-identity='archive-sha256']").textContent()
   expect(cliValidation.validation.findings.map((finding) => finding.finding_id)).toEqual(visibleFindingIds)
-  expect(cliPassport.passport.passport_id).toBe(await page.locator(".passport-card code").last().textContent())
+  expect(cliPassport.passport.passport_id).toBe(
+    await page.locator("[data-identity='superseding-passport']").textContent(),
+  )
   expect(cliPackage.package.package_id).toBe(packageIdentity)
   expect(cliPackage.package.archive_sha256).toBe(uiPackageChecksum)
 

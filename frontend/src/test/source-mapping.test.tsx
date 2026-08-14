@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { MappingStep } from "../components/MappingStep"
@@ -25,6 +25,12 @@ const inspection: SourceInspectionView = {
   row_count: 13,
 }
 
+function classificationField(label: string): HTMLElement {
+  const item = screen.getByText(label).closest(".kv-item")
+  if (!(item instanceof HTMLElement)) throw new Error(`no classification field for ${label}`)
+  return item
+}
+
 describe("source and mapping presentation", () => {
   it("labels the retained source as synthetic on the visible surface", () => {
     render(
@@ -39,7 +45,12 @@ describe("source and mapping presentation", () => {
     expect(screen.getByText("Synthetic data — not measured")).toBeInTheDocument()
     expect(screen.getByText(source.filename)).toBeInTheDocument()
     expect(screen.getByText(source.sha256)).toBeInTheDocument()
-    expect(screen.getByText("synthetic + replay")).toBeInTheDocument()
+    expect(
+      within(classificationField("Declared data origin")).getByText("synthetic"),
+    ).toBeInTheDocument()
+    expect(
+      within(classificationField("Declared execution mode")).getByText("replay"),
+    ).toBeInTheDocument()
   })
 
   it("requires explicit origin and execution-mode declarations for uploads", () => {
@@ -70,10 +81,11 @@ describe("source and mapping presentation", () => {
   it("shows source columns without roles before the operator maps them", () => {
     render(<MappingStep inspection={inspection} pending={false} onSubmit={vi.fn()} />)
 
-    expect(screen.getByRole("heading", { name: "Explicit column mapping" })).toBeInTheDocument()
-    expect(screen.getByLabelText("Role for sample_index")).toHaveValue("")
-    expect(screen.getByLabelText("Role for channel_a")).toHaveValue("")
-    expect(screen.getByLabelText("Role for channel_b")).toHaveValue("")
+    const decisions = screen.getByRole("group", { name: "Column mapping decisions" })
+    for (const header of inspection.headers) {
+      expect(within(decisions).getByText(header)).toBeInTheDocument()
+      expect(screen.getByLabelText(`Role for ${header}`)).toHaveValue("")
+    }
   })
 
   it("blocks an incomplete mapping before submission", () => {

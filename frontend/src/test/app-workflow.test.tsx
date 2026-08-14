@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { App, createIntentKey } from "../App"
-import type { ApiClient } from "../api/client"
+import { ApiRequestError, type ApiClient } from "../api/client"
 
 vi.mock("plotly.js-basic-dist-min", () => ({
   default: { react: vi.fn(), purge: vi.fn() },
@@ -141,9 +141,47 @@ function fakeApi() {
   } as unknown as ApiClient
 }
 
+async function reachInitialPassport(api: ApiClient) {
+  const user = userEvent.setup()
+  render(
+    <App
+      api={api}
+      loadFixture={() => Promise.resolve(new Blob(["sample_index,channel_a,channel_b\n"], { type: "text/csv" }))}
+    />,
+  )
+  await user.click(screen.getByRole("button", { name: "Load synthetic fixture" }))
+  const mapping = await screen.findByRole("group", { name: "Column mapping decisions" })
+  await user.selectOptions(within(mapping).getByLabelText("Role for sample_index"), "ignored")
+  await user.selectOptions(within(mapping).getByLabelText("Role for channel_a"), "potential")
+  await user.type(within(mapping).getByLabelText("Source unit for channel_a"), "V")
+  await user.type(within(mapping).getByLabelText("Target unit for channel_a"), "V")
+  await user.selectOptions(within(mapping).getByLabelText("Role for channel_b"), "current")
+  await user.type(within(mapping).getByLabelText("Source unit for channel_b"), "A")
+  await user.type(within(mapping).getByLabelText("Target unit for channel_b"), "A")
+  await user.click(screen.getByRole("button", { name: "Normalise explicit mapping" }))
+  await user.click(await screen.findByRole("button", { name: "Release initial Passport" }))
+  await screen.findByText("passport:initial")
+  return user
+}
+
 describe("single-user CV Passport workflow", () => {
   it("keeps backend idempotency keys bounded for large request intents", () => {
     expect(createIntentKey(`profile:${"x".repeat(2_000)}`).length).toBeLessThanOrEqual(255)
+  })
+
+  it("reports a version conflict without waiting for the experiment refresh", async () => {
+    const api = fakeApi()
+    vi.mocked(api.addAssertion).mockRejectedValueOnce(
+      new ApiRequestError(409, "experiment_version_conflict", "Refresh and retry."),
+    )
+    // A refresh that never settles must not hide the conflict or strand the pending state.
+    vi.mocked(api.getExperiment).mockImplementation(() => new Promise(() => {}))
+    const user = await reachInitialPassport(api)
+
+    await user.click(screen.getByRole("button", { name: "Add user-supplied RHE declaration" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("experiment_version_conflict")
+    expect(screen.getByRole("button", { name: "Add user-supplied RHE declaration" })).toBeEnabled()
   })
 
   it("uses only API results through source, Passport supersession, and Package release", async () => {
