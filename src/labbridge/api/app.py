@@ -278,6 +278,7 @@ def _replay(
 
 def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP adapters
     engine: Engine | None = None,
+    *,
     source_service: SourceArtifactService | None = None,
     cv_service: CVIngestionService | None = None,
     experiment_service: ExperimentService | None = None,
