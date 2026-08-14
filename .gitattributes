@@ -10,24 +10,20 @@ scripts/hooks/* text eol=lf
 # SHA256SUMS.txt checksums the published documents byte-for-byte against their LF content. Pin LF so
 # a Windows checkout cannot rewrite them to CRLF and make `sha256sum -c SHA256SUMS.txt` fail on a
 # file nobody edited.
-*.md text eol=lf
+# Two trailing spaces are a hard line break in Markdown, so `git diff --check` must not read them
+# as whitespace errors in the published documents.
+*.md text eol=lf whitespace=-trailing-space
 *.toml text eol=lf
 SHA256SUMS.txt text eol=lf
 
-# Released integrity artifacts and their source fixtures are exact bytes. Do not let checkout
-# line-ending conversion invalidate their recorded hashes.
-artifacts/source-capture/** -text
-artifacts/experiment-passport/** -text
-artifacts/fault-campaign/** -text
+# Released integrity artifacts and the fixture inputs they are reproduced from are exact bytes. Do
+# not let checkout line-ending conversion invalidate their recorded hashes. These cover whole trees
+# rather than one rule per directory: a manifest-covered member added under a new artifact or
+# fixture directory is protected when it lands, not when someone remembers to extend this list.
+artifacts/** -text
 artifacts/fault-campaign/raw-results.csv -text whitespace=-trailing-space
 artifacts/cv-passport-demo/** -text -eol
-artifacts/gamry-dta-cv/** -text
-artifacts/echemdb-cv-exchange/** -text
-artifacts/galvanostatic-electrolysis/** -text
-fixtures/source/synthetic-replay-cv-opaque.csv -text
-fixtures/source/synthetic-gamry-cv.dta -text
-fixtures/source/synthetic-galvanostatic-electrolysis.csv -text
-fixtures/source/synthetic-galvanostatic-electrolysis.provenance.json -text
+fixtures/** -text
 frontend/public/demo-fixtures/synthetic-cv-passport-demo.csv -text
 frontend/src/generated/api-v1.ts text eol=lf
 src/labbridge/evidence/schemas/** -text whitespace=-trailing-space

@@ -47,9 +47,9 @@
       "sha256": "4ac8787065058d1f63cfb6a968c4ccea0ac4c104b248dd4938e11ed61bd3cbc8"
     },
     {
-      "byte_size": 247,
+      "byte_size": 256,
       "name": "REPRODUCE.txt",
-      "sha256": "5419e336d24c003361f7be5e6db02e9582066a2b1ea0e6d11020abc0c6ab6bc3"
+      "sha256": "f7866ef48330a6a1517d8ec81fb63047a3b3fa6af3797100a9c1b952902ec6a6"
     },
     {
       "byte_size": 598,
@@ -82,7 +82,7 @@
       "sha256": "aa0d10c794f2630f2c1ad2a883452b6262ce2a5e77560e40b14d46cae6ba810a"
     }
   ],
-  "files_digest": "36d69a4cf252b8a2c01e9949a43e40592fc86d09c4edbaf49f7f4f6860eb4a04",
+  "files_digest": "1494f9ca439b01b96cd34fbcd6e798a51f0f4a2da55c510f0edcf812af4a03ff",
   "import_profile_id": "electrolysis-profile:90c3daa1e062f26c3ecec024935d6fdc",
   "observation_id": "electrolysis-observation:9f3108fa2b0e8cbc963e343c08e92f8e",
   "package_id": "experiment-package:6479dddfda8860fedee9058d164fffd9",

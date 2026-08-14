@@ -1,4 +1,10 @@
-"""Versioned production-like migration rehearsal for the Phase 7 release."""
+"""Versioned production-like migration rehearsal for a release database.
+
+The rehearsal upgrades from the previous tagged schema to the unique current Alembic head.
+It does not pin a historical parent revision: a merge, a later additive migration, or a split
+head must change the outcome. The event-stream contract revision must remain an ancestor of
+that unique head so a graph that drops contract version 2 cannot pass.
+"""
 
 from __future__ import annotations
 
@@ -10,19 +16,36 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, func, select
 
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import campaigns
 
 PREVIOUS_REVISION = "74e1b6a09d22"
-EXPECTED_HEAD = "a93b7c1e4d62"
+EVENT_STREAM_CONTRACT_REVISION = "a93b7c1e4d62"
 
 
 def _config(repo_root: Path) -> Config:
     config = Config(str(repo_root / "alembic.ini"))
     config.set_main_option("script_location", str(repo_root / "migrations"))
     return config
+
+
+def expected_upgrade_revision(repo_root: Path) -> str:
+    """Return the unique current Alembic head that a rehearsal must reach."""
+    script = ScriptDirectory.from_config(_config(repo_root))
+    heads = script.get_heads()
+    if len(heads) != 1:
+        raise RuntimeError(f"migration rehearsal requires a unique Alembic head; found {heads}")
+    head = heads[0]
+    ancestry = {revision.revision for revision in script.walk_revisions("base", head)}
+    if EVENT_STREAM_CONTRACT_REVISION not in ancestry:
+        raise RuntimeError(
+            "migration rehearsal is missing the event-stream contract revision "
+            f"{EVENT_STREAM_CONTRACT_REVISION}"
+        )
+    return head
 
 
 def _create_empty_database(name: str) -> None:
@@ -74,6 +97,7 @@ def rehearse_migration(*, repo_root: Path, database_name: str) -> dict[str, obje
             marker_count_before = int(
                 connection.execute(select(func.count()).select_from(campaigns)).scalar_one()
             )
+        expected = expected_upgrade_revision(repo_root)
         began_upgrade = time.monotonic()
         command.upgrade(config, "head")
         duration = time.monotonic() - began_upgrade
@@ -102,8 +126,11 @@ def rehearse_migration(*, repo_root: Path, database_name: str) -> dict[str, obje
             os.environ.pop("LABBRIDGE_DB_NAME", None)
         else:
             os.environ["LABBRIDGE_DB_NAME"] = previous_name
-    if revision != EXPECTED_HEAD or "2" not in constraint:
-        raise RuntimeError("migration rehearsal did not reach the replay-complete head")
+    if revision != expected or "2" not in constraint:
+        raise RuntimeError(
+            "migration rehearsal did not reach the unique Alembic head "
+            f"{expected}; database revision is {revision}"
+        )
     if marker_count_before != marker_count_after:
         raise RuntimeError("migration rehearsal did not preserve campaign row counts")
     if preserved_contract != 1:
@@ -124,4 +151,9 @@ def rehearse_migration(*, repo_root: Path, database_name: str) -> dict[str, obje
     }
 
 
-__all__ = ["rehearse_migration"]
+__all__ = [
+    "EVENT_STREAM_CONTRACT_REVISION",
+    "PREVIOUS_REVISION",
+    "expected_upgrade_revision",
+    "rehearse_migration",
+]

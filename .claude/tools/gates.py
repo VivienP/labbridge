@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -97,7 +98,7 @@ def _has_selected_test(root: Path, marker: str, keyword: str) -> bool:
     return False
 
 
-def _command_responds(argv: list[str]) -> bool:
+def _command_responds(argv: list[str], *, env: dict[str, str] | None = None) -> bool:
     """Whether a subcommand actually exists, probed via its own `--help`.
 
     A file existing is not the same as a command being implemented: `src/labbridge/cli.py` appears
@@ -109,12 +110,25 @@ def _command_responds(argv: list[str]) -> bool:
     try:
         return (
             subprocess.run(
-                [*argv, "--help"], capture_output=True, timeout=15, check=False
+                [*argv, "--help"], capture_output=True, timeout=15, check=False, env=env
             ).returncode
             == 0
         )
     except Exception:
         return False
+
+
+def _checkout_env(root: Path) -> dict[str, str]:
+    """Environment that resolves `labbridge` to this checkout rather than to an editable install.
+
+    An editable install can point at a different worktree, so a probe without this would report on
+    someone else's bytes.
+    """
+    environment = dict(os.environ)
+    existing = environment.get("PYTHONPATH")
+    source = str(root / "src")
+    environment["PYTHONPATH"] = f"{source}{os.pathsep}{existing}" if existing else source
+    return environment
 
 
 def _tool_gate(key: str, command: str, tool: str, present: bool, missing_reason: str) -> Gate:
@@ -134,7 +148,9 @@ def collect(root: Path) -> list[Gate]:
     compose = any(
         (root / f).exists() for f in ("docker-compose.yml", "docker-compose.yaml", "compose.yaml")
     )
-    artifacts_cmd = _command_responds(["labbridge", "validate-artifacts"])
+    artifacts_cmd = _command_responds(
+        [sys.executable, "-m", "labbridge.cli", "validate-artifacts"], env=_checkout_env(root)
+    )
     has_integration = _has_marked_test(root, "integration")
     has_replay = _has_selected_test(root, "integration", "test_replay_determinism")
     has_migration_test = _has_selected_test(root, "integration", "migration")
@@ -224,11 +240,11 @@ def collect(root: Path) -> list[Gate]:
         ),
         Gate(
             "artifacts",
-            "labbridge validate-artifacts",
+            "PYTHONPATH=src python -m labbridge.cli validate-artifacts",
             LIVE if artifacts_cmd else SCAFFOLDED,
-            "command responds to --help"
+            "command responds to --help; verifies the committed artifacts/ tree"
             if artifacts_cmd
-            else "`labbridge validate-artifacts` is not implemented yet (ROADMAP Slice 3)",
+            else "`validate-artifacts` is not implemented yet (ROADMAP Slice 3)",
         ),
         Gate(
             "compose",

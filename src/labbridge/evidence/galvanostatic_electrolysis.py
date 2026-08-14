@@ -35,7 +35,7 @@ REPRODUCTION_COMMAND: Final = (
     "python scripts/reproduce_galvanostatic_electrolysis.py "
     "--output build/galvanostatic-electrolysis\n"
     "labbridge package verify build/galvanostatic-electrolysis/experiment-package.zip --json\n"
-    "labbridge validate-artifacts build/galvanostatic-electrolysis\n"
+    "labbridge validate-artifacts --bundle build/galvanostatic-electrolysis\n"
 )
 LIMITATIONS: Final = """# Galvanostatic electrolysis package limitations
 

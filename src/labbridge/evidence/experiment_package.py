@@ -801,7 +801,15 @@ def _verify_phase_evidence_identity(  # noqa: PLR0912,PLR0915
     graph: dict[str, object],
     passport: ExperimentPassport,
 ) -> None:
-    if profile.get("technique") == "galvanostatic_electrolysis":
+    # The Passport is the single authority for technique. Branching on the profile instead let an
+    # archive declare `galvanostatic_electrolysis` in its Passport and `cyclic_voltammetry` in its
+    # profile, take the CV branch, and skip every electrolysis-specific semantic check while still
+    # verifying. Disagreement is now a verification failure rather than a silent choice.
+    if profile.get("technique") != passport.technique:
+        raise ExperimentPackageVerificationError(
+            "package_technique_mismatch", "import-profile and Passport techniques differ"
+        )
+    if passport.technique == "galvanostatic_electrolysis":
         _verify_electrolysis_evidence_identity(source, observation, profile, graph, passport)
         return
     try:

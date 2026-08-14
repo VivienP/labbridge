@@ -62,3 +62,40 @@ def test_rebuilding_source_capture_produces_identical_members(tmp_path: Path) ->
     first_members = {path.name: path.read_bytes() for path in first.iterdir()}
     second_members = {path.name: path.read_bytes() for path in second.iterdir()}
     assert first_members == second_members
+
+
+ROOT = Path(__file__).resolve().parents[2]
+COMMITTED = ROOT / "artifacts/source-capture"
+FIXTURE = ROOT / "fixtures/source/synthetic-replay-cv-opaque.csv"
+
+
+def test_committed_artifact_bytes_verify_against_their_committed_manifest() -> None:
+    """The bytes in the repository must satisfy the committed manifest.
+
+    The tests above build into `tmp_path`, so nothing here checked what a contributor actually
+    checks out. Reproducing this artifact needs PostgreSQL and MinIO, so the offline guarantee is
+    that the committed bytes are internally consistent and still carry the Phase 1 identity.
+    """
+    manifest = verify_manifest(COMMITTED)
+
+    assert manifest["artifact_kind"] == "source_capture"
+    assert manifest["data_origin"] == "synthetic"
+    for entry in manifest["files"]:
+        assert isinstance(entry, dict)
+        member = COMMITTED / str(entry["name"])
+        payload = member.read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == entry["sha256"], member.name
+        assert len(payload) == entry["byte_size"], member.name
+
+
+def test_committed_source_member_still_matches_the_fixture_and_its_recorded_identity() -> None:
+    committed_source = (COMMITTED / FIXTURE.name).read_bytes()
+    record = json.loads((COMMITTED / "source-artifact.json").read_text(encoding="utf-8"))
+    digest = hashlib.sha256(committed_source).hexdigest()
+
+    assert committed_source == FIXTURE.read_bytes()
+    assert digest == record["sha256"]
+    assert len(committed_source) == record["byte_size"]
+    assert record["source_artifact_id"] == source_artifact_id(
+        sha256=digest, byte_size=len(committed_source), media_type=record["media_type"]
+    )

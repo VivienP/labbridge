@@ -125,6 +125,77 @@ def test_validate_artifacts_verifies_a_closed_result_manifest(tmp_path: Path) ->
     assert "status: complete" in result.output
 
 
+def _write_closed_artifact(destination: Path, *, kind: str) -> None:
+    destination.mkdir(parents=True)
+    (destination / "result.json").write_text("{}", encoding="utf-8")
+    build_manifest(
+        destination,
+        metadata={
+            "artifact_kind": kind,
+            "schema_version": "1",
+            "producing_versions": {"labbridge": "test"},
+        },
+    )
+
+
+def test_bare_gate_verifies_the_committed_artifact_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_closed_artifact(Path("artifacts/released-evidence"), kind="released_evidence")
+
+    result = runner.invoke(cli.app, ["validate-artifacts"])
+
+    assert result.exit_code == 0, result.output
+    assert "released_evidence" in result.output
+    assert "1 bundle(s) verified" in result.output
+
+
+def test_bare_gate_fails_on_a_tampered_committed_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    artifact = Path("artifacts/released-evidence")
+    _write_closed_artifact(artifact, kind="released_evidence")
+    (artifact / "result.json").write_text('{"edited": true}', encoding="utf-8")
+
+    result = runner.invoke(cli.app, ["validate-artifacts"])
+
+    assert result.exit_code == 1, result.output
+    assert "artifact_verification_failed" in result.output
+
+
+def test_bare_gate_fails_when_there_is_nothing_to_verify(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty git-ignored bundle root must not be reported as a passing artifact gate.
+
+    `AI_CONTRACT.md` §10 names the bare command as the artifact gate, and §10 also forbids
+    reporting a gate that did not run as passing. Exiting zero here made the gate unable to fail.
+    """
+    monkeypatch.chdir(tmp_path)
+    Path("data/bundles").mkdir(parents=True)
+
+    result = runner.invoke(cli.app, ["validate-artifacts"])
+
+    assert result.exit_code == 1, result.output
+    assert "no_evidence_found" in result.output
+
+
+def test_explicit_bundle_root_still_narrows_the_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_closed_artifact(Path("artifacts/released-evidence"), kind="released_evidence")
+    _write_closed_artifact(Path("elsewhere/local-evidence"), kind="local_evidence")
+
+    result = runner.invoke(cli.app, ["validate-artifacts", "--bundle-root", "elsewhere"])
+
+    assert result.exit_code == 0, result.output
+    assert "local_evidence" in result.output
+    assert "released_evidence" not in result.output
+
+
 def test_structured_failure_details_escape_rich_markup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

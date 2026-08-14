@@ -102,6 +102,175 @@
         "title": "AssertionValue",
         "type": "object"
       },
+      "AuxiliaryAnalyticalResult-Input": {
+        "additionalProperties": false,
+        "description": "A declared analytical result linked to retained electrical and analytical sources.",
+        "properties": {
+          "analyte": {
+            "minLength": 1,
+            "title": "Analyte",
+            "type": "string"
+          },
+          "collection_point": {
+            "minLength": 1,
+            "title": "Collection Point",
+            "type": "string"
+          },
+          "electrical_source_artifact_id": {
+            "minLength": 1,
+            "title": "Electrical Source Artifact Id",
+            "type": "string"
+          },
+          "method_name": {
+            "minLength": 1,
+            "title": "Method Name",
+            "type": "string"
+          },
+          "method_version": {
+            "minLength": 1,
+            "title": "Method Version",
+            "type": "string"
+          },
+          "quantity_kind": {
+            "const": "concentration",
+            "title": "Quantity Kind",
+            "type": "string"
+          },
+          "result_id": {
+            "minLength": 1,
+            "title": "Result Id",
+            "type": "string"
+          },
+          "sample_id": {
+            "minLength": 1,
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_location": {
+            "minLength": 1,
+            "title": "Source Location",
+            "type": "string"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "result_id",
+          "electrical_source_artifact_id",
+          "source_artifact_id",
+          "method_name",
+          "method_version",
+          "source_location",
+          "sample_id",
+          "collection_point",
+          "analyte",
+          "quantity_kind",
+          "value",
+          "unit"
+        ],
+        "title": "AuxiliaryAnalyticalResult",
+        "type": "object"
+      },
+      "AuxiliaryAnalyticalResult-Output": {
+        "additionalProperties": false,
+        "description": "A declared analytical result linked to retained electrical and analytical sources.",
+        "properties": {
+          "analyte": {
+            "minLength": 1,
+            "title": "Analyte",
+            "type": "string"
+          },
+          "collection_point": {
+            "minLength": 1,
+            "title": "Collection Point",
+            "type": "string"
+          },
+          "electrical_source_artifact_id": {
+            "minLength": 1,
+            "title": "Electrical Source Artifact Id",
+            "type": "string"
+          },
+          "method_name": {
+            "minLength": 1,
+            "title": "Method Name",
+            "type": "string"
+          },
+          "method_version": {
+            "minLength": 1,
+            "title": "Method Version",
+            "type": "string"
+          },
+          "quantity_kind": {
+            "const": "concentration",
+            "title": "Quantity Kind",
+            "type": "string"
+          },
+          "result_id": {
+            "minLength": 1,
+            "title": "Result Id",
+            "type": "string"
+          },
+          "sample_id": {
+            "minLength": 1,
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_location": {
+            "minLength": 1,
+            "title": "Source Location",
+            "type": "string"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id",
+          "electrical_source_artifact_id",
+          "source_artifact_id",
+          "method_name",
+          "method_version",
+          "source_location",
+          "sample_id",
+          "collection_point",
+          "analyte",
+          "quantity_kind",
+          "value",
+          "unit"
+        ],
+        "title": "AuxiliaryAnalyticalResult",
+        "type": "object"
+      },
       "CVImportProfile-Input": {
         "additionalProperties": false,
         "description": "Versioned, complete and immutable instructions for parsing one CSV shape.",
@@ -845,6 +1014,457 @@
           "passport_id"
         ],
         "title": "CreatePackageRequest",
+        "type": "object"
+      },
+      "ElectrolysisColumnMapping": {
+        "additionalProperties": false,
+        "description": "One explicit electrolysis source-column role and unit conversion.",
+        "properties": {
+          "role": {
+            "enum": [
+              "time",
+              "current",
+              "current_density",
+              "potential",
+              "ignored"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "source_column": {
+            "minLength": 1,
+            "title": "Source Column",
+            "type": "string"
+          },
+          "source_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Unit"
+          },
+          "target_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Unit"
+          }
+        },
+        "required": [
+          "source_column",
+          "role"
+        ],
+        "title": "ElectrolysisColumnMapping",
+        "type": "object"
+      },
+      "ElectrolysisImportProfile-Input": {
+        "additionalProperties": false,
+        "description": "Complete instructions for one galvanostatic-electrolysis CSV shape.",
+        "properties": {
+          "auxiliary_results": {
+            "items": {
+              "$ref": "#/components/schemas/AuxiliaryAnalyticalResult-Input"
+            },
+            "title": "Auxiliary Results",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ElectrolysisColumnMapping"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "decimal_convention": {
+            "enum": [
+              "point",
+              "comma"
+            ],
+            "title": "Decimal Convention",
+            "type": "string"
+          },
+          "delimiter": {
+            "maxLength": 1,
+            "minLength": 1,
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "utf-8-sig"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "header_row": {
+            "minimum": 1.0,
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ElectrolysisMetadata-Input"
+          },
+          "missing_value_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Value Tokens",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "technique": {
+            "const": "galvanostatic_electrolysis",
+            "title": "Technique",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "technique",
+          "environment_id",
+          "encoding",
+          "delimiter",
+          "decimal_convention",
+          "header_row",
+          "missing_value_tokens",
+          "columns",
+          "metadata",
+          "auxiliary_results"
+        ],
+        "title": "ElectrolysisImportProfile",
+        "type": "object"
+      },
+      "ElectrolysisImportProfile-Output": {
+        "additionalProperties": false,
+        "description": "Complete instructions for one galvanostatic-electrolysis CSV shape.",
+        "properties": {
+          "auxiliary_results": {
+            "items": {
+              "$ref": "#/components/schemas/AuxiliaryAnalyticalResult-Output"
+            },
+            "title": "Auxiliary Results",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ElectrolysisColumnMapping"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "decimal_convention": {
+            "enum": [
+              "point",
+              "comma"
+            ],
+            "title": "Decimal Convention",
+            "type": "string"
+          },
+          "delimiter": {
+            "maxLength": 1,
+            "minLength": 1,
+            "title": "Delimiter",
+            "type": "string"
+          },
+          "encoding": {
+            "enum": [
+              "utf-8",
+              "utf-8-sig"
+            ],
+            "title": "Encoding",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "header_row": {
+            "minimum": 1.0,
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ElectrolysisMetadata-Output"
+          },
+          "missing_value_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Value Tokens",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "technique": {
+            "const": "galvanostatic_electrolysis",
+            "title": "Technique",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "technique",
+          "environment_id",
+          "encoding",
+          "delimiter",
+          "decimal_convention",
+          "header_row",
+          "missing_value_tokens",
+          "columns",
+          "metadata",
+          "auxiliary_results"
+        ],
+        "title": "ElectrolysisImportProfile",
+        "type": "object"
+      },
+      "ElectrolysisLineage": {
+        "additionalProperties": false,
+        "properties": {
+          "auxiliary_source_artifact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Auxiliary Source Artifact Ids",
+            "type": "array"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "source_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "transformation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Transformation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "environment_id",
+          "source_artifact_id",
+          "source_sha256",
+          "import_profile_id",
+          "auxiliary_source_artifact_ids",
+          "transformation_ids"
+        ],
+        "title": "ElectrolysisLineage",
+        "type": "object"
+      },
+      "ElectrolysisMetadata-Input": {
+        "additionalProperties": false,
+        "description": "Declared electrical context without product-quantification inference.",
+        "properties": {
+          "cell_geometry": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "chemical_analysis": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "current_basis": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "current_sign_convention": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "electrode_area": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "interruptions": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "potential_treatment": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "reference_scale": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          },
+          "sampling_interval": {
+            "$ref": "#/components/schemas/MetadataValue-Input"
+          }
+        },
+        "required": [
+          "current_sign_convention",
+          "current_basis",
+          "electrode_area",
+          "cell_geometry",
+          "reference_scale",
+          "potential_treatment",
+          "sampling_interval",
+          "interruptions",
+          "chemical_analysis"
+        ],
+        "title": "ElectrolysisMetadata",
+        "type": "object"
+      },
+      "ElectrolysisMetadata-Output": {
+        "additionalProperties": false,
+        "description": "Declared electrical context without product-quantification inference.",
+        "properties": {
+          "cell_geometry": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "chemical_analysis": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "current_basis": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "current_sign_convention": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "electrode_area": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "interruptions": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "potential_treatment": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "reference_scale": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          },
+          "sampling_interval": {
+            "$ref": "#/components/schemas/MetadataValue-Output"
+          }
+        },
+        "required": [
+          "current_sign_convention",
+          "current_basis",
+          "electrode_area",
+          "cell_geometry",
+          "reference_scale",
+          "potential_treatment",
+          "sampling_interval",
+          "interruptions",
+          "chemical_analysis"
+        ],
+        "title": "ElectrolysisMetadata",
+        "type": "object"
+      },
+      "ElectrolysisNormalisationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "source_artifact_id": {
+            "title": "Source Artifact Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_artifact_id",
+          "profile_id"
+        ],
+        "title": "ElectrolysisNormalisationRequest",
+        "type": "object"
+      },
+      "ElectrolysisNormalisationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/StructuralFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/TransformationGraph"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/NormalisedElectrolysisObservation"
+          }
+        },
+        "required": [
+          "observation",
+          "graph",
+          "findings"
+        ],
+        "title": "ElectrolysisNormalisationResult",
+        "type": "object"
+      },
+      "ElectrolysisNormalisationView": {
+        "properties": {
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ElectrolysisNormalisationResult"
+          }
+        },
+        "required": [
+          "result",
+          "replayed"
+        ],
+        "title": "ElectrolysisNormalisationView",
+        "type": "object"
+      },
+      "ElectrolysisProfileView": {
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/ElectrolysisImportProfile-Output"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "profile_id",
+          "profile",
+          "replayed"
+        ],
+        "title": "ElectrolysisProfileView",
         "type": "object"
       },
       "ExpectedVersionRequest": {
@@ -1776,6 +2396,122 @@
           "provenance"
         ],
         "title": "NormalisedCVObservation",
+        "type": "object"
+      },
+      "NormalisedElectrolysisObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "auxiliary_results": {
+            "items": {
+              "$ref": "#/components/schemas/AuxiliaryAnalyticalResult-Output"
+            },
+            "title": "Auxiliary Results",
+            "type": "array"
+          },
+          "data_origin": {
+            "enum": [
+              "observed",
+              "synthetic"
+            ],
+            "title": "Data Origin",
+            "type": "string"
+          },
+          "environment_id": {
+            "minLength": 1,
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "execution_mode": {
+            "enum": [
+              "replay",
+              "simulation",
+              "live"
+            ],
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "import_profile_id": {
+            "minLength": 1,
+            "title": "Import Profile Id",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ElectrolysisMetadata-Output"
+          },
+          "normalisation_version": {
+            "minLength": 1,
+            "title": "Normalisation Version",
+            "type": "string"
+          },
+          "observation_id": {
+            "minLength": 1,
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/ElectrolysisLineage"
+          },
+          "row_count": {
+            "minimum": 1.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/NormalisedSeries"
+            },
+            "minItems": 3,
+            "title": "Series",
+            "type": "array"
+          },
+          "source_artifact_id": {
+            "minLength": 1,
+            "title": "Source Artifact Id",
+            "type": "string"
+          },
+          "technique": {
+            "const": "galvanostatic_electrolysis",
+            "title": "Technique",
+            "type": "string"
+          },
+          "transformation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Transformation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observation_id",
+          "schema_version",
+          "technique",
+          "parser_version",
+          "normalisation_version",
+          "source_artifact_id",
+          "import_profile_id",
+          "data_origin",
+          "execution_mode",
+          "environment_id",
+          "row_count",
+          "series",
+          "metadata",
+          "auxiliary_results",
+          "transformation_ids",
+          "provenance"
+        ],
+        "title": "NormalisedElectrolysisObservation",
         "type": "object"
       },
       "NormalisedSeries": {
@@ -3459,6 +4195,196 @@
           }
         },
         "summary": "Inspect Source"
+      }
+    },
+    "/electrolysis/import-profiles": {
+      "post": {
+        "operationId": "create_profile_electrolysis_import_profiles_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ElectrolysisImportProfile-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectrolysisProfileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Profile"
+      }
+    },
+    "/electrolysis/import-profiles/{profile_id}": {
+      "get": {
+        "operationId": "read_profile_electrolysis_import_profiles__profile_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectrolysisProfileView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Profile"
+      }
+    },
+    "/electrolysis/normalisations": {
+      "post": {
+        "operationId": "normalise_electrolysis_normalisations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ElectrolysisNormalisationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectrolysisNormalisationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Normalise"
+      }
+    },
+    "/electrolysis/normalised-observations/{observation_id}": {
+      "get": {
+        "operationId": "read_normalisation_electrolysis_normalised_observations__observation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observation_id",
+            "required": true,
+            "schema": {
+              "title": "Observation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectrolysisNormalisationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Normalisation"
       }
     },
     "/experiment-packages/{package_id}": {

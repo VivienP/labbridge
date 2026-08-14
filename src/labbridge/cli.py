@@ -27,6 +27,10 @@ from sqlalchemy import create_engine
 
 from labbridge import __version__
 from labbridge.application.cv_ingestion import CVIngestionError, CVIngestionService
+from labbridge.application.electrolysis_ingestion import (
+    ElectrolysisIngestionError,
+    ElectrolysisIngestionService,
+)
 from labbridge.application.experiments import (
     ExperimentApplicationError,
     ExperimentService,
@@ -39,6 +43,7 @@ from labbridge.application.source_intake import (
 )
 from labbridge.demo import engine_from_settings, run_demo
 from labbridge.domain.cv import CSVFormat, CVImportProfile
+from labbridge.domain.electrolysis import ElectrolysisImportProfile
 from labbridge.domain.identity import DataOrigin, ExecutionMode
 from labbridge.domain.parser_diagnostics import SourceFormat
 from labbridge.environments.her_replay import HerReplayAdapter
@@ -55,6 +60,7 @@ from labbridge.evidence.experiment_package import (
 from labbridge.evidence.manifest import ArtifactVerificationError, verify_manifest
 from labbridge.infrastructure.cv_csv import CsvParseError
 from labbridge.infrastructure.cv_wiring import build_cv_service
+from labbridge.infrastructure.electrolysis_wiring import build_electrolysis_service
 from labbridge.infrastructure.experiment_wiring import build_experiment_service
 from labbridge.infrastructure.her_ingestion.errors import HerIngestionError
 from labbridge.infrastructure.her_ingestion.fetch import (
@@ -89,6 +95,10 @@ EXPECTED_DOI: Final = PINNED_DOI
 DEFAULT_FIXTURE_ROOT: Final = Path("data/her/fixture")
 #: Bundles are regenerable from the database, so they live beside the data and stay git-ignored.
 DEFAULT_BUNDLE_ROOT: Final = Path("data/bundles")
+#: Released evidence is committed here and is what the bare gate must protect. It is searched
+#: alongside the bundle root so the gate cannot pass by finding nothing in a git-ignored directory.
+DEFAULT_ARTIFACT_ROOT: Final = Path("artifacts")
+DEFAULT_VERIFICATION_ROOTS: Final = (DEFAULT_ARTIFACT_ROOT, DEFAULT_BUNDLE_ROOT)
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.splitlines()[0])
 #: `docs/SPEC.md` §11.2 fixes `labbridge demo her` and `labbridge evidence verify <bundle>` as
@@ -98,6 +108,10 @@ evidence_app = typer.Typer(no_args_is_help=True, help="Build and verify evidence
 source_app = typer.Typer(no_args_is_help=True, help="Retain and verify opaque source files.")
 cv_app = typer.Typer(
     no_args_is_help=True, help="Inspect and normalise explicitly mapped CV source files."
+)
+electrolysis_app = typer.Typer(
+    no_args_is_help=True,
+    help="Retain and normalise explicitly mapped galvanostatic electrolysis files.",
 )
 experiment_app = typer.Typer(
     no_args_is_help=True, help="Version experiments and release Experiment Passports."
@@ -109,6 +123,7 @@ app.add_typer(demo_app, name="demo")
 app.add_typer(evidence_app, name="evidence")
 app.add_typer(source_app, name="source")
 app.add_typer(cv_app, name="cv")
+app.add_typer(electrolysis_app, name="electrolysis")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(package_app, name="package")
 console = Console()
@@ -154,10 +169,22 @@ def _build_cv_service() -> CVIngestionService:
     return build_cv_service(_build_source_service())
 
 
+def _build_electrolysis_service() -> ElectrolysisIngestionService:
+    return build_electrolysis_service(_build_source_service())
+
+
 def _build_experiment_service() -> ExperimentService:
+    engine = create_engine(DatabaseSettings().dsn, future=True)
     source_service = _build_source_service()
-    cv_service = build_cv_service(source_service)
-    return build_experiment_service(source_service, cv_service)
+    cv_service = build_cv_service(source_service, engine)
+    # Both normalisation readers, so `experiment create` resolves an electrolysis observation
+    # instead of falling through to the CV reader and reporting it as not found.
+    return build_experiment_service(
+        source_service,
+        cv_service,
+        engine,
+        electrolysis_service=build_electrolysis_service(source_service, engine),
+    )
 
 
 def _experiment_failure(error: Exception) -> None:
@@ -171,6 +198,12 @@ def _cv_failure(error: Exception) -> None:
     parser_record_id = getattr(error, "parser_record_id", None)
     parser_identity = "" if parser_record_id is None else f" parser_record_id={parser_record_id}"
     console.print(f"[red]{code}[/red]: {error}{parser_identity}")
+    raise typer.Exit(code=1) from error
+
+
+def _electrolysis_failure(error: Exception) -> None:
+    code = getattr(error, "code", "electrolysis_ingestion_error")
+    console.print(f"[red]{escape(str(code))}[/red]: {escape(str(error))}")
     raise typer.Exit(code=1) from error
 
 
@@ -305,6 +338,59 @@ def cv_plot(
         typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
     else:
         console.print(plot.observation_id)
+
+
+@electrolysis_app.command("profile-create")
+def electrolysis_profile_create(
+    profile_file: Annotated[Path, typer.Argument(help="Versioned JSON import profile.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Validate and retain one immutable explicit electrolysis import profile."""
+    try:
+        profile = ElectrolysisImportProfile.model_validate_json(
+            profile_file.read_text(encoding="utf-8")
+        )
+        stored = _build_electrolysis_service().create_profile(profile)
+    except (OSError, ValueError, ElectrolysisIngestionError) as error:
+        _electrolysis_failure(error)
+    payload = {
+        "profile_id": stored.profile_id,
+        "profile": stored.profile.model_dump(mode="json"),
+        "replayed": stored.replayed,
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.profile_id)
+
+
+@electrolysis_app.command("normalise")
+def electrolysis_normalise(
+    source_artifact_id: Annotated[str, typer.Argument(help="Retained source identity.")],
+    profile_id: Annotated[
+        str, typer.Option("--profile-id", help="Explicit electrolysis import profile identity.")
+    ],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON.")
+    ] = False,
+) -> None:
+    """Normalise one retained electrolysis source through the shared application service."""
+    try:
+        stored = _build_electrolysis_service().normalise(source_artifact_id, profile_id)
+    except (
+        ElectrolysisIngestionError,
+        SourceIntakeError,
+        CsvParseError,
+        ValueError,
+    ) as error:
+        _electrolysis_failure(error)
+    payload = {"result": stored.result.model_dump(mode="json"), "replayed": stored.replayed}
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+    else:
+        console.print(stored.result.observation.observation_id)
 
 
 @experiment_app.command("create")
@@ -682,32 +768,44 @@ def validate_artifacts(
         typer.Option("--bundle", help="One bundle to verify. Omit to verify every bundle found."),
     ] = None,
     bundle_root: Annotated[
-        Path, typer.Option("--bundle-root", help="Where to look when --bundle is omitted.")
-    ] = DEFAULT_BUNDLE_ROOT,
+        Path | None,
+        typer.Option(
+            "--bundle-root",
+            help="Search one root instead of the committed artifacts and the local bundle root.",
+        ),
+    ] = None,
 ) -> None:
     """Recompute every checksum in an evidence bundle and report whether it still matches.
 
     Recomputed from the bytes on disk, never compared against a recorded size: a file edited in
     place keeps its size far more often than it keeps its hash.
 
-    With no `--bundle` it verifies every bundle under the root, so the bare command is the gate
-    `AI_CONTRACT.md` §10 names. An empty root is reported as such rather than passing silently —
-    "nothing to check" and "everything checks out" are different answers.
+    With no `--bundle` it verifies everything under the committed artifact root and the local
+    bundle root, so the bare command is the gate `AI_CONTRACT.md` §10 names. Searching only
+    `data/bundles` would let the gate pass on a clean checkout by finding nothing in a git-ignored
+    directory, leaving the released evidence it exists to protect unchecked. Finding nothing at all
+    exits non-zero: "nothing to check" and "everything checks out" are different answers.
 
     Registered under two names because the documents disagree: `AI_CONTRACT.md` §10 calls the gate
     `labbridge validate-artifacts`, while `docs/SPEC.md` §11.2 lists `labbridge evidence verify`.
-    Both resolve here rather than one being silently preferred; the contradiction is recorded in
-    `docs/AGENT_SYSTEM.md`.
+    Both resolve here rather than one being silently preferred.
     """
     object_store = _build_object_store() if mode is VerificationMode.FULL else None
     if bundle is not None:
         _verify_one(bundle, mode, object_store)
         return
 
-    candidates = sorted(p for p in bundle_root.glob("*") if (p / "manifest.json").exists())
+    roots = (bundle_root,) if bundle_root is not None else DEFAULT_VERIFICATION_ROOTS
+    candidates = sorted(
+        directory
+        for root in roots
+        for directory in root.glob("*")
+        if (directory / "manifest.json").exists()
+    )
     if not candidates:
-        console.print(f"[yellow]no bundle found under {bundle_root}[/yellow] — nothing verified")
-        return
+        searched = ", ".join(str(root) for root in roots)
+        console.print(f"[red]no_evidence_found[/red]: nothing to verify under {escape(searched)}")
+        raise typer.Exit(code=1)
     for candidate in candidates:
         _verify_one(candidate, mode, object_store)
     console.print(f"[green]{len(candidates)} bundle(s) verified[/green]")

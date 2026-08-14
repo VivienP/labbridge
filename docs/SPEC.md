@@ -901,6 +901,10 @@ Minimum endpoints:
   and retrieve its observation, graph, and structural findings;
 - `GET /cv/normalised-observations/{id}/plot-series` — retrieve backend-approved values, roles,
   units, identity, and provenance without display transformations;
+- `POST /electrolysis/import-profiles` and `GET /electrolysis/import-profiles/{id}` — create and
+  retrieve immutable explicit galvanostatic-electrolysis profiles;
+- `POST /electrolysis/normalisations` and `GET /electrolysis/normalised-observations/{id}` —
+  normalise a retained electrolysis source and retrieve its observation, graph, and findings;
 - `POST /experiments` and `GET /experiments/{id}` — create an experiment from one retained Phase 2
   observation and retrieve its latest immutable version;
 - `POST /experiments/{id}/assertions` — append one user-supplied supplement or correction;
@@ -950,6 +954,8 @@ labbridge cv inspect <source-artifact-id> --encoding <encoding> --delimiter <del
 labbridge cv profile-create <profile.json> [--json]
 labbridge cv normalise <source-artifact-id> --profile-id <profile-id> [--json]
 labbridge cv plot <normalised-observation-id> [--json]
+labbridge electrolysis profile-create <profile.json> [--json]
+labbridge electrolysis normalise <source-artifact-id> --profile-id <profile-id> [--json]
 labbridge experiment create <normalised-observation-id> --expected-version 0 \
   --idempotency-key <key> [--json]
 labbridge experiment assert <experiment-id> <assertion.json> --expected-version <version> \

@@ -232,6 +232,11 @@ labbridge reconcile
 
 Reclaims expired leases, closes abandoned attempts with durable outcomes, and classifies stored
 objects without deleting unexplained bytes. A worker runs the same reconciliation pass at startup.
+It does not cover source intake: `SourceArtifactService.reconcile` implements the same recovery for
+a source left `pending` after an intake interrupted between the object write and the metadata
+commit (`docs/FAILURE_MATRIX.md` F-048), but has no operator command, because its `commit`/
+`quarantine` writes are unguarded against a concurrent `intake()` of the same content identity and
+exposing it needs that race closed first.
 
 ## Evidence status
 
@@ -268,11 +273,11 @@ or operational experiment proves it), or `deferred`.
 | Append-only Experiment assertions and deterministic release validation | `implemented` |
 | JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
 | Single-user interactive CV Passport demo | `implemented` |
-| Process-boundary campaign fault injection | `demonstrated` |
+| Process-boundary campaign fault injection | `implemented` |
 | Biosensor simulator | `deferred` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `implemented` |
-| Deployment restore and the seeded synthetic-replay fault campaign | `demonstrated` |
+| Deployment restore and the seeded synthetic-replay fault campaign | `implemented` |
 | Model-based selection policy beyond a seeded random baseline | `deferred` |
 
 Opaque source capture is demonstrated under
@@ -287,10 +292,10 @@ single-user CV Passport candidate is under
 domain classification and unfamiliar-viewer acceptance records described above. The
 Phase 4 candidate under [`artifacts/gamry-dta-cv`](artifacts/gamry-dta-cv) follows the same boundary:
 its code, tests, and candidate Package justify `implemented`, not `demonstrated`, in this worktree.
-Phase 7 synthetic-replay reliability evidence is released under
-[`artifacts/fault-campaign`](artifacts/fault-campaign). It demonstrates the recorded fault campaign,
-backup/restore, replay comparison, and full stored-object verification; it does not demonstrate
-observed replay or live execution.
+Phase 7 synthetic-replay reliability evidence is committed under
+[`artifacts/fault-campaign`](artifacts/fault-campaign). Its recorded producer identity does not
+identify a committed producer tree, so the capability remains `implemented` until the artifact is
+regenerated from a clean checkout. It does not demonstrate observed replay or live execution.
 The galvanostatic electrolysis candidate under
 [`artifacts/galvanostatic-electrolysis`](artifacts/galvanostatic-electrolysis) packages explicit time,
 current, and potential series while reporting chemical analysis as unavailable. It makes no
@@ -304,10 +309,11 @@ conversion, selectivity, yield, product-assignment, or Faradaic-efficiency claim
 - `labbridge reconcile` and worker-startup reconciliation are on-demand rather than a continuous
   daemon. Retry scheduling is durable and bounded, but no continuously running scheduler is
   provided.
-- `labbridge validate-artifacts` defaults to `--mode bundle-only`, verifies bundle members locally,
-  and reports `partial`; it does not contact object storage. `--mode full` additionally checks every
-  referenced object for existence, byte size, and SHA-256 and reports `complete` only when those checks
-  pass.
+- `labbridge validate-artifacts` with no `--bundle` verifies every closed manifest under `artifacts/`
+  and under the local `data/bundles/` root, and exits non-zero when it finds nothing to verify. It
+  defaults to `--mode bundle-only`, verifies bundle members locally, and reports `partial`; it does
+  not contact object storage. `--mode full` additionally checks every referenced object for existence,
+  byte size, and SHA-256 and reports `complete` only when those checks pass.
 - Crash recovery is tested across real process boundaries after lease acquisition, after adapter
   return, during object upload, after upload before the outcome transaction, after commit before
   acknowledgement, and during evidence export. Campaign cancellation with a leased job is also

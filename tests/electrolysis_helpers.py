@@ -4,6 +4,10 @@ import hashlib
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from labbridge.application.electrolysis_ingestion import (
+    ElectrolysisIdempotencyConflictError,
+    ElectrolysisRecordRepository,
+)
 from labbridge.application.source_intake import RetrievedSource
 from labbridge.domain.electrolysis import (
     AuxiliaryAnalyticalResult,
@@ -12,7 +16,9 @@ from labbridge.domain.electrolysis import (
     ElectrolysisMetadata,
     MetadataValue,
     auxiliary_result_id,
+    electrolysis_import_profile_id,
 )
+from labbridge.domain.electrolysis_observations import ElectrolysisNormalisationResult
 from labbridge.domain.source_artifacts import SourceArtifact, source_artifact_id
 
 ELECTROLYSIS_PAYLOAD = (
@@ -135,3 +141,48 @@ def electrolysis_profile_with_auxiliary(
     ).model_dump(mode="python")
     profile["auxiliary_results"] = (result,)
     return ElectrolysisImportProfile.model_validate(profile)
+
+
+class MemoryElectrolysisRecords(ElectrolysisRecordRepository):
+    def __init__(self) -> None:
+        self.profiles: dict[str, ElectrolysisImportProfile] = {}
+        self.results: dict[str, ElectrolysisNormalisationResult] = {}
+        self.idempotency: dict[tuple[str, str], str] = {}
+
+    def _reserve(self, scope: str, key: str | None, identity: str) -> bool:
+        if key is None:
+            return False
+        existing = self.idempotency.get((scope, key))
+        if existing is not None and existing != identity:
+            raise ElectrolysisIdempotencyConflictError(key)
+        self.idempotency[(scope, key)] = identity
+        return existing is not None
+
+    def put_profile(
+        self, item: ElectrolysisImportProfile, *, idempotency_key: str | None = None
+    ) -> tuple[str, bool]:
+        identity = electrolysis_import_profile_id(item)
+        replayed = self._reserve("profile", idempotency_key, identity) or identity in self.profiles
+        self.profiles.setdefault(identity, item)
+        return identity, replayed
+
+    def get_profile(self, profile_id: str) -> ElectrolysisImportProfile | None:
+        return self.profiles.get(profile_id)
+
+    def put_normalisation(
+        self, result: ElectrolysisNormalisationResult, *, idempotency_key: str | None = None
+    ) -> bool:
+        identity = result.observation.observation_id
+        replayed = self._reserve("normalise", idempotency_key, identity) or identity in self.results
+        self.results.setdefault(identity, result)
+        return replayed
+
+    def get_normalisation(self, observation_id: str) -> ElectrolysisNormalisationResult | None:
+        return self.results.get(observation_id)
+
+
+class FixedElectrolysisSourceReader:
+    def retrieve(self, source_artifact_id: str) -> RetrievedSource:
+        retained = electrolysis_source()
+        assert source_artifact_id == retained.artifact.source_artifact_id
+        return retained

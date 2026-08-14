@@ -25,6 +25,19 @@ Inspect the current worktree, `HEAD`, tracked and untracked changes, and commits
 base against `main`: prefer the merge base with `origin/main` when available, otherwise use local
 `main`. Record the exact base.
 
+Fetch `origin` before treating generated contracts or release evidence as final:
+
+```bash
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/main
+git merge-base HEAD origin/main
+```
+
+The task branch contains the current `origin/main` only when the merge-base equals `origin/main`.
+If it does not, STOP. Do not merge or rebase as part of this check. Require an explicit
+synchronization decision before regenerating OpenAPI, generated TypeScript, or release evidence.
+
 Review the union of:
 
 - committed changes from the base through `HEAD`;

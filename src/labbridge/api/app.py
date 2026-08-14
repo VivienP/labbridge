@@ -36,6 +36,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from labbridge.application.campaigns import CampaignControlResult, CampaignControlService
 from labbridge.application.cv_ingestion import CVIngestionService
+from labbridge.application.electrolysis_ingestion import ElectrolysisIngestionService
 from labbridge.application.experiments import ExperimentService
 from labbridge.application.source_intake import SourceArtifactService
 from labbridge.domain.campaigns import CampaignDeclaration
@@ -50,6 +51,7 @@ from labbridge.domain.idempotency import (
 )
 from labbridge.domain.identity import ADMISSIBLE_PAIRS, DataOrigin, ExecutionMode
 from labbridge.infrastructure.cv_wiring import build_cv_service
+from labbridge.infrastructure.electrolysis_wiring import build_electrolysis_service
 from labbridge.infrastructure.experiment_wiring import build_experiment_service
 from labbridge.infrastructure.persistence.config import DatabaseSettings
 from labbridge.infrastructure.persistence.tables import (
@@ -68,6 +70,7 @@ from labbridge.runtime.events import append_event
 from labbridge.runtime.jobs import enqueue
 
 from .cv import register_cv_routes
+from .electrolysis import register_electrolysis_routes
 from .experiments import register_experiment_routes
 from .frontend import register_frontend
 from .source_artifacts import register_source_routes
@@ -175,6 +178,22 @@ def _cv_service_provider(
     return provide
 
 
+def _electrolysis_service_provider(
+    engine_provider: Callable[[], Engine],
+    source_provider: Callable[[], SourceArtifactService],
+    configured: ElectrolysisIngestionService | None,
+) -> Callable[[], ElectrolysisIngestionService]:
+    bound = configured
+
+    def provide() -> ElectrolysisIngestionService:
+        nonlocal bound
+        if bound is None:
+            bound = build_electrolysis_service(source_provider(), engine_provider())
+        return bound
+
+    return provide
+
+
 def _experiment_service_provider(
     engine_provider: Callable[[], Engine],
     source_provider: Callable[[], SourceArtifactService],
@@ -186,7 +205,16 @@ def _experiment_service_provider(
     def provide() -> ExperimentService:
         nonlocal bound
         if bound is None:
-            bound = build_experiment_service(source_provider(), cv_provider(), engine_provider())
+            engine = engine_provider()
+            source_service = source_provider()
+            # Both normalisation readers, so POST /experiments resolves an electrolysis
+            # observation instead of falling through to the CV reader and reporting it not found.
+            bound = build_experiment_service(
+                source_service,
+                cv_provider(),
+                engine,
+                electrolysis_service=build_electrolysis_service(source_service, engine),
+            )
         return bound
 
     return provide
@@ -254,6 +282,7 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
     cv_service: CVIngestionService | None = None,
     experiment_service: ExperimentService | None = None,
     frontend_dir: Path | None = None,
+    electrolysis_service: ElectrolysisIngestionService | None = None,
 ) -> FastAPI:
     """Build the application. The engine is injectable so tests bind their own.
 
@@ -277,6 +306,10 @@ def create_app(  # noqa: PLR0915 - one explicit registration point for all HTTP 
 
     cv_provider = _cv_service_provider(_engine, source_provider, cv_service)
     register_cv_routes(app, cv_provider)
+    electrolysis_provider = _electrolysis_service_provider(
+        _engine, source_provider, electrolysis_service
+    )
+    register_electrolysis_routes(app, electrolysis_provider)
     register_experiment_routes(
         app,
         _experiment_service_provider(

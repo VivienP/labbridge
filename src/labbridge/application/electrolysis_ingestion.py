@@ -255,6 +255,9 @@ class ElectrolysisObservationIntegrityError(ElectrolysisIngestionError):
 class ElectrolysisIdempotencyConflictError(ElectrolysisIngestionError):
     code = "electrolysis_idempotency_key_reused"
 
+    def __init__(self, idempotency_key: str) -> None:
+        super().__init__(f"idempotency key `{idempotency_key}` was reused for a different request")
+
 
 class SourceReader(Protocol):
     def retrieve(self, source_artifact_id: str) -> RetrievedSource: ...

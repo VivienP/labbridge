@@ -82,3 +82,28 @@ def test_openapi_export_is_deterministic_and_current() -> None:
     render_openapi = run_path(str(EXPORTER))["render_openapi"]
 
     assert render_openapi() == CONTRACT.read_bytes()
+
+
+def test_contract_exposes_campaign_control_and_electrolysis_ingestion() -> None:
+    paths = _contract()["paths"]  # type: ignore[index]
+
+    assert "/campaigns/{campaign_id}/pause" in paths
+    assert "/campaigns/{campaign_id}/resume" in paths
+    assert "/campaigns/{campaign_id}/cancel" in paths
+    assert "/electrolysis/import-profiles" in paths
+    assert "/electrolysis/import-profiles/{profile_id}" in paths
+    assert "/electrolysis/normalisations" in paths
+    assert "/electrolysis/normalised-observations/{observation_id}" in paths
+
+
+def test_generated_typescript_includes_integrated_http_routes() -> None:
+    generated = (ROOT / "frontend" / "src" / "generated" / "api-v1.ts").read_text(encoding="utf-8")
+
+    for path in (
+        "/campaigns/{campaign_id}/pause",
+        "/campaigns/{campaign_id}/resume",
+        "/campaigns/{campaign_id}/cancel",
+        "/electrolysis/import-profiles",
+        "/electrolysis/normalisations",
+    ):
+        assert path in generated, path
