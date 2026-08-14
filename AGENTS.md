@@ -9,7 +9,8 @@ invariants, architectural boundaries, proof requirements, and document precedenc
 relevant sections of:
 
 - [`docs/SPEC.md`](docs/SPEC.md) for required behaviour;
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) for the active delivery slice;
+- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the current status of every capability;
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) for open gaps and deferred tracks;
 - [`docs/DATA_STRATEGY.md`](docs/DATA_STRATEGY.md) for source, metadata, and lineage rules;
 - [`docs/FAILURE_MATRIX.md`](docs/FAILURE_MATRIX.md) for required failure semantics;
 - [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECISIONS.md) for accepted decisions;
@@ -21,7 +22,7 @@ Report contradictions instead of choosing the most convenient interpretation.
 ## Working rules
 
 - Inspect the existing implementation, migrations, tests, fixtures, and source data before editing.
-- Keep each change to the smallest coherent unit that satisfies a current roadmap exit criterion.
+- Keep each change to the smallest coherent unit that satisfies a falsifiable acceptance criterion.
 - Add or update tests at the layer required by the claim; do not weaken an invariant to make a test
   pass.
 - Never infer source columns, units, electrochemical conventions, or dataset semantics from memory.

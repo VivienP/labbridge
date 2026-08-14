@@ -15,8 +15,8 @@ keywords = [
     "electrochemistry",
     "autonomous-lab",
     "provenance",
-    "fault-tolerance",
-    "multi-fidelity",
+    "data-integrity",
+    "fault-aware",
     "materials-discovery",
 ]
 

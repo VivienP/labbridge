@@ -1,7 +1,7 @@
 # LabBridge — architecture decisions
 
 **Status:** accepted baseline decisions for V1  
-**Purpose:** preserve the reasoning behind choices that materially affect correctness, scope, and portfolio value.
+**Purpose:** preserve the reasoning behind choices that materially affect correctness and scope.
 
 Each future change to an accepted decision MUST add a superseding decision rather than deleting history.
 

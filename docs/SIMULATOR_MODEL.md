@@ -1,6 +1,6 @@
 # LabBridge — enzymatic-biosensor simulator model
 
-**Status:** planned; scientific assumptions require literature review before implementation  
+**Status:** `deferred`; scientific assumptions require literature review before implementation  
 **Model class:** mechanistically informed phenomenological simulator  
 **Primary purpose:** deterministic scientific-signal generation and controlled fault injection for runtime testing
 

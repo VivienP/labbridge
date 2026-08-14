@@ -1,16 +1,24 @@
-# Single-user CV Passport Demo Design
+# Single-user CV Passport demo — design
+
+> **Design record for a shipped capability.** This document describes how the demo is built and why,
+> and it still matches the implementation. It is not a status page: the demo's current evidence
+> status and its outstanding acceptance requirements are in
+> [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md).
 
 ## Authority and status
 
-`docs/ROADMAP.md` section "single-user CV Passport demo" defines the scope, technology,
-acceptance criteria, evidence requirements, and exclusions. `AI_CONTRACT.md`, `docs/SPEC.md`,
-`docs/DATA_STRATEGY.md`, `docs/FAILURE_MATRIX.md`, and accepted architecture decisions continue to
-govern scientific and durability semantics.
+The scope, technology, acceptance criteria, evidence requirements, and exclusions this design
+implements were defined in the delivery phase recorded in
+[`../archive/2026-implementation-roadmap.md`](../archive/2026-implementation-roadmap.md).
+`AI_CONTRACT.md`, `docs/SPEC.md`, `docs/DATA_STRATEGY.md`, `docs/FAILURE_MATRIX.md`, and accepted
+architecture decisions continue to govern scientific and durability semantics.
 
-The bounded adapter is `implemented` after its relevant offline tests and gates pass. It remains
-not `demonstrated` until the complete inspectable artifact is committed, its manifest verifies, the
-missing-reference-scale severity has received the required human electrochemistry domain review, and
-the recorded unfamiliar-viewer acceptance run satisfies the 60-90 second comprehension criterion.
+The bounded adapter is `implemented`. Its inspectable artifact is committed under
+[`../../artifacts/cv-passport-demo`](../../artifacts/cv-passport-demo) and its manifest verifies.
+What still holds it below `demonstrated` is human evidence that no test can produce: a recorded
+electrochemistry domain review of the missing-reference-scale severity, and a recorded
+unfamiliar-viewer acceptance run meeting the 60-90 second comprehension criterion.
+[`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) owns the current value.
 
 ## Selected approach
 
@@ -149,7 +157,7 @@ workflow.
 
 ## Verification
 
-The implementation follows test-first slices:
+The implementation is verified test-first at these layers:
 
 - reducer and component tests for allowed transitions, provenance rendering, synthetic labels, pending
   controls, and structured errors;

@@ -1,8 +1,11 @@
 # LabBridge — technical specification
 
-**Status:** planned  
+**Status:** normative technical specification  
 **Scope:** V1 scientific data platform and fault-aware campaign runtime  
 **Source of truth for:** what the system must build and prove
+
+This document states required behaviour. It is not a status page: per-capability status and the
+evidence behind each claim are in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 LabBridge turns replayed or simulated electrochemical runs into validated, provenance-tracked scientific artifacts while executing campaigns through a durable, inspectable, and recoverable runtime. The V1 emphasis is not novel machine learning. It is the operational layer between an experimental request, a failure-prone execution, and evidence that a scientist can inspect and reproduce.
 

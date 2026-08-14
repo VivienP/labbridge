@@ -39,8 +39,8 @@ Re-run it. Read the output. Count the failures.
 Restate the claim precisely, and classify it:
 
 - **a change is complete** — the per-change definition of done, `AI_CONTRACT.md` §10;
-- **a slice is complete** — every exit criterion of that slice in `docs/ROADMAP.md`, with no stop
-  condition tripped;
+- **a capability's status is justified** — the evidence `docs/PROJECT_STATUS.md` names for it exists
+  and verifies;
 - **a capability is `implemented`** — code exists and its relevant local automated tests pass;
 - **a capability is `demonstrated`** — a reproducible artifact, manifest, or operational experiment
   proves it;

@@ -216,17 +216,17 @@ def collect(root: Path) -> list[Gate]:
             "pytest-integration",
             "pytest -q -m integration",
             LIVE if has_integration and _has("pytest") else SCAFFOLDED,
-            "requires PostgreSQL and MinIO running; ROADMAP Slice 1 brings up the stack"
+            "requires `docker compose --profile infrastructure up -d`"
             if has_integration
-            else "no test carries @pytest.mark.integration yet (ROADMAP Slice 1)",
+            else "no test carries @pytest.mark.integration yet",
         ),
         Gate(
             "pytest-data",
             "pytest -q -m data",
             LIVE if has_data and _has("pytest") else SCAFFOLDED,
-            "requires the fetched HER archive on disk (ROADMAP Gate 0)"
+            "requires the fetched HER archive on disk (`labbridge fetch-her`)"
             if has_data
-            else "no test carries @pytest.mark.data yet (ROADMAP Gate 0)",
+            else "no test carries @pytest.mark.data yet",
         ),
         Gate(
             "migrations",
@@ -234,9 +234,9 @@ def collect(root: Path) -> list[Gate]:
             LIVE if migrations and has_migration_test else SCAFFOLDED,
             "migration directory and matching integration test present"
             if migrations and has_migration_test
-            else "no alembic/ or migrations/ directory yet (ROADMAP Slice 1)"
+            else "no alembic/ or migrations/ directory yet"
             if not migrations
-            else "no integration test matches -k migration (ROADMAP Slice 1)",
+            else "no integration test matches -k migration",
         ),
         Gate(
             "artifacts",
@@ -244,15 +244,13 @@ def collect(root: Path) -> list[Gate]:
             LIVE if artifacts_cmd else SCAFFOLDED,
             "command responds to --help; verifies the committed artifacts/ tree"
             if artifacts_cmd
-            else "`validate-artifacts` is not implemented yet (ROADMAP Slice 3)",
+            else "`validate-artifacts` is not implemented yet",
         ),
         Gate(
             "compose",
-            "docker compose up --build",
+            "docker compose --profile demo up --build",
             LIVE if compose and _has("docker") else SCAFFOLDED,
-            "compose file present"
-            if compose and _has("docker")
-            else "no compose file yet (ROADMAP Slice 1)",
+            "compose file present" if compose and _has("docker") else "no compose file yet",
         ),
         # --- release-level gates ------------------------------------------------------------------
         Gate(
@@ -263,7 +261,7 @@ def collect(root: Path) -> list[Gate]:
             LIVE if has_replay and _has("pytest") else SCAFFOLDED,
             "proves PO-01"
             if has_replay
-            else "no integration test named test_replay_determinism* yet (ROADMAP Slice 2)",
+            else "no integration test named test_replay_determinism* yet",
         ),
         Gate(
             "fault-campaign",
@@ -271,7 +269,7 @@ def collect(root: Path) -> list[Gate]:
             LIVE if has_fault_campaign and _has("pytest") else SCAFFOLDED,
             "process-boundary checkpoint proof; release command runs at least 100 seeded campaigns"
             if has_fault_campaign
-            else "no slow test named fault_campaign yet (ROADMAP Phase 7)",
+            else "no slow test named fault_campaign yet",
         ),
         Gate(
             "backup-restore",

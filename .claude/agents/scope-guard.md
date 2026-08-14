@@ -42,7 +42,7 @@ Read the current file contents, not remembered status:
 1. `AI_CONTRACT.md` — invariants (§3), approved stack (§4), boundaries (§5), forbidden patterns (§11);
 2. `docs/SPEC.md` — V1 boundaries (§2), proof obligations (§15), module map (§16);
 3. `docs/ARCHITECTURE_DECISIONS.md` — accepted decisions and their consequences;
-4. `docs/ROADMAP.md` — gate and slice ordering, exit criteria, stop conditions, release blockers;
+4. `docs/PROJECT_STATUS.md` and `docs/ROADMAP.md` — current capability status, open gaps, deferred tracks;
 5. `docs/DATA_STRATEGY.md` and `docs/SIMULATOR_MODEL.md` — scientific and licence boundaries;
 6. `docs/FAILURE_MATRIX.md` — which failure semantics a slice must already satisfy.
 
@@ -56,8 +56,8 @@ a comment claiming a gate passed, or a branch name.
 Roadmap position is evidence-based, not asserted. Establish it from the repository:
 
 - which of Gate 0 and Slices 1–7 have their **deliverables** present on disk;
-- whether the exit criteria of the preceding slice are met by inspectable evidence, not by intent;
-- whether `docs/ROADMAP.md` stop conditions for the preceding slice are cleared.
+- whether the status a task assumes is met by inspectable evidence, not by intent;
+- whether the task would silently start a track `docs/ROADMAP.md` records as deferred.
 
 If you cannot establish the active slice from the repository, say so and treat timing as unresolved
 rather than assuming the slice the request implies.

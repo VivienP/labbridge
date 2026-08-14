@@ -9,8 +9,8 @@ Plan the following task against the LabBridge roadmap. Do not write implementati
 
 ## 1. Establish the active roadmap slice from evidence
 
-Read `docs/ROADMAP.md`. Determine the active slice from what exists on disk — deliverables present, exit
-criteria met by inspectable evidence, stop conditions cleared — not from what the task assumes. If you
+Read `docs/PROJECT_STATUS.md` and `docs/ROADMAP.md`. Determine the current position from what exists on
+disk — deliverables present, evidence inspectable — not from what the task assumes. If you
 cannot establish it, say so and treat timing as unresolved.
 
 ## 2. Scope
