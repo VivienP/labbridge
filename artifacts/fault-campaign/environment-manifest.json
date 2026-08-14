@@ -1,7 +1,7 @@
 {
-  "compose_images": "[{\"ID\":\"sha256:826a2a18d8fb2408f04ee0ce683a4ec41e860abe0dd8c4ec2ac2cd77a3575f3e\",\"ContainerName\":\"labbridge-app-1\",\"Repository\":\"labbridge-app\",\"Tag\":\"latest\",\"Size\":742683979},{\"ID\":\"sha256:69b2ec208575b69597784255eec6fa6a2985ee9e1a47f4411a51f7f5fdd193a9\",\"ContainerName\":\"labbridge-minio-1\",\"Repository\":\"minio/minio\",\"Tag\":\"latest\",\"Size\":175494058},{\"ID\":\"sha256:93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74\",\"ContainerName\":\"labbridge-postgres-1\",\"Repository\":\"postgres\",\"Tag\":\"17-alpine\",\"Size\":297072501}]",
+  "compose_images": "[{\"ID\":\"sha256:39e0ae9551fe0b4882a918ff8f7f475fd1730f76e3b7a3e0f399e915c32a4f11\",\"ContainerName\":\"labbridge-cv-passport-demo-app-1\",\"Repository\":\"labbridge-cv-passport-demo-app\",\"Tag\":\"latest\",\"Size\":758720726},{\"ID\":\"sha256:69b2ec208575b69597784255eec6fa6a2985ee9e1a47f4411a51f7f5fdd193a9\",\"ContainerName\":\"labbridge-cv-passport-demo-demo-minio-1\",\"Repository\":\"minio/minio\",\"Tag\":\"latest\",\"Size\":175494058},{\"ID\":\"sha256:93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74\",\"ContainerName\":\"labbridge-cv-passport-demo-demo-postgres-1\",\"Repository\":\"postgres\",\"Tag\":\"17-alpine\",\"Size\":297072501},{\"ID\":\"sha256:69b2ec208575b69597784255eec6fa6a2985ee9e1a47f4411a51f7f5fdd193a9\",\"ContainerName\":\"labbridge-cv-passport-demo-minio-1\",\"Repository\":\"minio/minio\",\"Tag\":\"latest\",\"Size\":175494058},{\"ID\":\"sha256:93aa428db0aeeb71d24dcad1491bef6e1396a4255697e4bfc4c725bfeb981b74\",\"ContainerName\":\"labbridge-cv-passport-demo-postgres-1\",\"Repository\":\"postgres\",\"Tag\":\"17-alpine\",\"Size\":297072501}]",
   "data_origin": "synthetic",
-  "database_name": "labbridge_phase7_fault_release2",
+  "database_name": "labbridge_phase7_fault_release3",
   "dependency_versions": {
     "alembic": "1.18.5",
     "boto3": "1.43.59",
@@ -13,13 +13,16 @@
   "execution_mode": "replay",
   "fixture_manifest_sha256": "84a7fa5c3f48ac4c625e20de29a9df9cf6b5d82c6106caeac8a648d552ca3495",
   "future_live_execution": "not_run_out_of_scope",
-  "git_head": "14921d701e512bb70816e55c844293f90e6bb8d0",
-  "object_store_bucket": "labbridge-phase7-fault-release2",
+  "git_head": "376dc2209cfff80f6d7af930e99fb1f5ab792e70",
+  "merge_base_with_origin_main": "2f090e71a780dc35d34ee04a33557f093559fad6",
+  "object_store_bucket": "labbridge-phase7-fault-release3",
   "operating_system": "Windows-11-10.0.26200-SP0",
-  "origin_main": "17b4d2060c8a6d2431769a1d55ce76d7977f88f8",
+  "origin_main": "2f090e71a780dc35d34ee04a33557f093559fad6",
+  "origin_main_contained": true,
   "python": "3.12.0 (tags/v3.12.0:0fb18b0, Oct  2 2023, 13:03:39) [MSC v.1935 64 bit (AMD64)]",
   "python_executable": "C:\\Users\\Lenovo L14\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-  "recorded_at": "2026-08-13T15:33:54.733993+00:00",
+  "recorded_at": "2026-08-14T10:24:41.454929+00:00",
   "secrets_recorded": false,
-  "source_tree_sha256": "29787fbebd7468df182d5133f9b14efd184944467fb82791d60bec70c98aba1b"
+  "source_tree_sha256": "133101fa7fbfb51c5845576a68f9ce0f8057534b216fdb12b2fbc7e7f821cfff",
+  "working_tree": "clean"
 }

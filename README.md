@@ -273,11 +273,11 @@ or operational experiment proves it), or `deferred`.
 | Append-only Experiment assertions and deterministic release validation | `implemented` |
 | JSON/HTML Experiment Passport and independently verified Experiment Package | `implemented` |
 | Single-user interactive CV Passport demo | `implemented` |
-| Process-boundary campaign fault injection | `implemented` |
+| Process-boundary campaign fault injection | `demonstrated` |
 | Biosensor simulator | `deferred` |
 | Campaign submission API with idempotency keys | `implemented` |
 | Campaign control endpoints, observability, and operator runbook | `implemented` |
-| Deployment restore and the seeded synthetic-replay fault campaign | `implemented` |
+| Deployment restore and the seeded synthetic-replay fault campaign | `demonstrated` |
 | Model-based selection policy beyond a seeded random baseline | `deferred` |
 
 Opaque source capture is demonstrated under
@@ -293,9 +293,8 @@ domain classification and unfamiliar-viewer acceptance records described above. 
 Phase 4 candidate under [`artifacts/gamry-dta-cv`](artifacts/gamry-dta-cv) follows the same boundary:
 its code, tests, and candidate Package justify `implemented`, not `demonstrated`, in this worktree.
 Phase 7 synthetic-replay reliability evidence is committed under
-[`artifacts/fault-campaign`](artifacts/fault-campaign). Its recorded producer identity does not
-identify a committed producer tree, so the capability remains `implemented` until the artifact is
-regenerated from a clean checkout. It does not demonstrate observed replay or live execution.
+[`artifacts/fault-campaign`](artifacts/fault-campaign). The recorded producer is a clean committed
+tree that contains `origin/main`. It does not demonstrate observed replay or live execution.
 The galvanostatic electrolysis candidate under
 [`artifacts/galvanostatic-electrolysis`](artifacts/galvanostatic-electrolysis) packages explicit time,
 current, and potential series while reporting chemical analysis as unavailable. It makes no

@@ -586,10 +586,8 @@ for techniques not demonstrated in earlier phases.
 
 ## Phase 7 — campaign reliability demonstration
 
-**Status:** `implemented`. The committed artifact under
-[`../artifacts/fault-campaign`](../artifacts/fault-campaign) is internally closed, but its recorded
-producer identity does not identify a committed producer tree containing the code that generated it.
-Promotion to `demonstrated` requires regenerating the artifact from a clean committed producer.
+**Status:** `demonstrated` for synthetic replay across the six declared process-termination
+boundaries. Observed HER replay and future live execution were not run.
 
 ### Objective
 
@@ -631,9 +629,14 @@ evidence model.
 The released fault-campaign report, raw result table, environment manifest, logs needed for audit,
 and verified campaign-derived Experiment Package.
 
-The committed candidate is under [`artifacts/fault-campaign`](../artifacts/fault-campaign). It cannot
-remain `demonstrated` until it is regenerated from a clean committed producer tree. Observed replay
-and future live execution were not run.
+The released evidence is under [`artifacts/fault-campaign`](../artifacts/fault-campaign). Its 100
+seeded campaigns cover all six declared process-termination boundaries. The recorded run reports
+zero lost accepted observations, unintended duplicate acceptances, hard-budget overspends,
+projection mismatches, or Package-verification failures; it also records 51 `lease_lost` failures
+and 100 suppressed redeliveries. The deployment restore reverified 100 stored objects, replayed 100
+campaigns, and fully verified 100 restored campaign Packages. These are synthetic-replay reliability
+measurements, not scientific or live-instrument results. Observed replay and future live execution
+were not run.
 
 ### Out of scope
 

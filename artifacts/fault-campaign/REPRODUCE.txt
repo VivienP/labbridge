@@ -1,1 +1,1 @@
-python scripts/reproduce_campaign_reliability.py --campaigns 100 --master-seed 20260813 --database-name labbridge_phase7_fault_release2 --bucket labbridge-phase7-fault-release2 --output build/phase7-fault-campaign
+python scripts/reproduce_campaign_reliability.py --campaigns 100 --master-seed 20260813 --database-name labbridge_phase7_fault_release3 --bucket labbridge-phase7-fault-release3 --output build/phase7-fault-campaign
