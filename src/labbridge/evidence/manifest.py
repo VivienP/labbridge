@@ -41,8 +41,15 @@ def build_manifest(
     overlap = reserved.intersection(metadata)
     if overlap:
         raise ValueError(f"manifest metadata uses reserved keys: {', '.join(sorted(overlap))}")
+    # Sort by filename text. `sorted(Path)` is case-insensitive on Windows and case-sensitive on
+    # POSIX, so the same bytes produced a different `files` array — and `files_digest` — in CI.
     members = sorted(
-        path for path in destination.iterdir() if path.is_file() and path.name != MANIFEST_FILENAME
+        (
+            path
+            for path in destination.iterdir()
+            if path.is_file() and path.name != MANIFEST_FILENAME
+        ),
+        key=lambda path: (path.name.casefold(), path.name),
     )
     files = [
         {"name": path.name, "sha256": digest(path.read_bytes()), "byte_size": path.stat().st_size}

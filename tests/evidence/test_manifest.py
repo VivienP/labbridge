@@ -35,6 +35,28 @@ def test_an_untouched_closed_manifest_verifies(released: Path) -> None:
     assert verify_manifest(released)["artifact_kind"] == "source_capture"
 
 
+def test_manifest_lists_mixed_case_members_in_a_platform_stable_order(tmp_path: Path) -> None:
+    """Path comparison is case-insensitive on Windows and case-sensitive on POSIX.
+
+    Sorting the Path objects themselves therefore emits a different `files` array — and a different
+    `files_digest` — for the same bytes. Order by the filename as text instead.
+    """
+    (tmp_path / "LIMITATIONS.md").write_text("limitations\n", encoding="utf-8", newline="\n")
+    (tmp_path / "cv.csv").write_bytes(b"a,b\n")
+    manifest = build_manifest(
+        tmp_path,
+        metadata={
+            "artifact_kind": "source_capture",
+            "schema_version": "1",
+            "producing_versions": {"labbridge": "0.1.0"},
+            "data_origin": "synthetic",
+            "execution_mode": "replay",
+        },
+    )
+
+    assert [entry["name"] for entry in manifest["files"]] == ["cv.csv", "LIMITATIONS.md"]
+
+
 def test_one_changed_byte_fails_verification(released: Path) -> None:
     member = released / "payload.bin"
     member.write_bytes(member.read_bytes()[:-1] + b"X")

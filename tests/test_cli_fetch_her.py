@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import typer.main
 from typer.testing import CliRunner
 
 from helpers import SYNTHETIC_DOI, FakeTransport, build_file_entry, build_payload
@@ -33,10 +34,14 @@ def fake_transport(monkeypatch: pytest.MonkeyPatch) -> FakeTransport:
 
 def test_fetch_her_is_registered_and_documents_its_options() -> None:
     result = runner.invoke(cli.app, ["fetch-her", "--help"])
-
     assert result.exit_code == 0
+
+    # Rich help truncates option names when COLUMNS is 80, which is the GitHub Actions default.
+    # The registration itself is what the command must keep, so inspect the Click parameters.
+    fetch = typer.main.get_command(cli.app).commands["fetch-her"]
+    opts = {flag for param in fetch.params for flag in param.opts}
     for option in ("--dry-run", "--file", "--max-bytes", "--allow-large", "--landing-root"):
-        assert option in result.output
+        assert option in opts, option
 
 
 def test_dry_run_exits_zero_and_writes_only_the_inventory(
