@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from labbridge.api.app import create_app
 from labbridge.application.experiments import (
     ExperimentIdempotencyConflictError,
+    StoredExperiment,
     StoredPackage,
     StoredPassport,
     StoredValidation,
@@ -17,6 +18,7 @@ from labbridge.application.experiments import (
 from labbridge.cli import app
 from labbridge.domain.experiments import (
     AssertionValue,
+    add_user_assertion,
     create_experiment,
     experiment_id_for_observation,
     make_assertion,
@@ -129,6 +131,29 @@ class ValidationService:
             "cli-package-new-key",
         }
         return StoredPackage(self.package, replayed=False)
+
+
+class RepeatedDeclarationService(ValidationService):
+    """Applies the real domain rule so the adapter is tested against the actual failure."""
+
+    def add_user_assertion(
+        self, experiment_id: str, *, expected_version: int, **_: object
+    ) -> StoredExperiment:
+        assert experiment_id == self.experiment.experiment_id
+        source = self.experiment.assertions[0]
+        declaration = {
+            "field_name": source.field_name,
+            "requirement_class": "conditional",
+            "transformation": "none",
+            "value": AssertionValue(state="known", value="RHE"),
+            "evidence_note": "Declared by the operator for this experiment.",
+            "supplements_assertion_id": source.assertion_id,
+        }
+        supplemented = add_user_assertion(self.experiment, expected_version=1, **declaration)
+        repeated = add_user_assertion(
+            supplemented, expected_version=expected_version, **declaration
+        )
+        return StoredExperiment(repeated, replayed=False)
 
 
 class ConflictingPackageService(ValidationService):
@@ -254,6 +279,30 @@ def test_user_assertion_http_contract_rejects_client_selected_origin() -> None:
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert any(error["loc"][-1] == "origin" for error in response.json()["detail"])
+
+
+def test_repeated_declaration_reports_an_actionable_message_not_a_validator_dump() -> None:
+    service = RepeatedDeclarationService()
+    client = TestClient(create_app(experiment_service=service))  # type: ignore[arg-type]
+
+    response = client.post(
+        f"/experiments/{service.experiment.experiment_id}/assertions",
+        headers={"Idempotency-Key": "repeated-declaration"},
+        json={
+            "expected_experiment_version": 2,
+            "field_name": "reference_scale",
+            "requirement_class": "conditional",
+            "transformation": "none",
+            "value": {"state": "known", "value": "RHE", "unit": None},
+            "evidence_note": "Declared by the operator for this experiment.",
+        },
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    detail = response.json()["detail"]
+    assert "already records this assertion" in detail["message"]
+    assert "validation error for Experiment" not in detail["message"]
+    assert "pydantic" not in detail["message"].lower()
 
 
 def test_package_changed_content_idempotency_conflict_is_http_409() -> None:

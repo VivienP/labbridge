@@ -200,6 +200,46 @@ def test_user_supplement_preserves_source_assertion_and_prior_version() -> None:
     assert user.supersedes_assertion_id is None
 
 
+def test_repeating_an_identical_declaration_is_refused_before_it_is_stored() -> None:
+    """An assertion identity covers its content, so a repeat would duplicate an existing one.
+
+    Appending it produced an aggregate that violated its own invariant and could not be read
+    back, which left every later request for that experiment failing.
+    """
+    initial = _release_ready_experiment()
+    source = next(item for item in initial.assertions if item.field_name == "reference_scale")
+    declaration = {
+        "field_name": "reference_scale",
+        "requirement_class": "conditional",
+        "transformation": "none",
+        "value": AssertionValue(state="known", value="RHE"),
+        "evidence_note": "Declared by the operator for this experiment.",
+        "supplements_assertion_id": source.assertion_id,
+    }
+    supplemented = add_user_assertion(initial, expected_version=1, **declaration)
+
+    with pytest.raises(ValueError, match="already records this assertion"):
+        add_user_assertion(supplemented, expected_version=SUPERSEDING_VERSION, **declaration)
+
+
+def test_appended_version_is_readable_back_as_a_valid_aggregate() -> None:
+    initial = _release_ready_experiment()
+    source = next(item for item in initial.assertions if item.field_name == "reference_scale")
+
+    supplemented = add_user_assertion(
+        initial,
+        expected_version=1,
+        field_name="reference_scale",
+        requirement_class="conditional",
+        transformation="none",
+        value=AssertionValue(state="known", value="RHE"),
+        evidence_note="Declared by the operator for this experiment.",
+        supplements_assertion_id=source.assertion_id,
+    )
+
+    assert Experiment.model_validate(supplemented.model_dump(mode="json")) == supplemented
+
+
 def test_user_correction_supersedes_only_the_active_user_assertion() -> None:
     initial = _release_ready_experiment()
     source = next(item for item in initial.assertions if item.field_name == "reference_scale")
