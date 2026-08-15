@@ -1,15 +1,19 @@
 import { useReducer, useRef } from "react"
 
 import { ApiRequestError, createApiClient, type ApiClient } from "./api/client"
+import { AppHeader } from "./components/AppHeader"
 import { MappingStep } from "./components/MappingStep"
 import { ObservationStep } from "./components/ObservationStep"
 import { PackageStep } from "./components/PackageStep"
 import { PassportStep } from "./components/PassportStep"
 import { SourceStep } from "./components/SourceStep"
+import { Stage } from "./components/Stage"
 import { ValidationStep } from "./components/ValidationStep"
+import { WorkflowRail } from "./components/WorkflowRail"
 import type { ApiError, Remote, WorkflowEvent, WorkflowState } from "./workflow/model"
 import { canCreatePackage, initialState, reduce } from "./workflow/model"
 import { userAssertionRequest } from "./workflow/profile"
+import { deriveStages, nextAction, type StageId, type StageStatus } from "./workflow/stages"
 
 const FIXTURE_NAME = "synthetic-cv-passport-demo.csv"
 
@@ -24,6 +28,14 @@ function remoteData<T>(remote: Remote<T>): T | null {
 
 function remoteError<T>(remote: Remote<T>): string | undefined {
   return remote.status === "failed" ? `${remote.error.code}: ${remote.error.message}` : undefined
+}
+
+function firstError(...remotes: Remote<unknown>[]): string | undefined {
+  for (const remote of remotes) {
+    const message = remoteError(remote)
+    if (message) return message
+  }
+  return undefined
 }
 
 function apiError(caught: unknown): ApiError {
@@ -42,6 +54,58 @@ function defaultFixture(): Promise<Blob> {
     if (!response.ok) throw new Error(`fixture_http_${response.status}`)
     return response.blob()
   })
+}
+
+interface StageCopy {
+  eyebrow: string
+  title: string
+  summary: string
+  hint: string
+}
+
+const STAGE_COPY: Record<StageId, StageCopy> = {
+  source: {
+    eyebrow: "Source",
+    title: "Retain exact source bytes",
+    summary:
+      "LabBridge stores the file unchanged, then derives its checksum and identity. It reads no meaning from the contents.",
+    hint: "",
+  },
+  mapping: {
+    eyebrow: "Mapping",
+    title: "Declare column roles and units",
+    summary:
+      "No column semantics are inferred. Every inspected column needs an explicit decision before anything is normalised.",
+    hint: "Opens once a source is retained. LabBridge will list the headers it read and assign none of them a role.",
+  },
+  observation: {
+    eyebrow: "Observation",
+    title: "Normalised observation",
+    summary:
+      "The backend parses the bytes, converts the declared units, and assembles one observation. The browser displays only what it returns.",
+    hint: "Opens once an explicit mapping has been normalised by the backend.",
+  },
+  validation: {
+    eyebrow: "Validation",
+    title: "Metadata, provenance, and findings",
+    summary:
+      "Deterministic completeness rules over the recorded assertions. Origin, transformation, requirement class, and value state stay independent.",
+    hint: "Opens once the observation exists and an experiment has been opened for it.",
+  },
+  passport: {
+    eyebrow: "Passport",
+    title: "Operator assertion and Passport release",
+    summary:
+      "A Passport is an immutable snapshot of one experiment version. A correction is appended as a superseding Passport; nothing is overwritten.",
+    hint: "Opens once the deterministic validation run has completed.",
+  },
+  package: {
+    eyebrow: "Package",
+    title: "Experiment Package",
+    summary:
+      "One checksummed archive closing the chain from the retained bytes to the released Passport. Verification happens outside the browser.",
+    hint: "Opens once a superseding Passport has been released.",
+  },
 }
 
 export function createIntentKey(scope: string): string {
@@ -198,15 +262,18 @@ export function App({ api = createApiClient(), loadFixture = defaultFixture }: A
       send({ type: "preview.succeeded", data: preview })
     } catch (caught) {
       const error = apiError(caught)
+      // Report before refreshing: a slow or failed refresh must not hide the actionable response
+      // or leave the step stuck in its pending state.
+      send({ type: "supplementedExperiment.failed", error })
+      send({ type: "preview.failed", error })
       if (error.status === 409) {
         try {
           const latest = await api.getExperiment(current.experiment.experiment_id)
           send({ type: "supplementedExperiment.succeeded", data: latest })
         } catch {
-          // Preserve the actionable version-conflict response below.
+          // Keep the reported conflict; the declaration can be retried against the known version.
         }
       }
-      send({ type: "preview.failed", error })
     }
   }
 
@@ -264,6 +331,7 @@ export function App({ api = createApiClient(), loadFixture = defaultFixture }: A
 
   const source = remoteData(state.source)
   const inspection = remoteData(state.inspection)
+  const profile = remoteData(state.profile)
   const normalisationView = remoteData(state.normalisation)
   const plot = remoteData(state.plot)
   const baseExperiment = remoteData(state.experiment)
@@ -273,62 +341,137 @@ export function App({ api = createApiClient(), loadFixture = defaultFixture }: A
   const preview = remoteData(state.preview)
   const supersedingPassport = remoteData(state.supersedingPassport)
   const packageView = remoteData(state.package)
-  const passportPending = [state.initialPassport, state.supplementedExperiment, state.preview, state.supersedingPassport]
-    .some((remote) => remote.status === "pending")
+
+  const stages = deriveStages(state)
+  const frame = (id: StageId) => {
+    const stage = stages.find((candidate) => candidate.id === id)
+    return {
+      id,
+      ordinal: stage?.ordinal ?? "00",
+      status: stage?.status ?? ("locked" as StageStatus),
+      eyebrow: STAGE_COPY[id].eyebrow,
+      title: STAGE_COPY[id].title,
+      summary: STAGE_COPY[id].summary,
+    }
+  }
+  const hint = (id: StageId) => <p className="stage-hint">{STAGE_COPY[id].hint}</p>
+  const observationError = firstError(state.plot)
+  const experimentError = firstError(state.experiment, state.validation)
 
   return (
-    <>
-      <header className="hero">
-        <p className="product-mark">LabBridge / CV Passport</p>
-        <h1>From exact source bytes to a closed evidence Package</h1>
-        <p>One operator, one local service, one provenance-preserving vertical slice.</p>
-        <p className="status-boundary">
-          Implementation evidence only — blocker/warning classification awaits human electrochemistry domain review.
-        </p>
-      </header>
-      <main>
-        <SourceStep
-          source={source}
-          pending={state.source.status === "pending"}
-          error={remoteError(state.source) ?? remoteError(state.inspection)}
-          onLoadFixture={() => void loadSyntheticFixture()}
-          onUpload={(file, origin, mode) => void retain(file, file.name, origin, mode)}
-        />
-        {inspection && (
-          <MappingStep
-            inspection={inspection}
-            pending={[state.profile, state.normalisation, state.plot, state.experiment, state.validation]
-              .some((remote) => remote.status === "pending")}
-            error={remoteError(state.profile) ?? remoteError(state.normalisation) ?? remoteError(state.plot) ?? remoteError(state.experiment) ?? remoteError(state.validation)}
-            onSubmit={(profile) => void normalise(profile)}
-          />
-        )}
-        {normalisationView && plot && <ObservationStep normalisation={normalisationView} plot={plot} />}
-        {baseExperiment && validation && (
-          <ValidationStep experiment={supplementedExperiment ?? baseExperiment} validation={validation} />
-        )}
-        {baseExperiment && validation && (
-          <PassportStep
-            initialPassport={initialPassport}
-            preview={preview}
-            supersedingPassport={supersedingPassport}
-            pending={passportPending}
-            error={remoteError(state.initialPassport) ?? remoteError(state.supplementedExperiment) ?? remoteError(state.preview) ?? remoteError(state.supersedingPassport)}
-            onReleaseInitial={() => void releaseInitial()}
-            onDeclareReferenceScale={(value) => void declareReferenceScale(value)}
-            onReleaseSuperseding={() => void releaseSuperseding()}
-          />
-        )}
-        {supersedingPassport && (
-          <PackageStep
-            packageView={packageView}
-            pending={state.package.status === "pending"}
-            error={remoteError(state.package)}
-            onCreate={() => void createPackage()}
-            onDownload={() => void downloadPackage()}
-          />
-        )}
-      </main>
-    </>
+    <div className="app">
+      <AppHeader
+        dataOrigin={source?.data_origin}
+        executionMode={source?.execution_mode}
+        onReset={source ? () => send({ type: "reset" }) : undefined}
+      />
+      <div className="app-body">
+        <WorkflowRail stages={stages} nextAction={nextAction(state)} />
+        <main id="workspace" tabIndex={-1}>
+          <Stage {...frame("source")}>
+            <SourceStep
+              source={source}
+              pending={state.source.status === "pending" || state.inspection.status === "pending"}
+              error={firstError(state.source, state.inspection)}
+              onLoadFixture={() => void loadSyntheticFixture()}
+              onUpload={(file, origin, mode) => void retain(file, file.name, origin, mode)}
+            />
+          </Stage>
+
+          <Stage {...frame("mapping")}>
+            {inspection ? (
+              <MappingStep
+                inspection={inspection}
+                pending={
+                  state.profile.status === "pending" || state.normalisation.status === "pending"
+                }
+                error={firstError(state.profile, state.normalisation)}
+                onSubmit={(profile) => void normalise(profile)}
+              />
+            ) : (
+              hint("mapping")
+            )}
+          </Stage>
+
+          <Stage {...frame("observation")}>
+            {normalisationView && plot ? (
+              <ObservationStep normalisation={normalisationView} plot={plot} />
+            ) : observationError ? (
+              <p className="error-message" role="alert">
+                {observationError}
+              </p>
+            ) : (
+              hint("observation")
+            )}
+          </Stage>
+
+          <Stage {...frame("validation")}>
+            {baseExperiment && validation ? (
+              <ValidationStep
+                experiment={supplementedExperiment ?? baseExperiment}
+                validation={validation}
+              />
+            ) : experimentError ? (
+              <p className="error-message" role="alert">
+                {experimentError}
+              </p>
+            ) : (
+              hint("validation")
+            )}
+          </Stage>
+
+          <Stage {...frame("passport")}>
+            {baseExperiment && validation ? (
+              <PassportStep
+                initialPassport={initialPassport}
+                preview={preview}
+                supersedingPassport={supersedingPassport}
+                pending={[
+                  state.initialPassport,
+                  state.supplementedExperiment,
+                  state.preview,
+                  state.supersedingPassport,
+                ].some((remote) => remote.status === "pending")}
+                error={firstError(
+                  state.initialPassport,
+                  state.supplementedExperiment,
+                  state.preview,
+                  state.supersedingPassport,
+                )}
+                unknownCount={validation.validation.release_decision.unknown_count}
+                onReleaseInitial={() => void releaseInitial()}
+                onDeclareReferenceScale={(value) => void declareReferenceScale(value)}
+                onReleaseSuperseding={() => void releaseSuperseding()}
+              />
+            ) : (
+              hint("passport")
+            )}
+          </Stage>
+
+          <Stage {...frame("package")}>
+            {supersedingPassport ? (
+              <PackageStep
+                packageView={packageView}
+                pending={state.package.status === "pending"}
+                error={remoteError(state.package)}
+                chain={
+                  source && profile && normalisationView
+                    ? {
+                        sourceArtifactId: source.source_artifact_id,
+                        importProfileId: profile.profile_id,
+                        observationId: normalisationView.result.observation.observation_id,
+                      }
+                    : undefined
+                }
+                onCreate={() => void createPackage()}
+                onDownload={() => void downloadPackage()}
+              />
+            ) : (
+              hint("package")
+            )}
+          </Stage>
+        </main>
+      </div>
+    </div>
   )
 }
